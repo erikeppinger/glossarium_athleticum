@@ -22,8 +22,7 @@
     "difficulty": { "type": "string", "enum": ["Beginner", "Intermediate", "Advanced"] },
     "measurement_type": {
       "type": "string",
-      "enum": ["Weight x Reps", "Time", "Distance"],
-      "description": "Drives which input fields the session-logging screen shows for this exercise."
+      "description": "Free text, not a fixed enum - the seed data has compound values like \"Weight x Reps or Max Load\" or \"Distance or Time\", not just single categories. Drives which input fields the session-logging screen shows for this exercise (Phase 2)."
     },
     "description": { "type": "string" },
     "safety_notes": { "type": "string" },

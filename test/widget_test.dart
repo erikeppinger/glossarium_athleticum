@@ -1,30 +1,40 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:training_app/main.dart';
+import 'package:training_app/data/app_database.dart';
+import 'package:training_app/data/app_database_provider.dart';
+import 'package:training_app/data/seed/exercise_seed_loader.dart';
+import 'package:training_app/features/exercise_library/exercise_library_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('seeded exercises show up in the exercise library screen', (
+    tester,
+  ) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    await seedExerciseLibrary(db);
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Test only the Exercise Library tab directly, rather than the full
+    // HomeScreen (whose IndexedStack keeps the Plans/Calendar tabs - and
+    // their Drift stream subscriptions - alive even while hidden). That
+    // adds disposal-ordering complexity this smoke test doesn't need to
+    // exercise; the DAO tests already cover the Plans/Calendar data layer.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(db)],
+        child: const MaterialApp(home: ExerciseLibraryScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    expect(find.text('Exercise Library'), findsOneWidget);
+    // A row from the bundled seed CSV should be visible - proves the
+    // asset -> Drift -> UI pipeline actually ran, not just that the screen
+    // scaffolding rendered.
+    expect(find.text('Band Pull-Apart'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    await db.close();
   });
 }
