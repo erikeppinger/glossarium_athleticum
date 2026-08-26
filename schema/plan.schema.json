@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://training-app/schema/plan.schema.json",
+  "title": "Plan",
+  "description": "A single training plan, exportable/importable on its own (Phase 1/3). Nests the flat rows of templates/training_plan_template.csv by Week -> Day/Session -> exercise entries so the importer/exporter can convert cleanly in both directions.",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "weeks"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump on any breaking change to this shape; add a migration step in the importer for each bump."
+    },
+    "id": { "type": "string", "description": "UUID." },
+    "name": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "notes": { "type": "string" },
+    "weeks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/week" }
+    }
+  },
+  "definitions": {
+    "week": {
+      "type": "object",
+      "required": ["week_number", "sessions"],
+      "properties": {
+        "week_number": { "type": "integer", "minimum": 1 },
+        "sessions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/session" }
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "description": "One row-group from the template: same Week + Day + Session Name.",
+      "required": ["day", "session_name", "exercises"],
+      "properties": {
+        "day": {
+          "type": "string",
+          "description": "Free text, e.g. \"Mon\" or \"Day 1\" for non-date-bound programs."
+        },
+        "session_name": { "type": "string" },
+        "assigned_date": {
+          "type": ["string", "null"],
+          "format": "date",
+          "description": "Set when the session is placed on the calendar; null while still template-only."
+        },
+        "exercises": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/planExercise" }
+        }
+      }
+    },
+    "planExercise": {
+      "type": "object",
+      "required": ["order", "exercise_name", "sets", "reps"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 1 },
+        "exercise_id": {
+          "type": ["string", "null"],
+          "description": "Resolved match against schema/exercise.schema.json's id. Null until the import-preview screen resolves it (see exercise_name)."
+        },
+        "exercise_name": {
+          "type": "string",
+          "description": "Raw name as typed/imported. Kept even after resolution so re-export round-trips the original text."
+        },
+        "sets": { "type": "integer", "minimum": 1 },
+        "reps": {
+          "type": "string",
+          "description": "Free text - ranges like \"8-10\" are common, not just a single number."
+        },
+        "weight_intensity": {
+          "type": "string",
+          "description": "Free text - kg/lb, RPE, or %1RM all show up here."
+        },
+        "rest_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "notes": { "type": "string" },
+        "video_url": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://training-app/schema/backup.schema.json",
+  "title": "Backup",
+  "description": "Full-app export (Phase 3). A plain plan export uses plan.schema.json directly instead of wrapping it here. The plaintext JSON below is what gets passphrase-encrypted (Argon2id-derived AES-256) for the on-disk backup file - encryption wraps this document, it isn't part of its shape.",
+  "type": "object",
+  "required": ["schema_version", "exported_at", "exercises", "plans"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump on any breaking change; add a migration step per bump. Independent from plan.schema_version - a plan embedded here still carries its own schema_version."
+    },
+    "exported_at": { "type": "string", "format": "date-time" },
+    "app_version": { "type": "string" },
+    "exercises": {
+      "type": "array",
+      "items": { "$ref": "exercise.schema.json" },
+      "description": "Only custom exercises need to round-trip here; seed-library exercises are reseeded on import rather than duplicated in every backup."
+    },
+    "plans": {
+      "type": "array",
+      "items": { "$ref": "plan.schema.json" }
+    },
+    "session_logs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/sessionLog" },
+      "description": "Phase 2 execution history, needed for full-backup restore (history/PR/progress views) but not part of a single-plan export."
+    }
+  },
+  "definitions": {
+    "sessionLog": {
+      "type": "object",
+      "required": ["id", "plan_id", "logged_at", "entries"],
+      "properties": {
+        "id": { "type": "string", "description": "UUID." },
+        "plan_id": { "type": "string" },
+        "session_name": { "type": "string" },
+        "logged_at": { "type": "string", "format": "date-time" },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/loggedSet" }
+        }
+      }
+    },
+    "loggedSet": {
+      "type": "object",
+      "required": ["exercise_id", "set_number"],
+      "properties": {
+        "exercise_id": { "type": "string" },
+        "set_number": { "type": "integer", "minimum": 1 },
+        "reps": { "type": ["integer", "null"] },
+        "weight": { "type": ["number", "null"] },
+        "duration_sec": { "type": ["number", "null"], "description": "For Time-measured exercises." },
+        "distance": { "type": ["number", "null"], "description": "For Distance-measured exercises." },
+        "rpe": { "type": ["number", "null"], "minimum": 1, "maximum": 10 },
+        "is_pr": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}
