@@ -4,6 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/app_database_provider.dart';
+import '../../import/plan_json_import.dart';
+import '../exercise_library/exercise_library_providers.dart';
 import 'plan_detail_screen.dart';
 import 'plan_import_screen.dart';
 import 'plan_providers.dart';
@@ -44,11 +47,44 @@ class PlanListScreen extends ConsumerWidget {
         error: (error, _) => Center(child: Text('Error: $error')),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _importFromSpreadsheet(context),
+        onPressed: () => _showImportOptions(context, ref),
         icon: const Icon(Icons.upload_file),
-        label: const Text('Import from spreadsheet'),
+        label: const Text('Import plan'),
       ),
     );
+  }
+
+  Future<void> _showImportOptions(BuildContext context, WidgetRef ref) async {
+    final choice = await showModalBottomSheet<_ImportSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.table_chart),
+              title: const Text('From spreadsheet (.csv)'),
+              subtitle: const Text('Excel/Sheets export, or the plan template'),
+              onTap: () => Navigator.of(context).pop(_ImportSource.spreadsheet),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('From plan file (.json)'),
+              subtitle: const Text("Exported from this app's Plan screen"),
+              onTap: () => Navigator.of(context).pop(_ImportSource.json),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!context.mounted || choice == null) return;
+    switch (choice) {
+      case _ImportSource.spreadsheet:
+        await _importFromSpreadsheet(context);
+      case _ImportSource.json:
+        await _importFromJson(context, ref);
+    }
   }
 
   Future<void> _importFromSpreadsheet(BuildContext context) async {
@@ -72,4 +108,36 @@ class PlanListScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _importFromJson(BuildContext context, WidgetRef ref) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    final db = ref.read(appDatabaseProvider);
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      await importPlanJson(json, db);
+      // importPlanJson can create custom exercises; the Exercise Library
+      // screen's providers are one-shot Futures that won't notice on their
+      // own (same reasoning as the Settings screen's restore/delete paths).
+      ref.invalidate(filteredExercisesProvider);
+      ref.invalidate(exerciseCategoriesProvider);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Plan imported.')));
+    } on PlanJsonFormatException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 }
+
+enum _ImportSource { spreadsheet, json }

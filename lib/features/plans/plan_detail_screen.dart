@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../export/plan_export.dart';
 import '../calendar/calendar_screen.dart';
 import '../execution/execution_screen.dart';
 
@@ -24,9 +29,29 @@ class PlanDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detailsAsync = ref.watch(_planDetailsProvider(planId));
     final dateFormat = DateFormat.yMMMd();
+    final loadedDetails = detailsAsync.valueOrNull;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Plan')),
+      appBar: AppBar(
+        title: const Text('Plan'),
+        actions: [
+          if (loadedDetails != null)
+            PopupMenuButton<_ExportFormat>(
+              icon: const Icon(Icons.share),
+              onSelected: (format) => _exportPlan(context, loadedDetails, format),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _ExportFormat.csv,
+                  child: Text('Export as spreadsheet (.csv)'),
+                ),
+                PopupMenuItem(
+                  value: _ExportFormat.json,
+                  child: Text('Export as plan file (.json)'),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: detailsAsync.when(
         data: (details) {
           if (details == null) {
@@ -110,4 +135,39 @@ class PlanDetailScreen extends ConsumerWidget {
     ref.invalidate(_planDetailsProvider(planId));
     ref.invalidate(scheduledSessionsProvider);
   }
+
+  Future<void> _exportPlan(
+    BuildContext context,
+    PlanDetails details,
+    _ExportFormat format,
+  ) async {
+    final safeName = details.plan.name.replaceAll(RegExp(r'[^\w\- ]'), '_');
+    final String contents;
+    final String fileName;
+    final List<String> allowedExtensions;
+    switch (format) {
+      case _ExportFormat.csv:
+        contents = planToCsv(details);
+        fileName = '$safeName.csv';
+        allowedExtensions = ['csv'];
+      case _ExportFormat.json:
+        contents = jsonEncode(planToJson(details));
+        fileName = '$safeName.json';
+        allowedExtensions = ['json'];
+    }
+
+    final uri = await FilePicker.saveFile(
+      fileName: fileName,
+      bytes: Uint8List.fromList(utf8.encode(contents)),
+      type: FileType.custom,
+      allowedExtensions: allowedExtensions,
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(uri == null ? 'Export cancelled.' : 'Exported.')),
+    );
+  }
 }
+
+enum _ExportFormat { csv, json }

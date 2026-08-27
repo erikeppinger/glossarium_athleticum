@@ -1,6 +1,7 @@
 import 'package:csv/csv.dart';
 
 import '../data/app_database.dart';
+import '../logic/exercise_name_matching.dart';
 
 /// Column names the template defines, in the order documented in
 /// templates/training_plan_template.csv - order in the actual file may
@@ -212,12 +213,6 @@ PlanImportResult parsePlanCsv(String csvContent) {
   return PlanImportResult(rows: rows, errors: errors);
 }
 
-String _normalizeExerciseName(String name) => name
-    .toLowerCase()
-    .replaceAll("'", '') // "Farmer's" and "Farmers" should match
-    .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-    .trim();
-
 /// Matches each row's [PlanImportRow.exerciseName] against the exercise
 /// library by exact (case/punctuation-insensitive) match, filling in
 /// [PlanImportRow.matchedExerciseId]. Rows with no match keep it null -
@@ -228,12 +223,12 @@ List<PlanImportRow> matchExercisesAgainstLibrary(
   List<Exercise> library,
 ) {
   final byNormalizedName = <String, String>{
-    for (final e in library) _normalizeExerciseName(e.name): e.id,
+    for (final e in library) normalizeExerciseName(e.name): e.id,
   };
   return rows
       .map(
         (r) => r.withMatchedExerciseId(
-          byNormalizedName[_normalizeExerciseName(r.exerciseName)],
+          byNormalizedName[normalizeExerciseName(r.exerciseName)],
         ),
       )
       .toList();

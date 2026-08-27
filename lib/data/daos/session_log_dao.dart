@@ -132,4 +132,27 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
           ..orderBy([(s) => OrderingTerm.desc(s.loggedAt)]))
         .get();
   }
+
+  /// Every session log in the database, each with its sets - what a full
+  /// backup needs to round-trip execution history.
+  Future<List<SessionLogWithSets>> getAllSessionLogsWithSets() async {
+    final logs = await select(sessionLogs).get();
+    final result = <SessionLogWithSets>[];
+    for (final log in logs) {
+      result.add(
+        SessionLogWithSets(
+          log: log,
+          sets: await getLoggedSetsForSessionLog(log.id),
+        ),
+      );
+    }
+    return result;
+  }
+}
+
+class SessionLogWithSets {
+  final SessionLog log;
+  final List<LoggedSet> sets;
+
+  const SessionLogWithSets({required this.log, required this.sets});
 }

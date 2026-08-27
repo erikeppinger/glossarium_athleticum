@@ -39,11 +39,17 @@ class PlanSessionInput {
   final String sessionName;
   final List<PlanExerciseInput> exercises;
 
+  /// Only meaningful for JSON plan/backup import (Phase 3), which round-trips
+  /// calendar placement; the spreadsheet importer (Phase 1) never sets this
+  /// since a spreadsheet row has no assigned-date column.
+  final DateTime? assignedDate;
+
   const PlanSessionInput({
     required this.weekNumber,
     required this.day,
     required this.sessionName,
     required this.exercises,
+    this.assignedDate,
   });
 }
 
@@ -80,11 +86,16 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
 
   Stream<List<Plan>> watchAllPlans() => select(plans).watch();
 
+  /// [createdAt]/[updatedAt] default to now - only JSON plan/backup import
+  /// (Phase 3) passes the original values through, to keep an
+  /// export-then-reimport round-trip byte-for-byte faithful.
   Future<String> createPlan({
     required String id,
     required String name,
     String notes = '',
     required List<PlanSessionInput> sessions,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     final now = DateTime.now();
     return transaction(() async {
@@ -93,8 +104,8 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           id: id,
           name: name,
           notes: Value(notes),
-          createdAt: now,
-          updatedAt: now,
+          createdAt: createdAt ?? now,
+          updatedAt: updatedAt ?? now,
         ),
       );
       for (final s in sessions) {
@@ -104,6 +115,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
             weekNumber: s.weekNumber,
             day: s.day,
             sessionName: s.sessionName,
+            assignedDate: Value(s.assignedDate),
           ),
         );
         for (final e in s.exercises) {
@@ -147,6 +159,27 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       sessions.add(await _loadSessionDetails(session));
     }
     return PlanDetails(plan: plan, sessions: sessions);
+  }
+
+  /// Finds a session by its natural key (week + day + session name) within
+  /// a plan, rather than by row id - used to re-link session logs to the
+  /// right session during backup restore, since a fresh import's
+  /// auto-incremented session ids won't match the ids from before the
+  /// restore wiped the database.
+  Future<PlanSession?> findSessionByNaturalKey({
+    required String planId,
+    required int weekNumber,
+    required String day,
+    required String sessionName,
+  }) {
+    return (select(planSessions)..where(
+          (s) =>
+              s.planId.equals(planId) &
+              s.weekNumber.equals(weekNumber) &
+              s.day.equals(day) &
+              s.sessionName.equals(sessionName),
+        ))
+        .getSingleOrNull();
   }
 
   /// A single scheduled session with its exercises, for execution mode -

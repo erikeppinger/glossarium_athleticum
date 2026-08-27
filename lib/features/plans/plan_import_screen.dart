@@ -7,6 +7,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../import/plan_spreadsheet_parser.dart';
+import '../exercise_library/exercise_library_providers.dart';
 import 'plan_providers.dart';
 
 /// Preview/resolve screen for a plan spreadsheet import. Never silently
@@ -233,6 +234,10 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
       ),
     );
     ref.invalidate(allExercisesForMatchingProvider);
+    // Exercise Library's providers are separate one-shot Futures that don't
+    // notice a custom exercise created from this screen on their own.
+    ref.invalidate(filteredExercisesProvider);
+    ref.invalidate(exerciseCategoriesProvider);
     _resolveAllWithName(row.exerciseName, id);
   }
 

@@ -27,6 +27,12 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
   Future<int> deleteExercise(String id) =>
       (delete(exercises)..where((e) => e.id.equals(id))).go();
 
+  /// Custom (user-created) exercises only - what a full backup needs to
+  /// round-trip; seed-library exercises are reseeded on import instead of
+  /// being duplicated into every backup.
+  Future<List<Exercise>> getCustomExercises() =>
+      (select(exercises)..where((e) => e.isCustom.equals(true))).get();
+
   /// Search/filter over the library. All filters are optional and AND-ed
   /// together; [query] matches against name (case-insensitive substring).
   Future<List<Exercise>> search({

@@ -31,10 +31,16 @@
   "definitions": {
     "sessionLog": {
       "type": "object",
-      "required": ["id", "plan_id", "logged_at", "entries"],
+      "required": ["id", "plan_id", "week_number", "day", "session_name", "logged_at", "entries"],
       "properties": {
         "id": { "type": "string", "description": "UUID." },
         "plan_id": { "type": "string" },
+        "week_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Needed alongside day+session_name to identify which PlanSession this log belongs to - a plan can repeat the same session_name across multiple weeks (e.g. \"Push Day\" in both week 1 and week 2), so plan_id+session_name alone is ambiguous."
+        },
+        "day": { "type": "string" },
         "session_name": { "type": "string" },
         "logged_at": { "type": "string", "format": "date-time" },
         "entries": {

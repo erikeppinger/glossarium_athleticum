@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/exercise_library/exercise_library_screen.dart';
 import 'features/plans/plan_list_screen.dart';
+import 'features/settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ExerciseLibraryScreen(),
     PlanListScreen(),
     CalendarScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -39,6 +41,10 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.calendar_month),
             label: 'Calendar',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),
