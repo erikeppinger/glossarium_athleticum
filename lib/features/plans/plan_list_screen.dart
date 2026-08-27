@@ -4,12 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/app_database_provider.dart';
-import '../../import/plan_json_import.dart';
-import '../exercise_library/exercise_library_providers.dart';
 import 'plan_detail_screen.dart';
 import 'plan_import_screen.dart';
 import 'plan_providers.dart';
+import 'plan_sync_handler.dart';
 
 class PlanListScreen extends ConsumerWidget {
   const PlanListScreen({super.key});
@@ -117,26 +115,10 @@ class PlanListScreen extends ConsumerWidget {
     if (file == null) return;
 
     final bytes = await file.readAsBytes();
-    final db = ref.read(appDatabaseProvider);
+    final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
 
-    try {
-      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      await importPlanJson(json, db);
-      // importPlanJson can create custom exercises; the Exercise Library
-      // screen's providers are one-shot Futures that won't notice on their
-      // own (same reasoning as the Settings screen's restore/delete paths).
-      ref.invalidate(filteredExercisesProvider);
-      ref.invalidate(exerciseCategoriesProvider);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Plan imported.')));
-    } on PlanJsonFormatException catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
-    }
+    if (!context.mounted) return;
+    await importOrSyncPlanJson(context, ref, json);
   }
 }
 

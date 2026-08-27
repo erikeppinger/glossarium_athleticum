@@ -133,6 +133,23 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// Deletes every log (and its logged sets) for one scheduled session,
+  /// children before parents - same reasoning as [MaintenanceDao.wipeAllData]:
+  /// must not assume SQLite's foreign_keys pragma is on. Used by Phase 5's
+  /// plan sync when replacing a plan's sessions, so a fresh session log
+  /// insert under a reused id doesn't collide with an orphaned old row.
+  Future<void> deleteLogsForPlanSession(int planSessionId) {
+    return transaction(() async {
+      final logIds = await (select(
+        sessionLogs,
+      )..where((l) => l.planSessionId.equals(planSessionId))).map((l) => l.id).get();
+      await (delete(loggedSets)..where((s) => s.sessionLogId.isIn(logIds))).go();
+      await (delete(
+        sessionLogs,
+      )..where((l) => l.planSessionId.equals(planSessionId))).go();
+    });
+  }
+
   /// Every session log in the database, each with its sets - what a full
   /// backup needs to round-trip execution history.
   Future<List<SessionLogWithSets>> getAllSessionLogsWithSets() async {

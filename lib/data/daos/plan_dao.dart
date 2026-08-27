@@ -239,6 +239,22 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
         .get();
   }
 
-  Future<int> deletePlan(String id) =>
-      (delete(plans)..where((p) => p.id.equals(id))).go();
+  /// Deletes a plan and its sessions/exercises, children before parents -
+  /// same reasoning as [MaintenanceDao.wipeAllData]: this must not assume
+  /// SQLite's foreign_keys pragma is on. Does NOT touch SessionLogs/
+  /// LoggedSets (a different DAO's tables) - callers that also need those
+  /// gone (e.g. Phase 5's plan_sync.dart) must delete them first, before
+  /// calling this.
+  Future<void> deletePlan(String id) {
+    return transaction(() async {
+      final sessionIds = await (select(
+        planSessions,
+      )..where((s) => s.planId.equals(id))).map((s) => s.id).get();
+      await (delete(
+        planExercises,
+      )..where((e) => e.sessionId.isIn(sessionIds))).go();
+      await (delete(planSessions)..where((s) => s.planId.equals(id))).go();
+      await (delete(plans)..where((p) => p.id.equals(id))).go();
+    });
+  }
 }

@@ -16,13 +16,7 @@ import '../../data/daos/plan_dao.dart';
 import '../../export/plan_export.dart';
 import '../calendar/calendar_screen.dart';
 import '../execution/execution_screen.dart';
-
-final _planDetailsProvider = FutureProvider.family<PlanDetails?, String>(
-  (ref, planId) {
-    final db = ref.watch(appDatabaseProvider);
-    return db.planDao.getPlanDetails(planId);
-  },
-);
+import 'plan_providers.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
   final String planId;
@@ -31,7 +25,7 @@ class PlanDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detailsAsync = ref.watch(_planDetailsProvider(planId));
+    final detailsAsync = ref.watch(planDetailsProvider(planId));
     final dateFormat = DateFormat.yMMMd();
     final loadedDetails = detailsAsync.valueOrNull;
 
@@ -146,7 +140,7 @@ class PlanDetailScreen extends ConsumerWidget {
     if (picked == null) return;
     final db = ref.read(appDatabaseProvider);
     await db.planDao.assignSessionDate(session.id, picked);
-    ref.invalidate(_planDetailsProvider(planId));
+    ref.invalidate(planDetailsProvider(planId));
     ref.invalidate(scheduledSessionsProvider);
   }
 

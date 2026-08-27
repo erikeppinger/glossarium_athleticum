@@ -8,10 +8,10 @@ import 'package:path/path.dart' as p;
 import '../../data/app_database_provider.dart';
 import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
-import '../../import/plan_json_import.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
 import '../plans/plan_import_screen.dart';
+import '../plans/plan_sync_handler.dart';
 import '../settings/backup_dialogs.dart';
 
 /// Reads a file received from outside the app (Bluetooth, WhatsApp, "Open
@@ -61,22 +61,10 @@ Future<void> handleSharedContent(
       );
 
     case '.json':
-      final db = ref.read(appDatabaseProvider);
       try {
         final json = jsonDecode(content) as Map<String, dynamic>;
-        await importPlanJson(json, db);
-        // Same one-shot-FutureProvider gotcha as the manual import paths.
-        ref.invalidate(filteredExercisesProvider);
-        ref.invalidate(exerciseCategoriesProvider);
         if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Plan imported.')));
-      } on PlanJsonFormatException catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        await importOrSyncPlanJson(context, ref, json);
       } on FormatException {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

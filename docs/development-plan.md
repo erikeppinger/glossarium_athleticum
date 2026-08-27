@@ -111,13 +111,15 @@
 
 ## Phase 5 — Multi-device sync (still Android, but 2+ of your own devices)
 
+**Revised 2026-08-27**: by explicit user decision, built entirely on Phase 4's file-sharing transport (export a plan, share/receive it) rather than adding real local-network device discovery - the "local-network or manual (QR/file) sync" choice below is resolved in favor of the manual/file path, since Phase 4 already built it. The new work this phase is purely the conflict-handling half.
+
 **Build:**
-- Local-network or manual (QR/file) sync between a user's *own* devices — no server.
+- ~~Local-network or manual (QR/file) sync between a user's *own* devices — no server.~~ Superseded - Phase 4's plan export/share/receive pipeline already is this transport.
 - Conflict handling: version/timestamp each plan; on conflict, show a merge view rather than silently picking a winner.
 
 **Test:**
 - Simulate concurrent edits on two devices, verify the conflict UI surfaces both versions correctly.
-- Sync over a flaky local network (drop connection mid-transfer) — confirm it fails safely, not with a half-written plan.
+- ~~Sync over a flaky local network (drop connection mid-transfer) — confirm it fails safely, not with a half-written plan.~~ N/A - no network transport was added this phase.
 
 **Exit criteria:** editing the same plan on two devices while offline, then syncing, produces either a clean merge or a clear user-facing choice — never silent data loss.
 

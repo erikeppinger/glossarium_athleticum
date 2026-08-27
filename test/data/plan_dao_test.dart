@@ -60,8 +60,21 @@ void main() {
 
   test('deletePlan cascades to sessions and exercises', () async {
     await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+    final sessionId = (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+
     await db.planDao.deletePlan('plan-1');
+
     expect(await db.planDao.getPlanDetails('plan-1'), isNull);
+    // getPlanDetails alone would pass even if child rows were orphaned,
+    // since it short-circuits on the parent's absence - check the
+    // children directly (this caught a real bug during Phase 5: deletePlan
+    // used to only delete the Plans row, relying on FK cascade that isn't
+    // actually enabled for this connection).
+    expect(
+      await db.planDao.getSessionDetails(sessionId),
+      isNull,
+      reason: 'the session row should have been deleted along with the plan',
+    );
   });
 
   test('assignSessionDate then getSessionsInRange finds it', () async {
