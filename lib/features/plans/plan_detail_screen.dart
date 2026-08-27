@@ -6,6 +6,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../calendar/calendar_screen.dart';
+import '../execution/execution_screen.dart';
 
 final _planDetailsProvider = FutureProvider.family<PlanDetails?, String>(
   (ref, planId) {
@@ -38,21 +39,48 @@ class PlanDetailScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               for (final session in details.sessions)
                 Card(
-                  child: ListTile(
-                    title: Text(
-                      'Week ${session.session.weekNumber} • ${session.session.day} • ${session.session.sessionName}',
-                    ),
-                    subtitle: Text(
-                      session.exercises.map((e) => e.exerciseName).join(', '),
-                    ),
-                    trailing: TextButton(
-                      onPressed: () => _pickDate(context, ref, session.session),
-                      child: Text(
-                        session.session.assignedDate == null
-                            ? 'Assign date'
-                            : dateFormat.format(session.session.assignedDate!),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ListTile(
+                        title: Text(
+                          'Week ${session.session.weekNumber} • ${session.session.day} • ${session.session.sessionName}',
+                        ),
+                        subtitle: Text(
+                          session.exercises
+                              .map((e) => e.exerciseName)
+                              .join(', '),
+                        ),
                       ),
-                    ),
+                      OverflowBar(
+                        alignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                _pickDate(context, ref, session.session),
+                            child: Text(
+                              session.session.assignedDate == null
+                                  ? 'Assign date'
+                                  : dateFormat.format(
+                                      session.session.assignedDate!,
+                                    ),
+                            ),
+                          ),
+                          FilledButton.icon(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => ExecutionScreen(
+                                  planSessionId: session.session.id,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Start'),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
             ],

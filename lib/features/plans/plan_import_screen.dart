@@ -124,20 +124,30 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
                 const SizedBox(height: 8),
                 for (final row in _distinctByName(unmatched))
                   Card(
-                    child: ListTile(
-                      title: Text(row.exerciseName),
-                      subtitle: const Text('Not found in your library'),
-                      trailing: Wrap(
-                        spacing: 8,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TextButton(
-                            onPressed: () =>
-                                _pickExisting(context, row, library),
-                            child: const Text('Match existing'),
+                          Text(
+                            row.exerciseName,
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          FilledButton(
-                            onPressed: () => _createCustom(row),
-                            child: const Text('Add as custom'),
+                          const Text('Not found in your library'),
+                          const SizedBox(height: 8),
+                          OverflowBar(
+                            alignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () =>
+                                    _pickExisting(context, row, library),
+                                child: const Text('Match existing'),
+                              ),
+                              FilledButton(
+                                onPressed: () => _createCustom(row),
+                                child: const Text('Add as custom'),
+                              ),
+                            ],
                           ),
                         ],
                       ),

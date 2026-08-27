@@ -1,0 +1,172 @@
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:training_app/data/app_database.dart';
+import 'package:training_app/data/daos/plan_dao.dart';
+import 'package:training_app/data/daos/session_log_dao.dart';
+
+void main() {
+  late AppDatabase db;
+  late int sessionId;
+
+  setUp(() async {
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    await db.exerciseDao.upsertExercise(
+      ExercisesCompanion.insert(
+        id: 'EX_BP',
+        name: 'Bench Press',
+        category: 'Main Lift',
+        movementPattern: 'Push',
+        muscleGroups: 'Chest',
+        equipment: 'Barbell',
+        difficulty: 'Intermediate',
+        measurementType: 'Weight x Reps',
+      ),
+    );
+    await db.planDao.createPlan(
+      id: 'plan-1',
+      name: 'Plan A',
+      sessions: [
+        const PlanSessionInput(
+          weekNumber: 1,
+          day: 'Mon',
+          sessionName: 'Push Day',
+          exercises: [
+            PlanExerciseInput(
+              order: 1,
+              exerciseId: 'EX_BP',
+              exerciseName: 'Bench Press',
+              sets: 3,
+              reps: '8',
+            ),
+          ],
+        ),
+      ],
+    );
+    final details = await db.planDao.getPlanDetails('plan-1');
+    sessionId = details!.sessions.single.session.id;
+  });
+
+  tearDown(() => db.close());
+
+  test('createSessionLog then getLoggedSetsForSessionLog round-trips', () async {
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-1',
+      planSessionId: sessionId,
+      loggedAt: DateTime(2026, 8, 20),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 7, weight: 60),
+      ],
+    );
+
+    final sets = await db.sessionLogDao.getLoggedSetsForSessionLog('log-1');
+    expect(sets, hasLength(2));
+    expect(sets[0].weight, 60.0);
+    expect(sets[1].reps, 7);
+  });
+
+  test('getLogsForPlanSession returns logs newest first', () async {
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-1',
+      planSessionId: sessionId,
+      loggedAt: DateTime(2026, 8, 13),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 55),
+      ],
+    );
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-2',
+      planSessionId: sessionId,
+      loggedAt: DateTime(2026, 8, 20),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+      ],
+    );
+
+    final logs = await db.sessionLogDao.getLogsForPlanSession(sessionId);
+    expect(logs.map((l) => l.id), ['log-2', 'log-1']);
+  });
+
+  test('getPriorWeights returns every logged weight for the exercise', () async {
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-1',
+      planSessionId: sessionId,
+      loggedAt: DateTime(2026, 8, 13),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 55),
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 6, weight: 57.5),
+      ],
+    );
+
+    final weights = await db.sessionLogDao.getPriorWeights('EX_BP');
+    expect(weights, containsAll([55.0, 57.5]));
+  });
+
+  test('getPriorWeights ignores sets with a null weight (time/distance exercises)', () async {
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-1',
+      planSessionId: sessionId,
+      loggedAt: DateTime(2026, 8, 13),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, durationSec: 30),
+      ],
+    );
+    expect(await db.sessionLogDao.getPriorWeights('EX_BP'), isEmpty);
+  });
+
+  group('getProgressionHistory', () {
+    test('reduces each session to its top (heaviest) set', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 50),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 6, weight: 60),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 3, reps: 4, weight: 65),
+        ],
+      );
+
+      final history = await db.sessionLogDao.getProgressionHistory('EX_BP');
+      expect(history, hasLength(1));
+      expect(history.single.weight, 65.0);
+      expect(history.single.reps, 4);
+    });
+
+    test('one entry per session, ordered sessions distinguishable by date', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 6),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 55),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-2',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      final history = await db.sessionLogDao.getProgressionHistory('EX_BP');
+      expect(history, hasLength(2));
+      final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
+      expect(sorted.map((e) => e.weight), [55.0, 60.0]);
+    });
+
+    test('excludes sets with null weight or reps', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, durationSec: 45),
+        ],
+      );
+      expect(await db.sessionLogDao.getProgressionHistory('EX_BP'), isEmpty);
+    });
+  });
+}

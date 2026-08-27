@@ -144,16 +144,28 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
 
     final sessions = <PlanSessionDetails>[];
     for (final session in sessionRows) {
-      final exerciseRows =
-          await (select(planExercises)
-                ..where((e) => e.sessionId.equals(session.id))
-                ..orderBy([(e) => OrderingTerm.asc(e.order)]))
-              .get();
-      sessions.add(
-        PlanSessionDetails(session: session, exercises: exerciseRows),
-      );
+      sessions.add(await _loadSessionDetails(session));
     }
     return PlanDetails(plan: plan, sessions: sessions);
+  }
+
+  /// A single scheduled session with its exercises, for execution mode -
+  /// doesn't need the whole plan loaded around it.
+  Future<PlanSessionDetails?> getSessionDetails(int sessionId) async {
+    final session =
+        await (select(planSessions)..where((s) => s.id.equals(sessionId)))
+            .getSingleOrNull();
+    if (session == null) return null;
+    return _loadSessionDetails(session);
+  }
+
+  Future<PlanSessionDetails> _loadSessionDetails(PlanSession session) async {
+    final exerciseRows =
+        await (select(planExercises)
+              ..where((e) => e.sessionId.equals(session.id))
+              ..orderBy([(e) => OrderingTerm.asc(e.order)]))
+            .get();
+    return PlanSessionDetails(session: session, exercises: exerciseRows);
   }
 
   /// All sessions that have been placed on the calendar, with their plan's

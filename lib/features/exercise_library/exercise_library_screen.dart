@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
+import '../history/history_screen.dart';
 import 'exercise_library_providers.dart';
 
 class ExerciseLibraryScreen extends ConsumerWidget {
@@ -120,6 +121,14 @@ class _ExerciseTile extends StatelessWidget {
         '${exercise.category} • ${exercise.equipment} • ${exercise.difficulty}',
       ),
       trailing: Text(exercise.measurementType),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => HistoryScreen(
+            exerciseId: exercise.id,
+            exerciseName: exercise.name,
+          ),
+        ),
+      ),
     );
   }
 }
