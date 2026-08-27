@@ -93,20 +93,19 @@
 
 ---
 
-## Phase 4 — Groups, sharing, chat (Android)
+## Phase 4 — Plan sharing via OS share sheet (Android)
+
+**Revised 2026-08-27**: the original plan for this phase (groups, in-app chat, E2E messaging, block/report/mute) required standing up real network infrastructure — a server or third-party backend — which is a significant, hard-to-reverse architectural commitment the app didn't need yet. Descoped by explicit user decision to: no chat, no groups, no server, no accounts. Instead, plan sharing rides entirely on the OS's own share sheet (Bluetooth, WhatsApp, email, Drive, etc. — whatever the user already has installed), reusing Phase 3's plan export/import rather than building new transport or a backend. This keeps the app's local-first, no-network-calls posture intact through this phase. Real groups/chat, if ever wanted, would be a deliberate later phase with its own architecture decision.
 
 **Build:**
-- Per-plan sharing (explicit selection, not group-wide visibility by default).
-- Group/community data model.
-- Chat with end-to-end encryption — use an established library/protocol rather than custom crypto (e.g., the Signal protocol via an existing Dart/Flutter binding, or a vetted alternative). This is the highest-risk phase from a security standpoint; budget time for it.
-- Block/report/mute (locally enforced, since there's no central moderation server).
+- "Share plan" action: export a plan (CSV or JSON, from Phase 3) to a temp file and hand it to the native OS share sheet (`share_plus`) instead of only saving to a location the user picks. The OS share sheet already lists Bluetooth, WhatsApp, email, Drive, etc. automatically — nothing app-specific to build for the transport itself.
+- Receiving side: register the app as an "Open with" / share-target handler for the plan file types (JSON and CSV) via Android intent filters, so a plan received via Bluetooth/WhatsApp/etc. can be opened directly into Training App's existing import screens rather than requiring the recipient to manually pick the file from a file browser.
 
 **Test:**
-- Encryption correctness tests (known-answer tests against the library's own test vectors, plus your own message round-trips).
-- Manual two-device test: share a plan, chat, confirm a blocked user's messages don't surface.
-- Explicitly test the "share nothing by default" behavior — a new group member should see *no* plans until one is explicitly shared with that group.
+- Unit/widget: verify the share action is invoked with the correct exported file content/path (the OS share sheet itself can't be driven by an automated test).
+- Manual: export → share on the emulator, confirm the share sheet appears with expected targets; simulate receiving a plan file (e.g. via `adb` sending a VIEW intent with a file URI, or "Open with" from a file manager) and confirm it routes into the existing import flow correctly.
 
-**Exit criteria:** two real devices can form a group, chat E2E, and share a specific plan without exposing anything else.
+**Exit criteria:** a plan can be exported and shared through any OS-level channel (Bluetooth, WhatsApp, email, etc.), and a plan file received through one of those channels opens directly into the app's import flow.
 
 ---
 

@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
@@ -36,17 +40,27 @@ class PlanDetailScreen extends ConsumerWidget {
         title: const Text('Plan'),
         actions: [
           if (loadedDetails != null)
-            PopupMenuButton<_ExportFormat>(
+            PopupMenuButton<_PlanExportAction>(
               icon: const Icon(Icons.share),
-              onSelected: (format) => _exportPlan(context, loadedDetails, format),
+              onSelected: (action) =>
+                  _handleExportAction(context, loadedDetails, action),
               itemBuilder: (context) => const [
                 PopupMenuItem(
-                  value: _ExportFormat.csv,
-                  child: Text('Export as spreadsheet (.csv)'),
+                  value: _PlanExportAction.shareCsv,
+                  child: Text('Share as spreadsheet (.csv)'),
                 ),
                 PopupMenuItem(
-                  value: _ExportFormat.json,
-                  child: Text('Export as plan file (.json)'),
+                  value: _PlanExportAction.shareJson,
+                  child: Text('Share as plan file (.json)'),
+                ),
+                PopupMenuDivider(),
+                PopupMenuItem(
+                  value: _PlanExportAction.saveCsv,
+                  child: Text('Save as spreadsheet (.csv)'),
+                ),
+                PopupMenuItem(
+                  value: _PlanExportAction.saveJson,
+                  child: Text('Save as plan file (.json)'),
                 ),
               ],
             ),
@@ -136,38 +150,78 @@ class PlanDetailScreen extends ConsumerWidget {
     ref.invalidate(scheduledSessionsProvider);
   }
 
-  Future<void> _exportPlan(
+  Future<void> _handleExportAction(
+    BuildContext context,
+    PlanDetails details,
+    _PlanExportAction action,
+  ) async {
+    switch (action) {
+      case _PlanExportAction.shareCsv:
+        await _sharePlan(context, details, _ExportFormat.csv);
+      case _PlanExportAction.shareJson:
+        await _sharePlan(context, details, _ExportFormat.json);
+      case _PlanExportAction.saveCsv:
+        await _savePlan(context, details, _ExportFormat.csv);
+      case _PlanExportAction.saveJson:
+        await _savePlan(context, details, _ExportFormat.json);
+    }
+  }
+
+  ({String contents, String fileName}) _renderPlan(
+    PlanDetails details,
+    _ExportFormat format,
+  ) {
+    final safeName = details.plan.name.replaceAll(RegExp(r'[^\w\- ]'), '_');
+    return switch (format) {
+      _ExportFormat.csv => (
+        contents: planToCsv(details),
+        fileName: '$safeName.csv',
+      ),
+      _ExportFormat.json => (
+        contents: jsonEncode(planToJson(details)),
+        fileName: '$safeName.json',
+      ),
+    };
+  }
+
+  Future<void> _savePlan(
     BuildContext context,
     PlanDetails details,
     _ExportFormat format,
   ) async {
-    final safeName = details.plan.name.replaceAll(RegExp(r'[^\w\- ]'), '_');
-    final String contents;
-    final String fileName;
-    final List<String> allowedExtensions;
-    switch (format) {
-      case _ExportFormat.csv:
-        contents = planToCsv(details);
-        fileName = '$safeName.csv';
-        allowedExtensions = ['csv'];
-      case _ExportFormat.json:
-        contents = jsonEncode(planToJson(details));
-        fileName = '$safeName.json';
-        allowedExtensions = ['json'];
-    }
-
+    final rendered = _renderPlan(details, format);
     final uri = await FilePicker.saveFile(
-      fileName: fileName,
-      bytes: Uint8List.fromList(utf8.encode(contents)),
+      fileName: rendered.fileName,
+      bytes: Uint8List.fromList(utf8.encode(rendered.contents)),
       type: FileType.custom,
-      allowedExtensions: allowedExtensions,
+      allowedExtensions: [format == _ExportFormat.csv ? 'csv' : 'json'],
     );
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(uri == null ? 'Export cancelled.' : 'Exported.')),
+      SnackBar(content: Text(uri == null ? 'Export cancelled.' : 'Saved.')),
+    );
+  }
+
+  /// Hands the exported plan to the OS share sheet, so the user can send it
+  /// via Bluetooth, WhatsApp, email, or anything else installed - rather
+  /// than only being able to save it to a location the file picker exposes.
+  Future<void> _sharePlan(
+    BuildContext context,
+    PlanDetails details,
+    _ExportFormat format,
+  ) async {
+    final rendered = _renderPlan(details, format);
+    final tempDir = await getTemporaryDirectory();
+    final file = File(p.join(tempDir.path, rendered.fileName));
+    await file.writeAsString(rendered.contents);
+
+    await SharePlus.instance.share(
+      ShareParams(files: [XFile(file.path)], text: 'Training plan: ${details.plan.name}'),
     );
   }
 }
 
 enum _ExportFormat { csv, json }
+
+enum _PlanExportAction { shareCsv, shareJson, saveCsv, saveJson }

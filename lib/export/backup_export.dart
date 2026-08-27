@@ -4,6 +4,12 @@ import 'plan_export.dart';
 
 const backupSchemaVersion = 1;
 
+/// File extension used for encrypted full-backup exports (Phase 3/4). Kept
+/// as a shared constant since both the Settings screen's manual export/
+/// restore and Phase 4's incoming-share handler need to agree on it - the
+/// latter uses it to tell an encrypted backup apart from a plain plan file.
+const backupFileExtension = 'tabackup';
+
 /// Custom (non-seed) exercise, in schema/exercise.schema.json shape.
 Map<String, dynamic> exerciseToJson(Exercise exercise) {
   return {

@@ -12,8 +12,7 @@ import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
-
-const _backupFileExtension = 'tabackup';
+import 'backup_dialogs.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -61,7 +60,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
-    final passphrase = await _promptPassphrase(
+    final passphrase = await promptPassphrase(
       context,
       title: 'Choose a backup passphrase',
       helperText: "You'll need this exact passphrase to restore the backup.",
@@ -73,12 +72,12 @@ class SettingsScreen extends ConsumerWidget {
     final envelope = await encryptBackup(jsonEncode(backupJson), passphrase);
 
     final fileName =
-        'training-app-backup-${DateTime.now().toIso8601String().substring(0, 10)}.$_backupFileExtension';
+        'training-app-backup-${DateTime.now().toIso8601String().substring(0, 10)}.$backupFileExtension';
     final uri = await FilePicker.saveFile(
       fileName: fileName,
       bytes: Uint8List.fromList(utf8.encode(envelope)),
       type: FileType.custom,
-      allowedExtensions: [_backupFileExtension],
+      allowedExtensions: [backupFileExtension],
     );
 
     if (!context.mounted) return;
@@ -94,12 +93,12 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _importBackup(BuildContext context, WidgetRef ref) async {
     final file = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: [_backupFileExtension],
+      allowedExtensions: [backupFileExtension],
     );
     if (file == null) return;
 
     if (!context.mounted) return;
-    final confirmed = await _confirmDestructiveAction(
+    final confirmed = await confirmDestructiveAction(
       context,
       title: 'Restore from backup?',
       message:
@@ -110,7 +109,7 @@ class SettingsScreen extends ConsumerWidget {
     if (!confirmed) return;
 
     if (!context.mounted) return;
-    final passphrase = await _promptPassphrase(
+    final passphrase = await promptPassphrase(
       context,
       title: 'Enter the backup passphrase',
     );
@@ -146,7 +145,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _deleteAllData(BuildContext context, WidgetRef ref) async {
-    final confirmed = await _confirmDestructiveAction(
+    final confirmed = await confirmDestructiveAction(
       context,
       title: 'Delete all data?',
       message:
@@ -169,70 +168,5 @@ class SettingsScreen extends ConsumerWidget {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('All data deleted.')));
-  }
-
-  Future<String?> _promptPassphrase(
-    BuildContext context, {
-    required String title,
-    String? helperText,
-  }) {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Passphrase',
-            helperText: helperText,
-            helperMaxLines: 3,
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<bool> _confirmDestructiveAction(
-    BuildContext context, {
-    required String title,
-    required String message,
-    required String confirmLabel,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return confirmed ?? false;
   }
 }
