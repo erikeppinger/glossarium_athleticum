@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 
 import '../app_database.dart';
 import '../tables/plans_table.dart';
@@ -139,6 +140,79 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
     });
   }
 
+  /// Creates a plan with no sessions yet - the starting point for adding
+  /// exercises one at a time from the Exercise Library, rather than only
+  /// being able to build a plan via spreadsheet/JSON import.
+  Future<String> createEmptyPlan({required String name, String notes = ''}) {
+    return createPlan(id: const Uuid().v4(), name: name, notes: notes, sessions: const []);
+  }
+
+  /// Adds a new session to an existing plan and bumps the plan's
+  /// `updated_at` - any direct mutation to a plan's contents must do this,
+  /// or Phase 5's sync conflict detection (which compares `updated_at`)
+  /// won't notice the change. Returns the new session's row id.
+  Future<int> addSession({
+    required String planId,
+    required int weekNumber,
+    required String day,
+    required String sessionName,
+  }) {
+    return transaction(() async {
+      final sessionId = await into(planSessions).insert(
+        PlanSessionsCompanion.insert(
+          planId: planId,
+          weekNumber: weekNumber,
+          day: day,
+          sessionName: sessionName,
+        ),
+      );
+      await _touchUpdatedAt(planId);
+      return sessionId;
+    });
+  }
+
+  /// Appends an exercise to an existing session (after whatever's already
+  /// there) and bumps the parent plan's `updated_at` - see [addSession] for
+  /// why that matters. Used by the Exercise Library's "Add to plan" flow.
+  Future<void> addExerciseToSession({
+    required int sessionId,
+    required PlanExerciseInput input,
+  }) {
+    return transaction(() async {
+      final session =
+          await (select(planSessions)..where((s) => s.id.equals(sessionId)))
+              .getSingle();
+      final existingOrders = await (select(
+        planExercises,
+      )..where((e) => e.sessionId.equals(sessionId))).map((e) => e.order).get();
+      final nextOrder = existingOrders.isEmpty
+          ? 1
+          : existingOrders.reduce((a, b) => a > b ? a : b) + 1;
+
+      await into(planExercises).insert(
+        PlanExercisesCompanion.insert(
+          sessionId: sessionId,
+          order: nextOrder,
+          exerciseId: Value(input.exerciseId),
+          exerciseName: input.exerciseName,
+          sets: input.sets,
+          reps: input.reps,
+          weightIntensity: Value(input.weightIntensity),
+          restSec: Value(input.restSec),
+          notes: Value(input.notes),
+          videoUrl: Value(input.videoUrl),
+        ),
+      );
+      await _touchUpdatedAt(session.planId);
+    });
+  }
+
+  Future<void> _touchUpdatedAt(String planId) {
+    return (update(plans)..where((p) => p.id.equals(planId))).write(
+      PlansCompanion(updatedAt: Value(DateTime.now())),
+    );
+  }
+
   Future<PlanDetails?> getPlanDetails(String planId) async {
     final plan =
         await (select(plans)..where((p) => p.id.equals(planId)))
@@ -219,12 +293,20 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
         .toList();
   }
 
+  /// Bumps the parent plan's `updated_at` too - see [addSession] for why a
+  /// direct mutation to a plan's contents always needs to do this.
   Future<void> assignSessionDate(int sessionId, DateTime? date) {
-    return (update(
-      planSessions,
-    )..where((s) => s.id.equals(sessionId))).write(
-      PlanSessionsCompanion(assignedDate: Value(date)),
-    );
+    return transaction(() async {
+      final session =
+          await (select(planSessions)..where((s) => s.id.equals(sessionId)))
+              .getSingle();
+      await (update(
+        planSessions,
+      )..where((s) => s.id.equals(sessionId))).write(
+        PlanSessionsCompanion(assignedDate: Value(date)),
+      );
+      await _touchUpdatedAt(session.planId);
+    });
   }
 
   /// Sessions whose assignedDate falls within [start, end] (inclusive),

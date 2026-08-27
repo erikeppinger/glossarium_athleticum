@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
 import '../history/history_screen.dart';
+import '../plans/add_exercise_to_plan_screen.dart';
+import 'exercise_detail_screen.dart';
 import 'exercise_library_providers.dart';
 
 class ExerciseLibraryScreen extends ConsumerWidget {
@@ -123,10 +125,63 @@ class _ExerciseTile extends StatelessWidget {
       trailing: Text(exercise.measurementType),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => HistoryScreen(
-            exerciseId: exercise.id,
-            exerciseName: exercise.name,
-          ),
+          builder: (context) => ExerciseDetailScreen(exercise: exercise),
+        ),
+      ),
+      onLongPress: () => _showQuickActions(context),
+    );
+  }
+
+  Future<void> _showQuickActions(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('View details'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => ExerciseDetailScreen(exercise: exercise),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.show_chart),
+              title: const Text('View history'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => HistoryScreen(
+                      exerciseId: exercise.id,
+                      exerciseName: exercise.name,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('Add to plan'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => AddExerciseToPlanScreen(
+                      exerciseId: exercise.id,
+                      exerciseName: exercise.name,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );

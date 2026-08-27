@@ -1,0 +1,406 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../data/app_database.dart';
+import '../../data/app_database_provider.dart';
+import '../../data/daos/plan_dao.dart';
+import 'plan_providers.dart';
+
+const _newPlanSentinel = '__new_plan__';
+const _newSessionSentinel = -1;
+
+/// Lets the user add an exercise (already in the library) into a plan,
+/// creating a new plan and/or a new session inline if needed - the "add
+/// from the library" path called out alongside the long-press quick-add,
+/// since building a plan previously only worked via spreadsheet/JSON import.
+class AddExerciseToPlanScreen extends ConsumerStatefulWidget {
+  final String exerciseId;
+  final String exerciseName;
+
+  const AddExerciseToPlanScreen({
+    super.key,
+    required this.exerciseId,
+    required this.exerciseName,
+  });
+
+  @override
+  ConsumerState<AddExerciseToPlanScreen> createState() =>
+      _AddExerciseToPlanScreenState();
+}
+
+class _AddExerciseToPlanScreenState
+    extends ConsumerState<AddExerciseToPlanScreen> {
+  String? _selectedPlanId;
+  int? _selectedSessionId;
+  bool _submitting = false;
+
+  final _newPlanNameController = TextEditingController();
+  final _newSessionWeekController = TextEditingController(text: '1');
+  final _newSessionDayController = TextEditingController();
+  final _newSessionNameController = TextEditingController();
+
+  final _setsController = TextEditingController(text: '3');
+  final _repsController = TextEditingController(text: '8-10');
+  final _weightController = TextEditingController();
+  final _restController = TextEditingController(text: '90');
+  final _notesController = TextEditingController();
+
+  late final List<TextEditingController> _allControllers = [
+    _newPlanNameController,
+    _newSessionWeekController,
+    _newSessionDayController,
+    _newSessionNameController,
+    _setsController,
+    _repsController,
+    _weightController,
+    _restController,
+    _notesController,
+  ];
+
+  @override
+  void dispose() {
+    for (final controller in _allControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final plansAsync = ref.watch(plansListProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: Text('Add "${widget.exerciseName}" to plan')),
+      body: _submitting
+          ? const Center(child: CircularProgressIndicator())
+          : plansAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(child: Text('Error: $error')),
+              data: (plans) => ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text('Plan', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => _pickPlan(context, plans),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(_planLabel(plans)),
+                    ),
+                  ),
+                  if (_selectedPlanId == _newPlanSentinel) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _newPlanNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'New plan name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                  if (_selectedPlanId != null &&
+                      _selectedPlanId != _newPlanSentinel) ...[
+                    const SizedBox(height: 24),
+                    _SessionPicker(
+                      planId: _selectedPlanId!,
+                      selectedSessionId: _selectedSessionId,
+                      onChanged: (value) =>
+                          setState(() => _selectedSessionId = value),
+                    ),
+                  ],
+                  if (_selectedPlanId == _newPlanSentinel ||
+                      _selectedSessionId == _newSessionSentinel) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _newSessionWeekController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Week',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _newSessionDayController,
+                            decoration: const InputDecoration(
+                              labelText: 'Day',
+                              hintText: 'e.g. Mon',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _newSessionNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Session name',
+                        hintText: 'e.g. Push Day',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  Text(
+                    'Exercise details',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _setsController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Sets',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _repsController,
+                          decoration: const InputDecoration(
+                            labelText: 'Reps',
+                            hintText: 'e.g. 8-10',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _weightController,
+                          decoration: const InputDecoration(
+                            labelText: 'Weight/Intensity',
+                            hintText: 'e.g. 60kg',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _restController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Rest (sec)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 24),
+                  // Scoped to just this button, rather than a whole-screen
+                  // setState() on every keystroke: _canSubmit() depends on
+                  // several TextEditingControllers' text, so the button
+                  // needs to rebuild when any of them change, or it would
+                  // stay stuck in whatever enabled/disabled state it was in
+                  // at the initial build (typically permanently disabled).
+                  ListenableBuilder(
+                    listenable: Listenable.merge(_allControllers),
+                    builder: (context, _) => FilledButton(
+                      onPressed: _canSubmit() ? _submit : null,
+                      child: const Text('Add to plan'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  String _planLabel(List<Plan> plans) {
+    if (_selectedPlanId == _newPlanSentinel) return 'New plan';
+    if (_selectedPlanId == null) return 'Choose a plan';
+    return plans
+        .firstWhere((p) => p.id == _selectedPlanId)
+        .name;
+  }
+
+  Future<void> _pickPlan(BuildContext context, List<Plan> plans) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Choose a plan'),
+        children: [
+          for (final plan in plans)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(plan.id),
+              child: Text(plan.name),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(_newPlanSentinel),
+            child: const Text('+ Create new plan'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    setState(() {
+      _selectedPlanId = choice;
+      _selectedSessionId = null;
+    });
+  }
+
+  bool _canSubmit() {
+    if (_selectedPlanId == null) return false;
+    if (_selectedPlanId == _newPlanSentinel &&
+        _newPlanNameController.text.trim().isEmpty) {
+      return false;
+    }
+    if (_selectedPlanId != _newPlanSentinel && _selectedSessionId == null) {
+      return false;
+    }
+    final needsNewSessionFields =
+        _selectedPlanId == _newPlanSentinel ||
+        _selectedSessionId == _newSessionSentinel;
+    if (needsNewSessionFields &&
+        (_newSessionDayController.text.trim().isEmpty ||
+            _newSessionNameController.text.trim().isEmpty)) {
+      return false;
+    }
+    if (int.tryParse(_setsController.text.trim()) == null) return false;
+    if (_repsController.text.trim().isEmpty) return false;
+    return true;
+  }
+
+  Future<void> _submit() async {
+    setState(() => _submitting = true);
+    final db = ref.read(appDatabaseProvider);
+
+    var planId = _selectedPlanId;
+    if (planId == _newPlanSentinel) {
+      planId = await db.planDao.createEmptyPlan(
+        name: _newPlanNameController.text.trim(),
+      );
+    }
+
+    var sessionId = _selectedSessionId;
+    if (sessionId == null || sessionId == _newSessionSentinel) {
+      sessionId = await db.planDao.addSession(
+        planId: planId!,
+        weekNumber: int.tryParse(_newSessionWeekController.text.trim()) ?? 1,
+        day: _newSessionDayController.text.trim(),
+        sessionName: _newSessionNameController.text.trim(),
+      );
+    }
+
+    await db.planDao.addExerciseToSession(
+      sessionId: sessionId,
+      input: PlanExerciseInput(
+        order: 0, // ignored - addExerciseToSession assigns the real next order
+        exerciseId: widget.exerciseId,
+        exerciseName: widget.exerciseName,
+        sets: int.parse(_setsController.text.trim()),
+        reps: _repsController.text.trim(),
+        weightIntensity: _weightController.text.trim(),
+        restSec: int.tryParse(_restController.text.trim()),
+        notes: _notesController.text.trim(),
+      ),
+    );
+
+    ref.invalidate(planDetailsProvider(planId!));
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${widget.exerciseName} added to plan.')),
+    );
+  }
+}
+
+class _SessionPicker extends ConsumerWidget {
+  final String planId;
+  final int? selectedSessionId;
+  final ValueChanged<int?> onChanged;
+
+  const _SessionPicker({
+    required this.planId,
+    required this.selectedSessionId,
+    required this.onChanged,
+  });
+
+  static String _sessionLabel(PlanSessionDetails s) =>
+      'Week ${s.session.weekNumber} • ${s.session.day} • ${s.session.sessionName}';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detailsAsync = ref.watch(planDetailsProvider(planId));
+    return detailsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Text('Error: $error'),
+      data: (details) {
+        final sessions = details?.sessions ?? const [];
+        final label = selectedSessionId == _newSessionSentinel
+            ? 'New session'
+            : selectedSessionId == null
+            ? 'Choose a session'
+            : _sessionLabel(
+                sessions.firstWhere((s) => s.session.id == selectedSessionId),
+              );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Session', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => _pickSession(context, sessions),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(label),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _pickSession(
+    BuildContext context,
+    List<PlanSessionDetails> sessions,
+  ) async {
+    final choice = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Choose a session'),
+        children: [
+          for (final s in sessions)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(s.session.id),
+              child: Text(_sessionLabel(s)),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(_newSessionSentinel),
+            child: const Text('+ Create new session'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    onChanged(choice);
+  }
+}

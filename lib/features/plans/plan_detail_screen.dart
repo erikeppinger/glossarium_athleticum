@@ -15,7 +15,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../export/plan_export.dart';
 import '../calendar/calendar_screen.dart';
-import '../execution/execution_screen.dart';
+import '../execution/start_session_helper.dart';
 import 'plan_providers.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
@@ -100,12 +100,10 @@ class PlanDetailScreen extends ConsumerWidget {
                             ),
                           ),
                           FilledButton.icon(
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => ExecutionScreen(
-                                  planSessionId: session.session.id,
-                                ),
-                              ),
+                            onPressed: () => startSessionWithMoveToTodayPrompt(
+                              context,
+                              ref,
+                              session.session,
                             ),
                             icon: const Icon(Icons.play_arrow),
                             label: const Text('Start'),

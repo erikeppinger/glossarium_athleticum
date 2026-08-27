@@ -4,6 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../execution/start_session_helper.dart';
 
 final scheduledSessionsProvider = FutureProvider<List<ScheduledSession>>((
   ref,
@@ -72,6 +73,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             title: Text(s.session.sessionName),
                             subtitle: Text(
                               '${s.planName} • Week ${s.session.weekNumber} • ${s.session.day}',
+                            ),
+                            trailing: const Icon(Icons.play_arrow),
+                            onTap: () => startSessionWithMoveToTodayPrompt(
+                              context,
+                              ref,
+                              s.session,
                             ),
                           );
                         },

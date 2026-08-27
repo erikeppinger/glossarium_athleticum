@@ -106,4 +106,71 @@ void main() {
     );
     expect(inRange, isEmpty);
   });
+
+  test('createEmptyPlan creates a plan with zero sessions', () async {
+    final id = await db.planDao.createEmptyPlan(name: 'Blank Plan');
+    final details = await db.planDao.getPlanDetails(id);
+    expect(details!.plan.name, 'Blank Plan');
+    expect(details.sessions, isEmpty);
+  });
+
+  test('addSession appends a session to an existing plan and bumps updated_at', () async {
+    final planId = await db.planDao.createEmptyPlan(name: 'Blank Plan');
+    final before = (await db.planDao.getPlanDetails(planId))!.plan.updatedAt;
+    await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
+
+    final sessionId = await db.planDao.addSession(
+      planId: planId,
+      weekNumber: 1,
+      day: 'Mon',
+      sessionName: 'Leg Day',
+    );
+
+    final details = await db.planDao.getPlanDetails(planId);
+    expect(details!.sessions, hasLength(1));
+    expect(details.sessions.single.session.id, sessionId);
+    expect(details.sessions.single.session.sessionName, 'Leg Day');
+    expect(details.plan.updatedAt.isAfter(before), isTrue);
+  });
+
+  test(
+    'addExerciseToSession appends after existing exercises and assigns the next order',
+    () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+      final before = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
+      await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
+
+      await db.planDao.addExerciseToSession(
+        sessionId: sessionId,
+        input: const PlanExerciseInput(
+          order: 999, // ignored - the DAO assigns the real next order
+          exerciseName: 'Lateral Raise',
+          sets: 3,
+          reps: '12-15',
+        ),
+      );
+
+      final details = await db.planDao.getPlanDetails('plan-1');
+      final exercises = details!.sessions.single.exercises;
+      expect(exercises, hasLength(3));
+      expect(exercises.last.exerciseName, 'Lateral Raise');
+      expect(exercises.last.order, 3);
+      expect(details.plan.updatedAt.isAfter(before), isTrue);
+    },
+  );
+
+  test('assignSessionDate bumps the parent plan\'s updated_at', () async {
+    await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+    final sessionId =
+        (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+    final before = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
+    await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
+
+    await db.planDao.assignSessionDate(sessionId, DateTime(2026, 9, 1));
+
+    final after = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
+    expect(after.isAfter(before), isTrue);
+  });
 }
