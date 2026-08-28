@@ -43,6 +43,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   final _descriptionController = TextEditingController();
   final _safetyNotesController = TextEditingController();
   final _videoReferenceController = TextEditingController();
+  final _authorController = TextEditingController();
 
   late final _controllers = [
     _nameController,
@@ -52,6 +53,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
     _descriptionController,
     _safetyNotesController,
     _videoReferenceController,
+    _authorController,
   ];
 
   @override
@@ -175,6 +177,15 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
             border: OutlineInputBorder(),
           ),
         ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _authorController,
+          decoration: const InputDecoration(
+            labelText: 'Author (optional)',
+            hintText: "e.g. a coach's name",
+            border: OutlineInputBorder(),
+          ),
+        ),
         const SizedBox(height: 24),
         ListenableBuilder(
           listenable: Listenable.merge(_controllers),
@@ -257,6 +268,12 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(_videoReferenceController.text.trim()),
+              ],
+              if (_authorController.text.trim().isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text('Author', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(_authorController.text.trim()),
               ],
             ],
           ),
@@ -397,11 +414,17 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
         safetyNotes: Value(_safetyNotesController.text.trim()),
         videoReference: Value(_videoReferenceController.text.trim()),
         isCustom: const Value(true),
+        author: Value(
+          _authorController.text.trim().isEmpty
+              ? null
+              : _authorController.text.trim(),
+        ),
       ),
     );
     // One-shot FutureProviders - won't notice this write on their own.
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
+    ref.invalidate(creatorFilterOptionsProvider);
 
     if (!mounted) return;
     final addToPlan = await showDialog<bool>(

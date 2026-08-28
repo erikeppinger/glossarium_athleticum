@@ -1,6 +1,8 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:training_app/data/app_database.dart';
+import 'package:training_app/data/daos/exercise_dao.dart';
 
 void main() {
   late AppDatabase db;
@@ -76,6 +78,74 @@ void main() {
     test('combining query and category narrows further', () async {
       final results = await db.exerciseDao.search(query: 'carry', category: 'Loaded Carry');
       expect(results.map((e) => e.id), ['EX003']);
+    });
+  });
+
+  group('creator filter', () {
+    setUp(() async {
+      await db.exerciseDao.upsertExercises([
+        exercise('EX001', 'Seed Exercise'),
+        ExercisesCompanion.insert(
+          id: 'EX_OWN',
+          name: 'Own Custom Exercise',
+          category: 'Custom',
+          movementPattern: '',
+          muscleGroups: '',
+          equipment: '',
+          difficulty: 'Beginner',
+          measurementType: 'Weight x Reps',
+          isCustom: const Value(true),
+        ),
+        ExercisesCompanion.insert(
+          id: 'EX_PLAN',
+          name: 'Plan-Sourced Exercise',
+          category: 'Custom',
+          movementPattern: '',
+          muscleGroups: '',
+          equipment: '',
+          difficulty: 'Beginner',
+          measurementType: 'Weight x Reps',
+          isCustom: const Value(true),
+          sourcePlanName: const Value('Nine-Block Strength Program'),
+        ),
+        ExercisesCompanion.insert(
+          id: 'EX_AUTHOR',
+          name: 'Coach-Authored Exercise',
+          category: 'Custom',
+          movementPattern: '',
+          muscleGroups: '',
+          equipment: '',
+          difficulty: 'Beginner',
+          measurementType: 'Weight x Reps',
+          isCustom: const Value(true),
+          author: const Value('Coach Erik'),
+        ),
+      ]);
+    });
+
+    test('ownExercisesFilter matches only custom exercises with no plan/author', () async {
+      final results = await db.exerciseDao.search(creator: ownExercisesFilter);
+      expect(results.map((e) => e.id), ['EX_OWN']);
+    });
+
+    test('plan:<name> matches exercises sourced from that plan', () async {
+      final results = await db.exerciseDao.search(
+        creator: 'plan:Nine-Block Strength Program',
+      );
+      expect(results.map((e) => e.id), ['EX_PLAN']);
+    });
+
+    test('author:<name> matches exercises tagged with that author', () async {
+      final results = await db.exerciseDao.search(creator: 'author:Coach Erik');
+      expect(results.map((e) => e.id), ['EX_AUTHOR']);
+    });
+
+    test('getCreatorFilterOptions returns every distinct plan/author value', () async {
+      final options = await db.exerciseDao.getCreatorFilterOptions();
+      expect(options, [
+        'author:Coach Erik',
+        'plan:Nine-Block Strength Program',
+      ]);
     });
   });
 }

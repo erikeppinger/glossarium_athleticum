@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
+import '../../data/daos/exercise_dao.dart';
 import '../history/history_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import 'create_exercise_screen.dart';
@@ -16,6 +17,8 @@ class ExerciseLibraryScreen extends ConsumerWidget {
     final exercisesAsync = ref.watch(filteredExercisesProvider);
     final categoriesAsync = ref.watch(exerciseCategoriesProvider);
     final selectedCategory = ref.watch(exerciseCategoryFilterProvider);
+    final creatorOptionsAsync = ref.watch(creatorFilterOptionsProvider);
+    final selectedCreator = ref.watch(exerciseCreatorFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -71,6 +74,48 @@ class ExerciseLibraryScreen extends ConsumerWidget {
                             .state = category,
                       ),
                   ],
+                ),
+              ),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
+          creatorOptionsAsync.when(
+            data: (options) => Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  height: 40,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      _CategoryChip(
+                        label: 'All creators',
+                        selected: selectedCreator == null,
+                        onSelected: () => ref
+                            .read(exerciseCreatorFilterProvider.notifier)
+                            .state = null,
+                      ),
+                      _CategoryChip(
+                        label: 'Own',
+                        selected: selectedCreator == ownExercisesFilter,
+                        onSelected: () => ref
+                            .read(exerciseCreatorFilterProvider.notifier)
+                            .state = ownExercisesFilter,
+                      ),
+                      for (final option in options)
+                        _CategoryChip(
+                          label: option.startsWith('plan:')
+                              ? 'Plan: ${option.substring(5)}'
+                              : 'By: ${option.substring(7)}',
+                          selected: selectedCreator == option,
+                          onSelected: () => ref
+                              .read(exerciseCreatorFilterProvider.notifier)
+                              .state = option,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -22,6 +22,16 @@ class Exercises extends Table {
   TextColumn get videoReference => text().withDefault(const Constant(''))();
   BoolColumn get isCustom => boolean().withDefault(const Constant(false))();
 
+  /// Name of the plan whose import/creation flow created this exercise, if
+  /// any - a snapshot (not a foreign key) so it survives that plan being
+  /// deleted later. Null for seed-library exercises and ones created
+  /// standalone via `create_exercise_screen.dart`.
+  TextColumn get sourcePlanName => text().nullable()();
+
+  /// Free-text creator/author name (e.g. a coach's name), optionally set
+  /// when creating a custom exercise. Null if not provided.
+  TextColumn get author => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

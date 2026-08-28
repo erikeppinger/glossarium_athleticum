@@ -231,6 +231,7 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
         difficulty: 'Beginner',
         measurementType: 'Weight x Reps',
         isCustom: const Value(true),
+        sourcePlanName: Value(_nameController.text.trim()),
       ),
     );
     ref.invalidate(allExercisesForMatchingProvider);
@@ -238,6 +239,7 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
     // notice a custom exercise created from this screen on their own.
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
+    ref.invalidate(creatorFilterOptionsProvider);
     _resolveAllWithName(row.exerciseName, id);
   }
 

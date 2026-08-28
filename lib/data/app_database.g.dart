@@ -144,6 +144,26 @@ class $ExercisesTable extends Exercises
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _sourcePlanNameMeta = const VerificationMeta(
+    'sourcePlanName',
+  );
+  @override
+  late final GeneratedColumn<String> sourcePlanName = GeneratedColumn<String>(
+    'source_plan_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _authorMeta = const VerificationMeta('author');
+  @override
+  late final GeneratedColumn<String> author = GeneratedColumn<String>(
+    'author',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -158,6 +178,8 @@ class $ExercisesTable extends Exercises
     safetyNotes,
     videoReference,
     isCustom,
+    sourcePlanName,
+    author,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -274,6 +296,21 @@ class $ExercisesTable extends Exercises
         isCustom.isAcceptableOrUnknown(data['is_custom']!, _isCustomMeta),
       );
     }
+    if (data.containsKey('source_plan_name')) {
+      context.handle(
+        _sourcePlanNameMeta,
+        sourcePlanName.isAcceptableOrUnknown(
+          data['source_plan_name']!,
+          _sourcePlanNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('author')) {
+      context.handle(
+        _authorMeta,
+        author.isAcceptableOrUnknown(data['author']!, _authorMeta),
+      );
+    }
     return context;
   }
 
@@ -331,6 +368,14 @@ class $ExercisesTable extends Exercises
         DriftSqlType.bool,
         data['${effectivePrefix}is_custom'],
       )!,
+      sourcePlanName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_plan_name'],
+      ),
+      author: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}author'],
+      ),
     );
   }
 
@@ -357,6 +402,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   final String safetyNotes;
   final String videoReference;
   final bool isCustom;
+
+  /// Name of the plan whose import/creation flow created this exercise, if
+  /// any - a snapshot (not a foreign key) so it survives that plan being
+  /// deleted later. Null for seed-library exercises and ones created
+  /// standalone via `create_exercise_screen.dart`.
+  final String? sourcePlanName;
+
+  /// Free-text creator/author name (e.g. a coach's name), optionally set
+  /// when creating a custom exercise. Null if not provided.
+  final String? author;
   const Exercise({
     required this.id,
     required this.name,
@@ -370,6 +425,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     required this.safetyNotes,
     required this.videoReference,
     required this.isCustom,
+    this.sourcePlanName,
+    this.author,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -386,6 +443,12 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     map['safety_notes'] = Variable<String>(safetyNotes);
     map['video_reference'] = Variable<String>(videoReference);
     map['is_custom'] = Variable<bool>(isCustom);
+    if (!nullToAbsent || sourcePlanName != null) {
+      map['source_plan_name'] = Variable<String>(sourcePlanName);
+    }
+    if (!nullToAbsent || author != null) {
+      map['author'] = Variable<String>(author);
+    }
     return map;
   }
 
@@ -403,6 +466,12 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       safetyNotes: Value(safetyNotes),
       videoReference: Value(videoReference),
       isCustom: Value(isCustom),
+      sourcePlanName: sourcePlanName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourcePlanName),
+      author: author == null && nullToAbsent
+          ? const Value.absent()
+          : Value(author),
     );
   }
 
@@ -424,6 +493,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       safetyNotes: serializer.fromJson<String>(json['safetyNotes']),
       videoReference: serializer.fromJson<String>(json['videoReference']),
       isCustom: serializer.fromJson<bool>(json['isCustom']),
+      sourcePlanName: serializer.fromJson<String?>(json['sourcePlanName']),
+      author: serializer.fromJson<String?>(json['author']),
     );
   }
   @override
@@ -442,6 +513,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'safetyNotes': serializer.toJson<String>(safetyNotes),
       'videoReference': serializer.toJson<String>(videoReference),
       'isCustom': serializer.toJson<bool>(isCustom),
+      'sourcePlanName': serializer.toJson<String?>(sourcePlanName),
+      'author': serializer.toJson<String?>(author),
     };
   }
 
@@ -458,6 +531,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     String? safetyNotes,
     String? videoReference,
     bool? isCustom,
+    Value<String?> sourcePlanName = const Value.absent(),
+    Value<String?> author = const Value.absent(),
   }) => Exercise(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -471,6 +546,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     safetyNotes: safetyNotes ?? this.safetyNotes,
     videoReference: videoReference ?? this.videoReference,
     isCustom: isCustom ?? this.isCustom,
+    sourcePlanName: sourcePlanName.present
+        ? sourcePlanName.value
+        : this.sourcePlanName,
+    author: author.present ? author.value : this.author,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -500,6 +579,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ? data.videoReference.value
           : this.videoReference,
       isCustom: data.isCustom.present ? data.isCustom.value : this.isCustom,
+      sourcePlanName: data.sourcePlanName.present
+          ? data.sourcePlanName.value
+          : this.sourcePlanName,
+      author: data.author.present ? data.author.value : this.author,
     );
   }
 
@@ -517,7 +600,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('description: $description, ')
           ..write('safetyNotes: $safetyNotes, ')
           ..write('videoReference: $videoReference, ')
-          ..write('isCustom: $isCustom')
+          ..write('isCustom: $isCustom, ')
+          ..write('sourcePlanName: $sourcePlanName, ')
+          ..write('author: $author')
           ..write(')'))
         .toString();
   }
@@ -536,6 +621,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     safetyNotes,
     videoReference,
     isCustom,
+    sourcePlanName,
+    author,
   );
   @override
   bool operator ==(Object other) =>
@@ -552,7 +639,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.description == this.description &&
           other.safetyNotes == this.safetyNotes &&
           other.videoReference == this.videoReference &&
-          other.isCustom == this.isCustom);
+          other.isCustom == this.isCustom &&
+          other.sourcePlanName == this.sourcePlanName &&
+          other.author == this.author);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -568,6 +657,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<String> safetyNotes;
   final Value<String> videoReference;
   final Value<bool> isCustom;
+  final Value<String?> sourcePlanName;
+  final Value<String?> author;
   final Value<int> rowid;
   const ExercisesCompanion({
     this.id = const Value.absent(),
@@ -582,6 +673,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.safetyNotes = const Value.absent(),
     this.videoReference = const Value.absent(),
     this.isCustom = const Value.absent(),
+    this.sourcePlanName = const Value.absent(),
+    this.author = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExercisesCompanion.insert({
@@ -597,6 +690,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.safetyNotes = const Value.absent(),
     this.videoReference = const Value.absent(),
     this.isCustom = const Value.absent(),
+    this.sourcePlanName = const Value.absent(),
+    this.author = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -619,6 +714,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<String>? safetyNotes,
     Expression<String>? videoReference,
     Expression<bool>? isCustom,
+    Expression<String>? sourcePlanName,
+    Expression<String>? author,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -634,6 +731,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (safetyNotes != null) 'safety_notes': safetyNotes,
       if (videoReference != null) 'video_reference': videoReference,
       if (isCustom != null) 'is_custom': isCustom,
+      if (sourcePlanName != null) 'source_plan_name': sourcePlanName,
+      if (author != null) 'author': author,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -651,6 +750,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<String>? safetyNotes,
     Value<String>? videoReference,
     Value<bool>? isCustom,
+    Value<String?>? sourcePlanName,
+    Value<String?>? author,
     Value<int>? rowid,
   }) {
     return ExercisesCompanion(
@@ -666,6 +767,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       safetyNotes: safetyNotes ?? this.safetyNotes,
       videoReference: videoReference ?? this.videoReference,
       isCustom: isCustom ?? this.isCustom,
+      sourcePlanName: sourcePlanName ?? this.sourcePlanName,
+      author: author ?? this.author,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -709,6 +812,12 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (isCustom.present) {
       map['is_custom'] = Variable<bool>(isCustom.value);
     }
+    if (sourcePlanName.present) {
+      map['source_plan_name'] = Variable<String>(sourcePlanName.value);
+    }
+    if (author.present) {
+      map['author'] = Variable<String>(author.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -730,6 +839,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('safetyNotes: $safetyNotes, ')
           ..write('videoReference: $videoReference, ')
           ..write('isCustom: $isCustom, ')
+          ..write('sourcePlanName: $sourcePlanName, ')
+          ..write('author: $author, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3109,6 +3220,8 @@ typedef $$ExercisesTableCreateCompanionBuilder = ExercisesCompanion Function({
   Value<String> safetyNotes,
   Value<String> videoReference,
   Value<bool> isCustom,
+  Value<String?> sourcePlanName,
+  Value<String?> author,
   Value<int> rowid,
 });
 typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
@@ -3124,6 +3237,8 @@ typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
   Value<String> safetyNotes,
   Value<String> videoReference,
   Value<bool> isCustom,
+  Value<String?> sourcePlanName,
+  Value<String?> author,
   Value<int> rowid,
 });
 
@@ -3234,6 +3349,16 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<bool> get isCustom => $composableBuilder(
     column: $table.isCustom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourcePlanName => $composableBuilder(
+    column: $table.sourcePlanName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get author => $composableBuilder(
+    column: $table.author,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3356,6 +3481,16 @@ class $$ExercisesTableOrderingComposer
     column: $table.isCustom,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get sourcePlanName => $composableBuilder(
+    column: $table.sourcePlanName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get author => $composableBuilder(
+    column: $table.author,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -3416,6 +3551,14 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<bool> get isCustom =>
       $composableBuilder(column: $table.isCustom, builder: (column) => column);
+
+  GeneratedColumn<String> get sourcePlanName => $composableBuilder(
+    column: $table.sourcePlanName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get author =>
+      $composableBuilder(column: $table.author, builder: (column) => column);
 
   Expression<T> planExercisesRefs<T extends Object>(
     Expression<T> Function($$PlanExercisesTableAnnotationComposer a) f,
@@ -3508,6 +3651,8 @@ class $$ExercisesTableTableManager
                 Value<String> safetyNotes = const Value.absent(),
                 Value<String> videoReference = const Value.absent(),
                 Value<bool> isCustom = const Value.absent(),
+                Value<String?> sourcePlanName = const Value.absent(),
+                Value<String?> author = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
@@ -3522,6 +3667,8 @@ class $$ExercisesTableTableManager
                 safetyNotes: safetyNotes,
                 videoReference: videoReference,
                 isCustom: isCustom,
+                sourcePlanName: sourcePlanName,
+                author: author,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3538,6 +3685,8 @@ class $$ExercisesTableTableManager
                 Value<String> safetyNotes = const Value.absent(),
                 Value<String> videoReference = const Value.absent(),
                 Value<bool> isCustom = const Value.absent(),
+                Value<String?> sourcePlanName = const Value.absent(),
+                Value<String?> author = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
@@ -3552,6 +3701,8 @@ class $$ExercisesTableTableManager
                 safetyNotes: safetyNotes,
                 videoReference: videoReference,
                 isCustom: isCustom,
+                sourcePlanName: sourcePlanName,
+                author: author,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

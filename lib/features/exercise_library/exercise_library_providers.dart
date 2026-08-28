@@ -5,6 +5,7 @@ import '../../data/app_database_provider.dart';
 
 final exerciseSearchQueryProvider = StateProvider<String>((ref) => '');
 final exerciseCategoryFilterProvider = StateProvider<String?>((ref) => null);
+final exerciseCreatorFilterProvider = StateProvider<String?>((ref) => null);
 
 final exerciseCategoriesProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(appDatabaseProvider);
@@ -13,9 +14,17 @@ final exerciseCategoriesProvider = FutureProvider<List<String>>((ref) async {
   return categories;
 });
 
+/// Every `plan:<name>`/`author:<name>` value currently in the library, for
+/// the creator filter row - "Own" is always offered and isn't in this list.
+final creatorFilterOptionsProvider = FutureProvider<List<String>>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return db.exerciseDao.getCreatorFilterOptions();
+});
+
 final filteredExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
   final db = ref.watch(appDatabaseProvider);
   final query = ref.watch(exerciseSearchQueryProvider);
   final category = ref.watch(exerciseCategoryFilterProvider);
-  return db.exerciseDao.search(query: query, category: category);
+  final creator = ref.watch(exerciseCreatorFilterProvider);
+  return db.exerciseDao.search(query: query, category: category, creator: creator);
 });

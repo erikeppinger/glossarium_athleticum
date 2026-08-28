@@ -192,6 +192,7 @@ class SettingsScreen extends ConsumerWidget {
       // on their own.
       ref.invalidate(filteredExercisesProvider);
       ref.invalidate(exerciseCategoriesProvider);
+      ref.invalidate(creatorFilterOptionsProvider);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -228,6 +229,7 @@ class SettingsScreen extends ConsumerWidget {
     // explicit nudge to notice the wipe+reseed.
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
+    ref.invalidate(creatorFilterOptionsProvider);
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(

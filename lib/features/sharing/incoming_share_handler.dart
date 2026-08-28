@@ -97,6 +97,7 @@ Future<void> handleSharedContent(
         await importBackupJson(backupJson, db);
         ref.invalidate(filteredExercisesProvider);
         ref.invalidate(exerciseCategoriesProvider);
+        ref.invalidate(creatorFilterOptionsProvider);
         if (!context.mounted) return;
         ScaffoldMessenger.of(
           context,

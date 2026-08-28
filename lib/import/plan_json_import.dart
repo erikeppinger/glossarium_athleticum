@@ -74,6 +74,7 @@ Future<String> importPlanJson(
         difficulty: 'Beginner',
         measurementType: 'Weight x Reps',
         isCustom: const Value(true),
+        sourcePlanName: Value(name),
       ),
     );
     byNormalizedName[normalized] = newId;

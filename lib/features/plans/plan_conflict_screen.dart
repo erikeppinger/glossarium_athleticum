@@ -120,6 +120,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     await importPlanJson(widget.incomingJson, db);
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
+    ref.invalidate(creatorFilterOptionsProvider);
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(
@@ -153,6 +154,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     await applyIncomingPlan(widget.incomingJson, db);
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
+    ref.invalidate(creatorFilterOptionsProvider);
     // applyIncomingPlan rewrites the plan's data under its existing id - the
     // detail screen's one-shot FutureProvider for that id won't notice on
     // its own (same gotcha as filteredExercisesProvider, see plan_providers.dart).
