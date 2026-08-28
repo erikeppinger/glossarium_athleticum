@@ -32,7 +32,13 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-          const _SectionHeader('Units & display'),
+          _Section(
+            title: 'Units & display',
+            icon: Icons.tune,
+            summary:
+                '${prefs.weightUnit == WeightUnit.kg ? 'kg' : 'lbs'} • '
+                '${_themeModeLabel(prefs.themeMode)}',
+            children: [
           ListTile(
             leading: const Icon(Icons.monitor_weight_outlined),
             title: const Text('Weight unit'),
@@ -57,8 +63,15 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+            ],
+          ),
 
-          const _SectionHeader('Calendar & progress'),
+          _Section(
+            title: 'Calendar & progress',
+            icon: Icons.calendar_month_outlined,
+            summary:
+                'Week starts ${prefs.weekStart == WeekStart.monday ? 'Monday' : 'Sunday'}',
+            children: [
           ListTile(
             leading: const Icon(Icons.calendar_view_week),
             title: const Text('Week starts on'),
@@ -86,8 +99,19 @@ class SettingsScreen extends ConsumerWidget {
                 .read(appPreferencesProvider.notifier)
                 .setShowProgressCharts(show),
           ),
+            ],
+          ),
 
-          const _SectionHeader('Notifications'),
+          _Section(
+            title: 'Notifications',
+            icon: Icons.notifications_outlined,
+            summary: !prefs.workoutRemindersEnabled && !prefs.weeklyDigestEnabled
+                ? 'Off'
+                : [
+                    if (prefs.workoutRemindersEnabled) 'Workouts',
+                    if (prefs.weeklyDigestEnabled) 'Weekly overview',
+                  ].join(' • '),
+            children: [
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
             title: const Text('Workout reminders'),
@@ -122,8 +146,14 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => _pickDigestWeekday(context, ref, prefs.digestWeekday),
               ),
           ],
+            ],
+          ),
 
-          const _SectionHeader('Backup & data'),
+          _Section(
+            title: 'Backup & data',
+            icon: Icons.folder_outlined,
+            summary: 'Export, restore, erase',
+            children: [
           ListTile(
             leading: const Icon(Icons.upload_file),
             title: const Text('Export full backup'),
@@ -154,8 +184,14 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _deleteAllData(context, ref),
           ),
+            ],
+          ),
 
-          const _SectionHeader('About'),
+          _Section(
+            title: 'About',
+            icon: Icons.info_outline,
+            summary: 'Tour, feedback',
+            children: [
           ListTile(
             leading: const Icon(Icons.explore_outlined),
             title: const Text('Take the tour'),
@@ -172,6 +208,8 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Send feedback'),
             subtitle: const Text('Report a bug or suggest something, by email.'),
             onTap: () => _sendFeedback(context),
+          ),
+            ],
           ),
           const SizedBox(height: 24),
         ],
@@ -501,21 +539,41 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String label;
+/// One collapsible group of settings, collapsed by default.
+///
+/// The full list had grown to roughly twenty controls, which is a lot to
+/// take in at once. Each section shows a one-line summary of its current
+/// state while closed, so the common "what is this set to?" question is
+/// answerable without expanding anything.
+class _Section extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final String summary;
+  final List<Widget> children;
 
-  const _SectionHeader(this.label);
+  const _Section({
+    required this.title,
+    required this.icon,
+    required this.summary,
+    required this.children,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-        ),
+    return ExpansionTile(
+      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      title: Text(
+        title,
+        style: Theme.of(context).textTheme.titleMedium,
       ),
+      subtitle: Text(summary, style: Theme.of(context).textTheme.bodySmall),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      // Nested tiles carry their own leading icons, so drop the extra
+      // indent ExpansionTile would otherwise add.
+      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+      childrenPadding: EdgeInsets.zero,
+      children: children,
     );
   }
 }

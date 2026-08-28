@@ -7,6 +7,7 @@ import '../../data/daos/session_log_dao.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
+import '../history/history_screen.dart';
 import '../plans/plan_providers.dart';
 import '../settings/app_preferences.dart';
 import 'body_measurements_screen.dart';
@@ -146,9 +147,29 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                       subtitle: Text(
                         '${formatWeightInUnit(entry.topWeight, prefs.weightUnit)} × ${entry.topReps} • ${DateFormat.yMMMd().format(entry.lastLoggedAt)}',
                       ),
-                      trailing: entry.isPr
-                          ? const Icon(Icons.emoji_events, color: Colors.amber)
-                          : null,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (entry.isPr)
+                            const Icon(
+                              Icons.emoji_events,
+                              color: Colors.amber,
+                            ),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
+                      // Tapping through to the full weight-over-time chart
+                      // for this exercise - the dashboard row only shows the
+                      // latest top set, which says nothing about direction.
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => HistoryScreen(
+                            exerciseId: entry.exerciseId,
+                            exerciseName:
+                                names[entry.exerciseId] ?? entry.exerciseId,
+                          ),
+                        ),
+                      ),
                     ),
                 ],
               );

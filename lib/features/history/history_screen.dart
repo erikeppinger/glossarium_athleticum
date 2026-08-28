@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/app_database_provider.dart';
+import '../../logic/chart_axis.dart';
 import '../../logic/progression.dart';
 import '../../logic/units.dart';
 import '../settings/app_preferences.dart';
@@ -54,13 +55,11 @@ class HistoryScreen extends ConsumerWidget {
               .map((e) => e.weight)
               .reduce((a, b) => a > b ? a : b);
           final maxWeightDisplay = kgToDisplay(maxWeight, unit);
-          // Round the axis top up to a clean multiple of 10 and pick an
-          // interval that divides it evenly, so grid labels never land close
-          // enough together to overlap (fl_chart's default interval can
-          // otherwise pick e.g. 70 when maxY is 72, cramming both labels at
-          // the top).
-          final chartMaxY = ((maxWeightDisplay * 1.2) / 10).ceil() * 10.0;
-          final chartInterval = chartMaxY / 5;
+          // Shared with the Progress tab's charts - see lib/logic/chart_axis.dart
+          // for why the top has to be an exact multiple of the interval.
+          final axis = niceAxis(maxWeightDisplay);
+          final chartMaxY = axis.max;
+          final chartInterval = axis.interval;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -83,7 +82,10 @@ class HistoryScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              Text('Weight over time', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Weight over time (${unit == WeightUnit.lbs ? 'lbs' : 'kg'})',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 8),
               SizedBox(
                 height: 220,
