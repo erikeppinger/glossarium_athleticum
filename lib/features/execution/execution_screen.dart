@@ -277,7 +277,7 @@ class _ExerciseCard extends StatelessWidget {
   }
 }
 
-class _SetRow extends StatefulWidget {
+class _SetRow extends StatelessWidget {
   final int setNumber;
   final _LoggedSetForm form;
   final VoidCallback onLog;
@@ -289,18 +289,12 @@ class _SetRow extends StatefulWidget {
   });
 
   @override
-  State<_SetRow> createState() => _SetRowState();
-}
-
-class _SetRowState extends State<_SetRow> {
-  @override
   Widget build(BuildContext context) {
-    final form = widget.form;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          SizedBox(width: 28, child: Text('${widget.setNumber}')),
+          SizedBox(width: 28, child: Text('$setNumber')),
           Expanded(
             child: TextField(
               controller: form.reps,
@@ -339,10 +333,11 @@ class _SetRowState extends State<_SetRow> {
             )
           else
             IconButton.filled(
-              onPressed: () {
-                widget.onLog();
-                setState(() {});
-              },
+              // onLog (-> _logSet) calls its own setState once form.logged
+              // actually flips to true - forcing a second, redundant
+              // rebuild here (before that state change lands, since onLog
+              // isn't awaited) only risked painting a stale frame.
+              onPressed: onLog,
               icon: const Icon(Icons.check),
               tooltip: 'Log set',
             ),
