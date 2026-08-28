@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../home_screen.dart' show settingsAppBarAction;
+import 'plan_actions.dart';
 import 'plan_detail_screen.dart';
 import 'plan_import_screen.dart';
 import 'plan_providers.dart';
@@ -24,25 +25,67 @@ class PlanListScreen extends ConsumerWidget {
       ),
       body: plansAsync.when(
         data: (plans) {
-          if (plans.isEmpty) {
+          final archived = ref.watch(archivedPlansProvider).valueOrNull ?? [];
+          if (plans.isEmpty && archived.isEmpty) {
             return const Center(
               child: Text('No plans yet. Import one from a spreadsheet.'),
             );
           }
-          return ListView.builder(
-            itemCount: plans.length,
-            itemBuilder: (context, index) {
-              final plan = plans[index];
-              return ListTile(
-                title: Text(plan.name),
-                subtitle: plan.notes.isEmpty ? null : Text(plan.notes),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PlanDetailScreen(planId: plan.id),
+          return ListView(
+            children: [
+              if (plans.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'No active plans. Restore one below, or import a new one.',
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              );
-            },
+              for (final plan in plans)
+                ListTile(
+                  title: Text(plan.name),
+                  subtitle: plan.notes.isEmpty ? null : Text(plan.notes),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PlanDetailScreen(planId: plan.id),
+                    ),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'Plan options',
+                    onPressed: () => showPlanActions(context, ref, plan),
+                  ),
+                ),
+              if (archived.isNotEmpty) ...[
+                const Divider(height: 32),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'Archived',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                ),
+                for (final plan in archived)
+                  ListTile(
+                    leading: const Icon(Icons.archive_outlined),
+                    title: Text(plan.name),
+                    subtitle: const Text('Archived - nothing was deleted'),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => PlanDetailScreen(planId: plan.id),
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.more_vert),
+                      tooltip: 'Plan options',
+                      onPressed: () => showPlanActions(context, ref, plan),
+                    ),
+                  ),
+              ],
+              const SizedBox(height: 88),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),

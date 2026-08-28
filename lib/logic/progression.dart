@@ -3,6 +3,8 @@
 /// output is a plain suggestion - no database, no Flutter, no async.
 library;
 
+import 'units.dart';
+
 enum ExperienceLevel { beginner, intermediate, advanced }
 
 /// Per-level weight increment applied when the lifter hits [targetReps] on
@@ -59,6 +61,9 @@ ProgressionSuggestion suggestNextSet({
   required ExperienceLevel level,
   int targetReps = 8,
   DateTime? now,
+  // Only affects how weights are worded in [ProgressionSuggestion.rationale];
+  // suggestedWeight stays in kilograms like every other stored weight.
+  WeightUnit unit = WeightUnit.kg,
 }) {
   if (history.isEmpty) {
     return const ProgressionSuggestion(
@@ -79,7 +84,7 @@ ProgressionSuggestion suggestNextSet({
       suggestedReps: targetReps,
       rationale:
           "It's been $daysSinceLast days since your last session for this "
-          'exercise - repeat ${formatWeight(last.weight)} to ease back in.',
+          'exercise - repeat ${formatWeight(last.weight, unit)} to ease back in.',
     );
   }
 
@@ -90,7 +95,7 @@ ProgressionSuggestion suggestNextSet({
       suggestedReps: targetReps,
       rationale:
           'You hit $targetReps+ reps last time - try '
-          '${formatWeight(last.weight + increment)}.',
+          '${formatWeight(last.weight + increment, unit)}.',
     );
   }
 
@@ -99,7 +104,7 @@ ProgressionSuggestion suggestNextSet({
       suggestedWeight: last.weight,
       suggestedReps: targetReps,
       rationale:
-          "Progress has plateaued at ${formatWeight(last.weight)} - repeat "
+          "Progress has plateaued at ${formatWeight(last.weight, unit)} - repeat "
           'it and focus on form and rep quality.',
     );
   }
@@ -109,7 +114,7 @@ ProgressionSuggestion suggestNextSet({
     suggestedReps: targetReps,
     rationale:
         "You didn't hit $targetReps reps last time - repeat "
-        '${formatWeight(last.weight)} before progressing.',
+        '${formatWeight(last.weight, unit)} before progressing.',
   );
 }
 
@@ -125,10 +130,14 @@ bool _isPlateaued(List<ProgressionHistoryEntry> sortedHistory, int targetReps) {
   return recent.every((e) => e.weight == weight && e.reps < targetReps);
 }
 
-String formatWeight(double weight) {
-  final isWhole = weight == weight.roundToDouble();
-  return isWhole ? '${weight.toInt()}kg' : '${weight}kg';
-}
+/// Formats a stored (kilogram) weight for display in [unit].
+///
+/// Weights are stored in kilograms throughout the app and converted only at
+/// display boundaries. This used to hard-code "kg" and skip the conversion,
+/// which meant a user training in pounds was handed a number in the wrong
+/// unit with the wrong unit named beside it.
+String formatWeight(double weightKg, [WeightUnit unit = WeightUnit.kg]) =>
+    formatWeightInUnit(weightKg, unit);
 
 /// Whether [newValue] is a personal record given everything logged before it.
 /// Uniform "higher is better" convention across weight/reps/duration/distance

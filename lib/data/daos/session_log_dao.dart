@@ -204,6 +204,91 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  /// One completed workout with every set, plus the exercise names, ready to
+  /// display. Grouped by exercise in the order the sets were recorded, which
+  /// is the order they were actually performed.
+  Future<CompletedWorkout?> getCompletedWorkout(String sessionLogId) async {
+    final log = await (select(
+      sessionLogs,
+    )..where((l) => l.id.equals(sessionLogId))).getSingleOrNull();
+    if (log == null) return null;
+
+    final session = await (select(
+      planSessions,
+    )..where((s) => s.id.equals(log.planSessionId))).getSingleOrNull();
+
+    final sets = await (select(loggedSets)
+          ..where((s) => s.sessionLogId.equals(sessionLogId))
+          ..orderBy([(s) => OrderingTerm.asc(s.id)]))
+        .get();
+
+    final names = <String, String>{};
+    for (final row in await select(db.exercises).get()) {
+      names[row.id] = row.name;
+    }
+
+    final grouped = <String, List<LoggedSet>>{};
+    for (final set in sets) {
+      grouped.putIfAbsent(set.exerciseId, () => []).add(set);
+    }
+
+    return CompletedWorkout(
+      log: log,
+      sessionName: session?.sessionName ?? 'Workout',
+      exercises: [
+        for (final entry in grouped.entries)
+          CompletedExercise(
+            exerciseId: entry.key,
+            exerciseName: names[entry.key] ?? entry.key,
+            sets: entry.value,
+          ),
+      ],
+    );
+  }
+
+  /// Every completed workout, newest first - the history list.
+  Future<List<CompletedWorkoutSummary>> getWorkoutHistory() async {
+    final logs = await (select(sessionLogs)
+          ..orderBy([(l) => OrderingTerm.desc(l.loggedAt)]))
+        .get();
+    if (logs.isEmpty) return [];
+
+    final sessions = {
+      for (final s in await select(planSessions).get()) s.id: s,
+    };
+
+    final result = <CompletedWorkoutSummary>[];
+    for (final log in logs) {
+      final sets = await getLoggedSetsForSessionLog(log.id);
+      var volume = 0.0;
+      for (final s in sets) {
+        if (s.weight != null && s.reps != null) volume += s.weight! * s.reps!;
+      }
+      result.add(
+        CompletedWorkoutSummary(
+          logId: log.id,
+          loggedAt: log.loggedAt,
+          sessionName: sessions[log.planSessionId]?.sessionName ?? 'Workout',
+          setCount: sets.length,
+          volume: volume,
+          prCount: sets.where((s) => s.isPr).length,
+        ),
+      );
+    }
+    return result;
+  }
+
+  /// Deletes one completed workout and its sets - children before parents,
+  /// since this project's connections don't enforce foreign keys.
+  Future<void> deleteSessionLog(String sessionLogId) {
+    return transaction(() async {
+      await (delete(
+        loggedSets,
+      )..where((s) => s.sessionLogId.equals(sessionLogId))).go();
+      await (delete(sessionLogs)..where((l) => l.id.equals(sessionLogId))).go();
+    });
+  }
+
   /// Per-day totals across [start, end) - the series behind the Progress
   /// tab's trend charts. Days with no logged work are omitted; the caller
   /// decides whether to render gaps or a continuous line.
@@ -342,6 +427,48 @@ class PeriodSummary {
     required this.sessionsScheduled,
     required this.sessionsCompleted,
     required this.totalVolume,
+    required this.prCount,
+  });
+}
+
+class CompletedWorkout {
+  final SessionLog log;
+  final String sessionName;
+  final List<CompletedExercise> exercises;
+
+  const CompletedWorkout({
+    required this.log,
+    required this.sessionName,
+    required this.exercises,
+  });
+}
+
+class CompletedExercise {
+  final String exerciseId;
+  final String exerciseName;
+  final List<LoggedSet> sets;
+
+  const CompletedExercise({
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.sets,
+  });
+}
+
+class CompletedWorkoutSummary {
+  final String logId;
+  final DateTime loggedAt;
+  final String sessionName;
+  final int setCount;
+  final double volume;
+  final int prCount;
+
+  const CompletedWorkoutSummary({
+    required this.logId,
+    required this.loggedAt,
+    required this.sessionName,
+    required this.setCount,
+    required this.volume,
     required this.prCount,
   });
 }

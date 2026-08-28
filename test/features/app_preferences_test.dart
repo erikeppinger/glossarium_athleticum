@@ -48,6 +48,41 @@ void main() {
     expect(reloaded.state.summaryPeriod, SummaryPeriod.month);
   });
 
+  group('body tracking is opt-in', () {
+    test('starts as not-asked and is therefore off', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.bodyTracking, BodyTracking.notAsked);
+      expect(
+        notifier.state.bodyTrackingEnabled,
+        isFalse,
+        reason: 'never on until explicitly asked for',
+      );
+    });
+
+    test('a decline is remembered as distinct from never-asked', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setBodyTracking(BodyTracking.declined);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(
+        reloaded.state.bodyTracking,
+        BodyTracking.declined,
+        reason: 'so the prompt is never shown again after a no',
+      );
+      expect(reloaded.state.bodyTrackingEnabled, isFalse);
+    });
+
+    test('opting in persists and enables the feature', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setBodyTracking(BodyTracking.enabled);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.bodyTrackingEnabled, isTrue);
+    });
+  });
+
   test('setThemeMode updates state and persists', () async {
     final notifier = AppPreferencesNotifier();
     expect(notifier.state.themeMode, ThemeMode.system);

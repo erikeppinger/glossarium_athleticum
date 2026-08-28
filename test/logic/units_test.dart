@@ -34,4 +34,39 @@ void main() {
       expect(formatWeightInUnit(100, WeightUnit.lbs), '220.5lbs');
     });
   });
+
+  group('lengths (body measurements)', () {
+    test('cm unit is a no-op', () {
+      expect(cmToDisplay(88, WeightUnit.kg), 88);
+      expect(displayToCm(88, WeightUnit.kg), 88);
+    });
+
+    test('converts cm to inches and back', () {
+      final inches = cmToDisplay(88, WeightUnit.lbs);
+      expect(inches, closeTo(34.65, 0.01));
+      expect(displayToCm(inches, WeightUnit.lbs), closeTo(88, 0.001));
+    });
+
+    test('unit label follows the weight-unit preference', () {
+      expect(lengthUnitLabel(WeightUnit.kg), 'cm');
+      expect(lengthUnitLabel(WeightUnit.lbs), 'in');
+    });
+
+    test('formats with the right suffix', () {
+      expect(formatLengthInUnit(88, WeightUnit.kg), '88cm');
+      // 88 cm is 34.6457 in, which rounds to one decimal as 34.6.
+      expect(formatLengthInUnit(88, WeightUnit.lbs), '34.6in');
+    });
+
+    test('a round-trip through the display unit is lossless', () {
+      for (final cm in [70.0, 88.5, 102.0]) {
+        for (final unit in WeightUnit.values) {
+          expect(
+            displayToCm(cmToDisplay(cm, unit), unit),
+            closeTo(cm, 1e-9),
+          );
+        }
+      }
+    });
+  });
 }

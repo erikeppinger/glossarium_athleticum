@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:training_app/logic/progression.dart';
+import 'package:training_app/logic/units.dart';
 
 ProgressionHistoryEntry entry(DateTime date, double weight, int reps) =>
     ProgressionHistoryEntry(date: date, weight: weight, reps: reps);
@@ -174,6 +175,58 @@ void main() {
 
     test('less than the prior max is not a PR', () {
       expect(isPersonalRecord(58, [55, 60]), isFalse);
+    });
+  });
+
+  group('suggestion wording respects the weight unit', () {
+    final history = [
+      ProgressionHistoryEntry(
+        date: DateTime(2026, 8, 20),
+        weight: 60,
+        reps: 10,
+      ),
+    ];
+
+    test('defaults to kilograms', () {
+      final suggestion = suggestNextSet(
+        history: history,
+        level: ExperienceLevel.intermediate,
+        now: DateTime(2026, 8, 22),
+      );
+      expect(suggestion.rationale, contains('62.5kg'));
+    });
+
+    test('converts and names pounds when that unit is selected', () {
+      // Regression: this used to hard-code "kg" and skip conversion, so a
+      // user training in pounds got a kilogram number labelled "kg".
+      final suggestion = suggestNextSet(
+        history: history,
+        level: ExperienceLevel.intermediate,
+        now: DateTime(2026, 8, 22),
+        unit: WeightUnit.lbs,
+      );
+      expect(suggestion.rationale, contains('lbs'));
+      expect(
+        suggestion.rationale,
+        isNot(contains('kg')),
+        reason: 'a lbs user should never see kg in the advice',
+      );
+      // 62.5 kg is about 137.8 lbs.
+      expect(suggestion.rationale, contains('137.8'));
+    });
+
+    test('the suggested weight itself stays in kilograms', () {
+      final suggestion = suggestNextSet(
+        history: history,
+        level: ExperienceLevel.intermediate,
+        now: DateTime(2026, 8, 22),
+        unit: WeightUnit.lbs,
+      );
+      expect(
+        suggestion.suggestedWeight,
+        62.5,
+        reason: 'storage stays in kg; only the wording is localised',
+      );
     });
   });
 }

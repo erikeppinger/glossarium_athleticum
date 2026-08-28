@@ -19,6 +19,15 @@ const _digestWeekdayKey = 'digest_weekday';
 const _hasSeenOnboardingKey = 'has_seen_onboarding';
 const _showProgressChartsKey = 'show_progress_charts';
 const _colorPaletteKey = 'color_palette';
+const _bodyTrackingKey = 'body_tracking';
+
+/// Whether the user has opted into body-measurement tracking.
+///
+/// Tri-state on purpose. Weighing yourself is not a neutral act - for some
+/// people it's unhelpful or actively harmful - so the feature is off until
+/// asked for, and someone who declines is never asked again. [notAsked] is
+/// distinct from [declined] precisely so a "no" is remembered as a no.
+enum BodyTracking { notAsked, enabled, declined }
 
 class AppPreferences {
   final WeightUnit weightUnit;
@@ -50,6 +59,9 @@ class AppPreferences {
   /// sessions - includes colour-vision-deficiency-safe options.
   final AppColorPalette colorPalette;
 
+  /// Opt-in state for body-measurement tracking. Off until asked for.
+  final BodyTracking bodyTracking;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -62,7 +74,11 @@ class AppPreferences {
     this.hasSeenOnboarding = false,
     this.showProgressCharts = true,
     this.colorPalette = AppColorPalette.pastel,
+    this.bodyTracking = BodyTracking.notAsked,
   });
+
+  /// Whether the body-measurement UI should be visible at all.
+  bool get bodyTrackingEnabled => bodyTracking == BodyTracking.enabled;
 
   AppPreferences copyWith({
     WeightUnit? weightUnit,
@@ -76,6 +92,7 @@ class AppPreferences {
     bool? hasSeenOnboarding,
     bool? showProgressCharts,
     AppColorPalette? colorPalette,
+    BodyTracking? bodyTracking,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -89,6 +106,7 @@ class AppPreferences {
     hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
     showProgressCharts: showProgressCharts ?? this.showProgressCharts,
     colorPalette: colorPalette ?? this.colorPalette,
+    bodyTracking: bodyTracking ?? this.bodyTracking,
   );
 }
 
@@ -124,6 +142,10 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       colorPalette: AppColorPalette.values.firstWhere(
         (p) => p.name == prefs.getString(_colorPaletteKey),
         orElse: () => AppColorPalette.pastel,
+      ),
+      bodyTracking: BodyTracking.values.firstWhere(
+        (b) => b.name == prefs.getString(_bodyTrackingKey),
+        orElse: () => BodyTracking.notAsked,
       ),
     );
   }
@@ -192,6 +214,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(colorPalette: palette);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_colorPaletteKey, palette.name);
+  }
+
+  Future<void> setBodyTracking(BodyTracking value) async {
+    state = state.copyWith(bodyTracking: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_bodyTrackingKey, value.name);
   }
 }
 

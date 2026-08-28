@@ -6,6 +6,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../execution/start_session_helper.dart';
+import '../history/workout_history_screen.dart';
 import '../settings/app_preferences.dart';
 
 final scheduledSessionsProvider = FutureProvider<List<ScheduledSession>>((
@@ -31,7 +32,10 @@ class CalendarScreen extends ConsumerStatefulWidget {
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
-  DateTime? _selectedDay;
+  // Defaults to today rather than null. Leaving it unset made the day-list
+  // read "No sessions on this day" before the user had picked any day -
+  // which looked like a contradiction next to today's own session marker.
+  DateTime _selectedDay = DateTime.now();
   CalendarFormat _calendarFormat = CalendarFormat.month;
 
   @override
@@ -55,8 +59,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             byDay.putIfAbsent(_dayKey(date), () => []).add(s);
           }
           final selected = _selectedDay;
-          final selectedSessions =
-              selected == null ? const <ScheduledSession>[] : byDay[_dayKey(selected)] ?? const [];
+          final selectedSessions = byDay[_dayKey(selected)] ?? const [];
 
           return Column(
             children: [
@@ -68,8 +71,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 startingDayOfWeek: weekStart == WeekStart.sunday
                     ? StartingDayOfWeek.sunday
                     : StartingDayOfWeek.monday,
-                selectedDayPredicate: (day) =>
-                    selected != null && isSameDay(day, selected),
+                selectedDayPredicate: (day) => isSameDay(day, selected),
                 eventLoader: (day) => byDay[_dayKey(day)] ?? const [],
                 onDaySelected: (selectedDay, focusedDay) {
                   setState(() {
@@ -118,17 +120,33 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         itemCount: selectedSessions.length,
                         itemBuilder: (context, index) {
                           final s = selectedSessions[index];
+                          final done = loggedIds.contains(s.session.id);
                           return ListTile(
+                            leading: done
+                                ? Icon(
+                                    Icons.check_circle,
+                                    color: Colors.green.shade700,
+                                  )
+                                : null,
                             title: Text(s.session.sessionName),
                             subtitle: Text(
-                              '${s.planName} • Week ${s.session.weekNumber} • ${s.session.day}',
+                              '${s.planName} • Week ${s.session.weekNumber}'
+                              // "Any" is an internal placeholder for an
+                              // unscheduled weekday; showing it reads as
+                              // though the user picked it.
+                              '${s.session.day == 'Any' ? '' : ' • ${s.session.day}'}'
+                              '${done ? '\nCompleted - tap to review' : ''}',
                             ),
-                            trailing: const Icon(Icons.play_arrow),
-                            onTap: () => startSessionWithMoveToTodayPrompt(
-                              context,
-                              ref,
-                              s.session,
+                            trailing: Icon(
+                              done ? Icons.chevron_right : Icons.play_arrow,
                             ),
+                            onTap: () => done
+                                ? _openLoggedWorkout(context, ref, s.session.id)
+                                : startSessionWithMoveToTodayPrompt(
+                                    context,
+                                    ref,
+                                    s.session,
+                                  ),
                           );
                         },
                       ),
@@ -138,6 +156,24 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
+      ),
+    );
+  }
+
+  /// Opens the most recent logged workout for this session. A session can be
+  /// trained more than once; the latest is what someone tapping "review"
+  /// almost always means.
+  Future<void> _openLoggedWorkout(
+    BuildContext context,
+    WidgetRef ref,
+    int planSessionId,
+  ) async {
+    final db = ref.read(appDatabaseProvider);
+    final logs = await db.sessionLogDao.getLogsForPlanSession(planSessionId);
+    if (logs.isEmpty || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CompletedWorkoutScreen(logId: logs.first.id),
       ),
     );
   }

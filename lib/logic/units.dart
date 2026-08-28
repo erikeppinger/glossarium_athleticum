@@ -24,3 +24,25 @@ String formatWeightInUnit(double kg, WeightUnit unit) {
   final converted = kgToDisplay(kg, unit);
   return '${formatWeightNumber(converted)}${unit == WeightUnit.lbs ? 'lbs' : 'kg'}';
 }
+
+// --- Lengths (body measurements) -------------------------------------------
+//
+// Circumferences are stored in centimetres and converted for display the same
+// way weights are. Someone who picked pounds has signalled a preference for
+// imperial units and will expect inches.
+
+const _cmPerInch = 2.54;
+
+String lengthUnitLabel(WeightUnit unit) =>
+    unit == WeightUnit.lbs ? 'in' : 'cm';
+
+double cmToDisplay(double cm, WeightUnit unit) =>
+    unit == WeightUnit.lbs ? cm / _cmPerInch : cm;
+
+double displayToCm(double value, WeightUnit unit) =>
+    unit == WeightUnit.lbs ? value * _cmPerInch : value;
+
+String formatLengthInUnit(double cm, WeightUnit unit) {
+  final converted = cmToDisplay(cm, unit);
+  return '${formatWeightNumber(converted)}${lengthUnitLabel(unit)}';
+}

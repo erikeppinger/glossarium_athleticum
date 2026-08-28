@@ -7,6 +7,7 @@ import '../../data/app_database_provider.dart';
 import '../calendar/calendar_screen.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../plans/plan_providers.dart';
+import '../progress/body_tracking_prompt.dart';
 import 'execution_screen.dart';
 
 bool _isSameDay(DateTime a, DateTime b) =>
@@ -57,6 +58,12 @@ Future<void> startSessionWithMoveToTodayPrompt(
     ref.invalidate(planDetailsProvider(session.planId));
     await resyncReminders(ref);
   }
+
+  // Asked once, on the way into a first session - the moment someone commits
+  // to a programme is when tracking is worth offering, and it's a question
+  // rather than a default. See body_tracking_prompt.dart.
+  if (!context.mounted) return;
+  await maybeAskAboutBodyTracking(context, ref);
 
   if (!context.mounted) return;
   Navigator.of(context).push(

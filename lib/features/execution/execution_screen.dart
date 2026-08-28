@@ -103,7 +103,15 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     final restTimer = ref.watch(restTimerControllerProvider);
     final unit = ref.watch(appPreferencesProvider).weightUnit;
 
-    return Scaffold(
+    return PopScope(
+      // Sets live in memory until "Finish session", so backing out silently
+      // discards them. That mattered less before the floating rest timer -
+      // which now actively encourages leaving the screen mid-session.
+      canPop: !_hasUnsavedSets,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmDiscard();
+      },
+      child: Scaffold(
       appBar: AppBar(title: const Text('Log session')),
       body: detailsAsync.when(
         data: (details) {
@@ -156,7 +164,49 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
       ),
+      ),
     );
+  }
+
+  /// Whether anything would be lost by leaving now. False once _finishing
+  /// starts, so the screen's own successful pop isn't intercepted.
+  bool get _hasUnsavedSets =>
+      !_finishing &&
+      _formsByExerciseRowId.values.any((forms) => forms.any((f) => f.logged));
+
+  Future<void> _confirmDiscard() async {
+    final loggedCount = _formsByExerciseRowId.values
+        .expand((forms) => forms)
+        .where((f) => f.logged)
+        .length;
+
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave without finishing?'),
+        content: Text(
+          "You've logged $loggedCount set${loggedCount == 1 ? '' : 's'} that "
+          "haven't been saved yet. Leaving now discards them.\n\n"
+          'Tip: the rest timer keeps running if you switch tabs, so you can '
+          'come back to this session without losing anything.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep training'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Discard',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (discard == true && mounted) Navigator.of(context).pop();
   }
 
   Future<void> _logSet(

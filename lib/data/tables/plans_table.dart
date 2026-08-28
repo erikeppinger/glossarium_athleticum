@@ -10,6 +10,11 @@ class Plans extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
+  /// Set when the plan is archived - hidden from the plan list but fully
+  /// intact and restorable. Archiving is the reversible way to get a plan
+  /// out of the way; deleting is the irreversible one. Null = active.
+  DateTimeColumn get archivedAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

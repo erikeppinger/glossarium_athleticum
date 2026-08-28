@@ -79,6 +79,34 @@ class ScheduledSession {
   const ScheduledSession({required this.session, required this.planName});
 }
 
+/// What deleting a plan would actually destroy, in the units a user thinks
+/// in. Shown before any irreversible delete so the choice is informed - a
+/// bare "Are you sure?" asks someone to consent to a loss they can't see.
+class PlanDeletionImpact {
+  final int sessions;
+  final int exercises;
+  final int loggedWorkouts;
+  final int loggedSets;
+
+  /// Null when nothing has been logged against this plan.
+  final DateTime? firstLoggedAt;
+  final DateTime? lastLoggedAt;
+
+  const PlanDeletionImpact({
+    required this.sessions,
+    required this.exercises,
+    required this.loggedWorkouts,
+    required this.loggedSets,
+    this.firstLoggedAt,
+    this.lastLoggedAt,
+  });
+
+  /// Whether deleting would destroy training history, as opposed to just
+  /// the plan structure. This is the line between "harmless tidying" and
+  /// "losing something you can never recreate".
+  bool get losesHistory => loggedWorkouts > 0;
+}
+
 @DriftAccessor(tables: [Plans, PlanSessions, PlanExercises])
 class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
   PlanDao(super.db);
@@ -86,6 +114,13 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
   Future<List<Plan>> getAllPlans() => select(plans).get();
 
   Stream<List<Plan>> watchAllPlans() => select(plans).watch();
+
+  /// Active (non-archived) plans only - what the plan list shows.
+  Stream<List<Plan>> watchActivePlans() =>
+      (select(plans)..where((p) => p.archivedAt.isNull())).watch();
+
+  Stream<List<Plan>> watchArchivedPlans() =>
+      (select(plans)..where((p) => p.archivedAt.isNotNull())).watch();
 
   /// [createdAt]/[updatedAt] default to now - only JSON plan/backup import
   /// (Phase 3) passes the original values through, to keep an
@@ -421,6 +456,158 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
     ])..where(planExercises.id.equals(planExerciseId));
     final row = await query.getSingle();
     return row.readTable(planSessions).planId;
+  }
+
+  Future<void> renamePlan(String planId, String name) {
+    return transaction(() async {
+      await (update(plans)..where((p) => p.id.equals(planId))).write(
+        PlansCompanion(name: Value(name)),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Hides a plan from the plan list without touching any of its data.
+  /// The reversible counterpart to [deletePlan] - see [unarchivePlan].
+  Future<void> archivePlan(String planId) {
+    return transaction(() async {
+      await (update(plans)..where((p) => p.id.equals(planId))).write(
+        PlansCompanion(archivedAt: Value(DateTime.now())),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  Future<void> unarchivePlan(String planId) {
+    return transaction(() async {
+      await (update(plans)..where((p) => p.id.equals(planId))).write(
+        const PlansCompanion(archivedAt: Value(null)),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Counts what a hard delete of [planId] would destroy. Reads across the
+  /// SessionLogs/LoggedSets tables too, since the whole point is to surface
+  /// the training history at stake - which lives outside this DAO's own
+  /// tables.
+  Future<PlanDeletionImpact> getPlanDeletionImpact(String planId) async {
+    final sessionRows = await (select(
+      planSessions,
+    )..where((s) => s.planId.equals(planId))).get();
+    final sessionIds = [for (final s in sessionRows) s.id];
+
+    final exerciseCount = sessionIds.isEmpty
+        ? 0
+        : (await (select(
+            planExercises,
+          )..where((e) => e.sessionId.isIn(sessionIds))).get()).length;
+
+    if (sessionIds.isEmpty) {
+      return PlanDeletionImpact(
+        sessions: 0,
+        exercises: exerciseCount,
+        loggedWorkouts: 0,
+        loggedSets: 0,
+      );
+    }
+
+    final logs = await (select(
+      db.sessionLogs,
+    )..where((l) => l.planSessionId.isIn(sessionIds))).get();
+    final logIds = [for (final l in logs) l.id];
+    final setCount = logIds.isEmpty
+        ? 0
+        : (await (select(
+            db.loggedSets,
+          )..where((s) => s.sessionLogId.isIn(logIds))).get()).length;
+
+    final dates = [for (final l in logs) l.loggedAt]..sort();
+
+    return PlanDeletionImpact(
+      sessions: sessionRows.length,
+      exercises: exerciseCount,
+      loggedWorkouts: logs.length,
+      loggedSets: setCount,
+      firstLoggedAt: dates.isEmpty ? null : dates.first,
+      lastLoggedAt: dates.isEmpty ? null : dates.last,
+    );
+  }
+
+  /// Deletes a plan's structure while leaving its logged workouts in place.
+  ///
+  /// Logged history is the one thing a user can never recreate, so removing
+  /// a plan should not take it down as collateral. The logs keep pointing at
+  /// their (now plan-less) session rows, which are deliberately retained as
+  /// tombstones so history stays readable and attributable.
+  Future<void> deletePlanKeepingHistory(String planId) {
+    return transaction(() async {
+      final sessionRows = await (select(
+        planSessions,
+      )..where((s) => s.planId.equals(planId))).get();
+      final sessionIds = [for (final s in sessionRows) s.id];
+
+      final loggedSessionIds = <int>{};
+      if (sessionIds.isNotEmpty) {
+        final logs = await (select(
+          db.sessionLogs,
+        )..where((l) => l.planSessionId.isIn(sessionIds))).get();
+        loggedSessionIds.addAll(logs.map((l) => l.planSessionId));
+      }
+
+      // The prescription rows are safe to drop either way - a logged set
+      // records what was actually done, not what was planned.
+      if (sessionIds.isNotEmpty) {
+        await (delete(
+          planExercises,
+        )..where((e) => e.sessionId.isIn(sessionIds))).go();
+      }
+
+      // Keep only the sessions that something was logged against; detach
+      // them from the plan being deleted.
+      final unloggedIds = sessionIds
+          .where((id) => !loggedSessionIds.contains(id))
+          .toList();
+      if (unloggedIds.isNotEmpty) {
+        await (delete(planSessions)..where((s) => s.id.isIn(unloggedIds))).go();
+      }
+      if (loggedSessionIds.isNotEmpty) {
+        await (update(planSessions)
+              ..where((s) => s.id.isIn(loggedSessionIds.toList())))
+            .write(const PlanSessionsCompanion(assignedDate: Value(null)));
+      }
+
+      await (delete(plans)..where((p) => p.id.equals(planId))).go();
+    });
+  }
+
+  /// Deletes a plan and every workout ever logged against it. The
+  /// irreversible option - callers must show [getPlanDeletionImpact] first.
+  Future<void> deletePlanAndHistory(String planId) {
+    return transaction(() async {
+      final sessionRows = await (select(
+        planSessions,
+      )..where((s) => s.planId.equals(planId))).get();
+      final sessionIds = [for (final s in sessionRows) s.id];
+
+      if (sessionIds.isNotEmpty) {
+        final logs = await (select(
+          db.sessionLogs,
+        )..where((l) => l.planSessionId.isIn(sessionIds))).get();
+        final logIds = [for (final l in logs) l.id];
+        if (logIds.isNotEmpty) {
+          await (delete(
+            db.loggedSets,
+          )..where((s) => s.sessionLogId.isIn(logIds))).go();
+          await (delete(db.sessionLogs)..where((l) => l.id.isIn(logIds))).go();
+        }
+        await (delete(
+          planExercises,
+        )..where((e) => e.sessionId.isIn(sessionIds))).go();
+        await (delete(planSessions)..where((s) => s.id.isIn(sessionIds))).go();
+      }
+      await (delete(plans)..where((p) => p.id.equals(planId))).go();
+    });
   }
 
   /// Deletes a plan and its sessions/exercises, children before parents -

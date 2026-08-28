@@ -75,6 +75,52 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
     return q.get();
   }
 
+  /// Where an exercise is currently referenced, so deleting it can say what
+  /// would be affected instead of just failing or silently orphaning rows.
+  Future<ExerciseUsage> getExerciseUsage(String exerciseId) async {
+    final planRows = await (select(
+      db.planExercises,
+    )..where((e) => e.exerciseId.equals(exerciseId))).get();
+
+    final planNames = <String>{};
+    for (final row in planRows) {
+      final session = await (select(
+        db.planSessions,
+      )..where((s) => s.id.equals(row.sessionId))).getSingleOrNull();
+      if (session == null) continue;
+      final plan = await (select(
+        db.plans,
+      )..where((p) => p.id.equals(session.planId))).getSingleOrNull();
+      if (plan != null) planNames.add(plan.name);
+    }
+
+    final loggedSetCount = (await (select(
+      db.loggedSets,
+    )..where((s) => s.exerciseId.equals(exerciseId))).get()).length;
+
+    return ExerciseUsage(
+      planReferences: planRows.length,
+      planNames: planNames.toList()..sort(),
+      loggedSets: loggedSetCount,
+    );
+  }
+
+  /// Removes an exercise from every plan that prescribes it, then deletes the
+  /// library entry - while leaving logged sets intact.
+  ///
+  /// Logged sets keep their `exercise_id` pointing at the now-deleted row.
+  /// That's deliberate: the history is a record of what was actually done and
+  /// shouldn't evaporate because the library entry was tidied up. Screens
+  /// resolve names defensively and fall back to the stored id.
+  Future<void> deleteExerciseKeepingHistory(String exerciseId) {
+    return transaction(() async {
+      await (delete(
+        db.planExercises,
+      )..where((e) => e.exerciseId.equals(exerciseId))).go();
+      await (delete(exercises)..where((e) => e.id.equals(exerciseId))).go();
+    });
+  }
+
   /// Every distinct `plan:<name>`/`author:<name>` creator-filter value in the
   /// library, for populating the Exercise Library's creator filter.
   Future<List<String>> getCreatorFilterOptions() async {
@@ -92,3 +138,24 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
 /// Sentinel for [ExerciseDao.search]'s `creator` filter: custom exercises
 /// with no plan/author attribution (created standalone, not via an import).
 const ownExercisesFilter = '__own__';
+
+/// Where an exercise is referenced, for showing the consequences of deleting
+/// it before anything is destroyed.
+class ExerciseUsage {
+  /// How many plan rows prescribe this exercise.
+  final int planReferences;
+
+  /// Names of the plans involved, for naming them in a confirmation.
+  final List<String> planNames;
+
+  /// How many sets have ever been logged against it - the irreplaceable part.
+  final int loggedSets;
+
+  const ExerciseUsage({
+    required this.planReferences,
+    required this.planNames,
+    required this.loggedSets,
+  });
+
+  bool get isUnused => planReferences == 0 && loggedSets == 0;
+}

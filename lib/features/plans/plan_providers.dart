@@ -4,9 +4,16 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 
+/// Active plans only - archived ones are surfaced separately by
+/// [archivedPlansProvider] so they stay out of the way without being lost.
 final plansListProvider = StreamProvider<List<Plan>>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return db.planDao.watchAllPlans();
+  return db.planDao.watchActivePlans();
+});
+
+final archivedPlansProvider = StreamProvider<List<Plan>>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return db.planDao.watchArchivedPlans();
 });
 
 final allExercisesForMatchingProvider = FutureProvider<List<Exercise>>((

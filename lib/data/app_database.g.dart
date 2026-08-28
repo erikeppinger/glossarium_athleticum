@@ -902,8 +902,26 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, notes, createdAt, updatedAt];
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    notes,
+    createdAt,
+    updatedAt,
+    archivedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -951,6 +969,12 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -980,6 +1004,10 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
     );
   }
 
@@ -995,12 +1023,18 @@ class Plan extends DataClass implements Insertable<Plan> {
   final String notes;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Set when the plan is archived - hidden from the plan list but fully
+  /// intact and restorable. Archiving is the reversible way to get a plan
+  /// out of the way; deleting is the irreversible one. Null = active.
+  final DateTime? archivedAt;
   const Plan({
     required this.id,
     required this.name,
     required this.notes,
     required this.createdAt,
     required this.updatedAt,
+    this.archivedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1010,6 +1044,9 @@ class Plan extends DataClass implements Insertable<Plan> {
     map['notes'] = Variable<String>(notes);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
     return map;
   }
 
@@ -1020,6 +1057,9 @@ class Plan extends DataClass implements Insertable<Plan> {
       notes: Value(notes),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
     );
   }
 
@@ -1034,6 +1074,7 @@ class Plan extends DataClass implements Insertable<Plan> {
       notes: serializer.fromJson<String>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
     );
   }
   @override
@@ -1045,6 +1086,7 @@ class Plan extends DataClass implements Insertable<Plan> {
       'notes': serializer.toJson<String>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
     };
   }
 
@@ -1054,12 +1096,14 @@ class Plan extends DataClass implements Insertable<Plan> {
     String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<DateTime?> archivedAt = const Value.absent(),
   }) => Plan(
     id: id ?? this.id,
     name: name ?? this.name,
     notes: notes ?? this.notes,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
   );
   Plan copyWithCompanion(PlansCompanion data) {
     return Plan(
@@ -1068,6 +1112,9 @@ class Plan extends DataClass implements Insertable<Plan> {
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
     );
   }
 
@@ -1078,13 +1125,15 @@ class Plan extends DataClass implements Insertable<Plan> {
           ..write('name: $name, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('archivedAt: $archivedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, notes, createdAt, updatedAt);
+  int get hashCode =>
+      Object.hash(id, name, notes, createdAt, updatedAt, archivedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1093,7 +1142,8 @@ class Plan extends DataClass implements Insertable<Plan> {
           other.name == this.name &&
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.archivedAt == this.archivedAt);
 }
 
 class PlansCompanion extends UpdateCompanion<Plan> {
@@ -1102,6 +1152,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
   final Value<String> notes;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> archivedAt;
   final Value<int> rowid;
   const PlansCompanion({
     this.id = const Value.absent(),
@@ -1109,6 +1160,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.archivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PlansCompanion.insert({
@@ -1117,6 +1169,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     this.notes = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.archivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -1128,6 +1181,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? archivedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1136,6 +1190,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (archivedAt != null) 'archived_at': archivedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1146,6 +1201,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     Value<String>? notes,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<DateTime?>? archivedAt,
     Value<int>? rowid,
   }) {
     return PlansCompanion(
@@ -1154,6 +1210,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      archivedAt: archivedAt ?? this.archivedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1176,6 +1233,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1190,6 +1250,7 @@ class PlansCompanion extends UpdateCompanion<Plan> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('archivedAt: $archivedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4420,6 +4481,7 @@ typedef $$PlansTableCreateCompanionBuilder = PlansCompanion Function({
   Value<String> notes,
   required DateTime createdAt,
   required DateTime updatedAt,
+  Value<DateTime?> archivedAt,
   Value<int> rowid,
 });
 typedef $$PlansTableUpdateCompanionBuilder = PlansCompanion Function({
@@ -4428,6 +4490,7 @@ typedef $$PlansTableUpdateCompanionBuilder = PlansCompanion Function({
   Value<String> notes,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
+  Value<DateTime?> archivedAt,
   Value<int> rowid,
 });
 
@@ -4484,6 +4547,11 @@ class $$PlansTableFilterComposer extends Composer<_$AppDatabase, $PlansTable> {
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4546,6 +4614,11 @@ class $$PlansTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PlansTableAnnotationComposer
@@ -4571,6 +4644,11 @@ class $$PlansTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
 
   Expression<T> planSessionsRefs<T extends Object>(
     Expression<T> Function($$PlanSessionsTableAnnotationComposer a) f,
@@ -4631,6 +4709,7 @@ class $$PlansTableTableManager
                 Value<String> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlansCompanion(
                 id: id,
@@ -4638,6 +4717,7 @@ class $$PlansTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                archivedAt: archivedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4647,6 +4727,7 @@ class $$PlansTableTableManager
                 Value<String> notes = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<DateTime?> archivedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlansCompanion.insert(
                 id: id,
@@ -4654,6 +4735,7 @@ class $$PlansTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                archivedAt: archivedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

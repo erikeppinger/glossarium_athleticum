@@ -20,13 +20,42 @@ import '../notifications/reminder_coordinator.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
 
-class PlanDetailScreen extends ConsumerWidget {
+class PlanDetailScreen extends ConsumerStatefulWidget {
   final String planId;
 
   const PlanDetailScreen({super.key, required this.planId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlanDetailScreen> createState() => _PlanDetailScreenState();
+}
+
+class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  String get planId => widget.planId;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Matches a session on its name, day, week, or any exercise it contains -
+  /// a 30+ session plan is otherwise a long flat scroll.
+  bool _matches(PlanSessionDetails session) {
+    if (_query.isEmpty) return true;
+    final q = _query.toLowerCase();
+    if (session.session.sessionName.toLowerCase().contains(q)) return true;
+    if (session.session.day.toLowerCase().contains(q)) return true;
+    if ('week ${session.session.weekNumber}'.contains(q)) return true;
+    return session.exercises.any(
+      (e) => e.exerciseName.toLowerCase().contains(q),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final detailsAsync = ref.watch(planDetailsProvider(planId));
     final dateFormat = DateFormat.yMMMd();
     final loadedDetails = detailsAsync.valueOrNull;
@@ -67,19 +96,62 @@ class PlanDetailScreen extends ConsumerWidget {
           if (details == null) {
             return const Center(child: Text('Plan not found.'));
           }
+          final visible = details.sessions.where(_matches).toList();
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Text(details.plan.name, style: Theme.of(context).textTheme.headlineSmall),
+              if (details.plan.archivedAt != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Archived',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              // Only worth the space once a plan is long enough to scroll.
+              if (details.sessions.length >= 8)
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search sessions or exercises',
+                    prefixIcon: const Icon(Icons.search),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                          ),
+                  ),
+                  onChanged: (value) => setState(() => _query = value.trim()),
+                ),
               const SizedBox(height: 16),
-              for (final session in details.sessions)
+              if (visible.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32),
+                  child: Center(child: Text('No sessions match that search.')),
+                ),
+              for (final session in visible)
                 Card(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ListTile(
                         title: Text(
-                          'Week ${session.session.weekNumber} • ${session.session.day} • ${session.session.sessionName}',
+                          'Week ${session.session.weekNumber}'
+                          // "Any" is the internal placeholder for a session
+                          // with no fixed weekday; showing it reads as though
+                          // the user chose it.
+                          '${session.session.day == 'Any' ? '' : ' • ${session.session.day}'}'
+                          ' • ${session.session.sessionName}',
                         ),
                         subtitle: Text(
                           session.exercises

@@ -209,16 +209,17 @@ class _MeasurementTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String len(double cm) => formatLengthInUnit(cm, unit);
     final parts = <String>[
       if (measurement.weightKg != null)
         formatWeightInUnit(measurement.weightKg!, unit),
       if (measurement.bodyFatPercent != null)
         '${measurement.bodyFatPercent}% bf',
-      if (measurement.chestCm != null) 'chest ${measurement.chestCm}cm',
-      if (measurement.waistCm != null) 'waist ${measurement.waistCm}cm',
-      if (measurement.hipsCm != null) 'hips ${measurement.hipsCm}cm',
-      if (measurement.thighCm != null) 'thigh ${measurement.thighCm}cm',
-      if (measurement.armCm != null) 'arm ${measurement.armCm}cm',
+      if (measurement.chestCm != null) 'chest ${len(measurement.chestCm!)}',
+      if (measurement.waistCm != null) 'waist ${len(measurement.waistCm!)}',
+      if (measurement.hipsCm != null) 'hips ${len(measurement.hipsCm!)}',
+      if (measurement.thighCm != null) 'thigh ${len(measurement.thighCm!)}',
+      if (measurement.armCm != null) 'arm ${len(measurement.armCm!)}',
     ];
 
     return ListTile(
@@ -287,17 +288,26 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
   late final _bodyFatController = _numController(
     widget.existing?.bodyFatPercent,
   );
-  late final _chestController = _numController(widget.existing?.chestCm);
-  late final _waistController = _numController(widget.existing?.waistCm);
-  late final _hipsController = _numController(widget.existing?.hipsCm);
-  late final _thighController = _numController(widget.existing?.thighCm);
-  late final _armController = _numController(widget.existing?.armCm);
+  // Lengths are stored in cm but shown in the user's unit, same as weights.
+  late final _chestController = _lengthController(widget.existing?.chestCm);
+  late final _waistController = _lengthController(widget.existing?.waistCm);
+  late final _hipsController = _lengthController(widget.existing?.hipsCm);
+  late final _thighController = _lengthController(widget.existing?.thighCm);
+  late final _armController = _lengthController(widget.existing?.armCm);
+
+  TextEditingController _lengthController(double? cm) => TextEditingController(
+    text: cm == null
+        ? ''
+        : formatWeightNumber(cmToDisplay(cm, widget.unit)),
+  );
   late final _notesController = TextEditingController(
     text: widget.existing?.notes ?? '',
   );
 
   static TextEditingController _numController(double? value) =>
-      TextEditingController(text: value == null ? '' : formatWeightNumber(value));
+      TextEditingController(
+        text: value == null ? '' : formatWeightNumber(value),
+      );
 
   late final _controllers = [
     _weightController,
@@ -355,7 +365,7 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Circumferences (cm)',
+              'Circumferences (${lengthUnitLabel(widget.unit)})',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             Row(
@@ -416,6 +426,12 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
 
   double? _parse(TextEditingController c) => double.tryParse(c.text.trim());
 
+  /// Reads a length field back into centimetres for storage.
+  double? _parseLength(TextEditingController c) {
+    final typed = _parse(c);
+    return typed == null ? null : displayToCm(typed, widget.unit);
+  }
+
   void _save() {
     final typedWeight = _parse(_weightController);
     Navigator.of(context).pop(
@@ -427,11 +443,11 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
             ? null
             : displayToKg(typedWeight, widget.unit),
         bodyFatPercent: _parse(_bodyFatController),
-        chestCm: _parse(_chestController),
-        waistCm: _parse(_waistController),
-        hipsCm: _parse(_hipsController),
-        thighCm: _parse(_thighController),
-        armCm: _parse(_armController),
+        chestCm: _parseLength(_chestController),
+        waistCm: _parseLength(_waistController),
+        hipsCm: _parseLength(_hipsController),
+        thighCm: _parseLength(_thighController),
+        armCm: _parseLength(_armController),
         notes: _notesController.text.trim(),
       ),
     );

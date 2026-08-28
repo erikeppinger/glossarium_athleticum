@@ -50,6 +50,7 @@ class HistoryScreen extends ConsumerWidget {
           final suggestion = suggestNextSet(
             history: sorted,
             level: _defaultLevel,
+            unit: unit,
           );
           final maxWeight = sorted
               .map((e) => e.weight)

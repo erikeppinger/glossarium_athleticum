@@ -89,6 +89,21 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _pickSummaryPeriod(context, ref, prefs.summaryPeriod),
           ),
           SwitchListTile(
+            secondary: const Icon(Icons.straighten),
+            title: const Text('Track body measurements'),
+            subtitle: const Text(
+              'Optional. Adds bodyweight and measurement tracking to the '
+              'Progress tab. Turning it off hides it; nothing already '
+              'recorded is deleted.',
+            ),
+            value: prefs.bodyTrackingEnabled,
+            onChanged: (on) => ref
+                .read(appPreferencesProvider.notifier)
+                .setBodyTracking(
+                  on ? BodyTracking.enabled : BodyTracking.declined,
+                ),
+          ),
+          SwitchListTile(
             secondary: const Icon(Icons.bar_chart),
             title: const Text('Show progress charts'),
             subtitle: const Text(

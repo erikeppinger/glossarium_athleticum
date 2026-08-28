@@ -8,6 +8,7 @@ import '../../home_screen.dart' show settingsAppBarAction;
 import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
 import '../history/history_screen.dart';
+import '../history/workout_history_screen.dart';
 import '../plans/plan_providers.dart';
 import '../settings/app_preferences.dart';
 import 'body_measurements_screen.dart';
@@ -54,14 +55,26 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                 : () => _shareSummary(period, range, summaryAsync.value!),
           ),
           IconButton(
-            icon: const Icon(Icons.straighten),
-            tooltip: 'Body measurements',
+            icon: const Icon(Icons.history),
+            tooltip: 'Workout history',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => const BodyMeasurementsScreen(),
+                builder: (context) => const WorkoutHistoryScreen(),
               ),
             ),
           ),
+          // Hidden entirely unless the user opted in - see
+          // body_tracking_prompt.dart for why this isn't on by default.
+          if (prefs.bodyTrackingEnabled)
+            IconButton(
+              icon: const Icon(Icons.straighten),
+              tooltip: 'Body measurements',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const BodyMeasurementsScreen(),
+                ),
+              ),
+            ),
           settingsAppBarAction(context),
         ],
       ),
