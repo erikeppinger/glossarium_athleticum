@@ -16,3 +16,10 @@ final exerciseProgressDashboardProvider =
       final db = ref.watch(appDatabaseProvider);
       return db.sessionLogDao.getLatestTopSetPerExercise();
     });
+
+final dailyTotalsProvider = FutureProvider.family<List<DailyTotals>, PeriodRange>(
+  (ref, range) {
+    final db = ref.watch(appDatabaseProvider);
+    return db.sessionLogDao.getDailyTotals(start: range.start, end: range.end);
+  },
+);

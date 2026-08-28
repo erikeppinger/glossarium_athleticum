@@ -8,9 +8,11 @@ import '../../data/daos/plan_dao.dart';
 import '../../data/daos/session_log_dao.dart';
 import '../../logic/progression.dart';
 import '../../logic/rest_timer.dart';
+import '../../logic/muscle_group_colors.dart';
 import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart';
 import '../settings/app_preferences.dart';
+import '../shared/muscle_area_stripe.dart';
 import 'rest_timer_controller.dart';
 
 final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
@@ -19,6 +21,16 @@ final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
     return db.planDao.getSessionDetails(sessionId);
   },
 );
+
+/// Library rows keyed by id - a plan exercise stores only a name and an id,
+/// so the muscle-area colour has to come from the library entry behind it.
+final exerciseLookupProvider = FutureProvider<Map<String, Exercise>>((
+  ref,
+) async {
+  final db = ref.watch(appDatabaseProvider);
+  final all = await db.exerciseDao.getAllExercises();
+  return {for (final e in all) e.id: e};
+});
 
 /// Execution mode: mobile-optimized session logging, distinct from the
 /// desktop-oriented "creation mode" (Phase 7). Large touch targets, one
@@ -115,6 +127,10 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                         exercise: exercise,
                         forms: _formsFor(exercise, unit),
                         unit: unit,
+                        palette: ref.watch(appPreferencesProvider).colorPalette,
+                        libraryExercise: ref
+                            .watch(exerciseLookupProvider)
+                            .valueOrNull?[exercise.exerciseId],
                         onSetLogged: (form) => _logSet(exercise, form, unit),
                         onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
                       ),
@@ -281,6 +297,8 @@ class _ExerciseCard extends StatelessWidget {
   final PlanExercise exercise;
   final List<_LoggedSetForm> forms;
   final WeightUnit unit;
+  final AppColorPalette palette;
+  final Exercise? libraryExercise;
   final void Function(_LoggedSetForm form) onSetLogged;
   final void Function(_LoggedSetForm form) onSetUnlogged;
 
@@ -288,12 +306,20 @@ class _ExerciseCard extends StatelessWidget {
     required this.exercise,
     required this.forms,
     required this.unit,
+    required this.palette,
+    required this.libraryExercise,
     required this.onSetLogged,
     required this.onSetUnlogged,
   });
 
   @override
   Widget build(BuildContext context) {
+    final area = areaForExercise(
+      muscleGroups: libraryExercise?.muscleGroups ?? '',
+      category: libraryExercise?.category ?? '',
+      movementPattern: libraryExercise?.movementPattern ?? '',
+    );
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -301,9 +327,17 @@ class _ExerciseCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              exercise.exerciseName,
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              children: [
+                MuscleAreaStripe(area: area, palette: palette, height: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    exercise.exerciseName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
             ),
             Text(
               'Target: ${exercise.sets} x ${exercise.reps}'

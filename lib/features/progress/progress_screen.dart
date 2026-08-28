@@ -10,6 +10,7 @@ import '../../logic/units.dart';
 import '../plans/plan_providers.dart';
 import '../settings/app_preferences.dart';
 import 'body_measurements_screen.dart';
+import 'progress_charts.dart';
 import 'progress_providers.dart';
 
 /// The Progress tab: a chooseable week/month overview summary (sessions
@@ -104,6 +105,22 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             data: (summary) =>
                 _SummaryCards(summary: summary, unit: prefs.weightUnit),
           ),
+          if (prefs.showProgressCharts) ...[
+            const SizedBox(height: 16),
+            ref
+                .watch(dailyTotalsProvider(range))
+                .when(
+                  loading: () => const SizedBox(
+                    height: 220,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, _) => Text('Error: $error'),
+                  data: (totals) => ProgressCharts(
+                    totals: totals,
+                    unit: prefs.weightUnit,
+                  ),
+                ),
+          ],
           const SizedBox(height: 24),
           Text(
             'Exercise dashboard',

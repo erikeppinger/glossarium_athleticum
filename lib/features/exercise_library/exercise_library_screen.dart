@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/daos/exercise_dao.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
+import '../../logic/muscle_group_colors.dart';
 import '../history/history_screen.dart';
+import '../settings/app_preferences.dart';
+import '../shared/muscle_area_stripe.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_detail_screen.dart';
@@ -131,10 +134,13 @@ class ExerciseLibraryScreen extends ConsumerWidget {
                 if (exercises.isEmpty) {
                   return const Center(child: Text('No exercises match.'));
                 }
+                final palette = ref.watch(appPreferencesProvider).colorPalette;
                 return ListView.builder(
                   itemCount: exercises.length,
-                  itemBuilder: (context, index) =>
-                      _ExerciseTile(exercise: exercises[index]),
+                  itemBuilder: (context, index) => _ExerciseTile(
+                    exercise: exercises[index],
+                    palette: palette,
+                  ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -173,15 +179,25 @@ class _CategoryChip extends StatelessWidget {
 
 class _ExerciseTile extends StatelessWidget {
   final Exercise exercise;
+  final AppColorPalette palette;
 
-  const _ExerciseTile({required this.exercise});
+  const _ExerciseTile({required this.exercise, required this.palette});
 
   @override
   Widget build(BuildContext context) {
+    final area = areaForExercise(
+      muscleGroups: exercise.muscleGroups,
+      category: exercise.category,
+      movementPattern: exercise.movementPattern,
+    );
+
     return ListTile(
+      // A colour stripe rather than a filled row: it reads at a glance when
+      // scanning, without tinting the text behind it.
+      leading: MuscleAreaStripe(area: area, palette: palette),
       title: Text(exercise.name),
       subtitle: Text(
-        '${exercise.category} • ${exercise.equipment} • ${exercise.difficulty}',
+        '${area.label} • ${exercise.equipment} • ${exercise.difficulty}',
       ),
       trailing: Text(exercise.measurementType),
       onTap: () => Navigator.of(context).push(

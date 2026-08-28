@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../logic/muscle_group_colors.dart' show AppColorPalette;
 import '../../logic/summary_period.dart' show WeekStart, SummaryPeriod;
 import '../../logic/units.dart';
 
@@ -16,6 +17,8 @@ const _weeklyDigestKey = 'weekly_digest_enabled';
 const _reminderMinutesKey = 'reminder_time_minutes';
 const _digestWeekdayKey = 'digest_weekday';
 const _hasSeenOnboardingKey = 'has_seen_onboarding';
+const _showProgressChartsKey = 'show_progress_charts';
+const _colorPaletteKey = 'color_palette';
 
 class AppPreferences {
   final WeightUnit weightUnit;
@@ -38,6 +41,15 @@ class AppPreferences {
   /// Whether the first-launch tour has been completed or skipped.
   final bool hasSeenOnboarding;
 
+  /// Whether the Progress tab shows its swipeable trend charts above the
+  /// numeric summary. On for people who read shapes faster than numbers;
+  /// off for a compact numbers-only view.
+  final bool showProgressCharts;
+
+  /// Which muscle-group colour palette to use across the library, plans and
+  /// sessions - includes colour-vision-deficiency-safe options.
+  final AppColorPalette colorPalette;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -48,6 +60,8 @@ class AppPreferences {
     this.reminderTimeMinutes = 8 * 60,
     this.digestWeekday = DateTime.monday,
     this.hasSeenOnboarding = false,
+    this.showProgressCharts = true,
+    this.colorPalette = AppColorPalette.pastel,
   });
 
   AppPreferences copyWith({
@@ -60,6 +74,8 @@ class AppPreferences {
     int? reminderTimeMinutes,
     int? digestWeekday,
     bool? hasSeenOnboarding,
+    bool? showProgressCharts,
+    AppColorPalette? colorPalette,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -71,6 +87,8 @@ class AppPreferences {
     reminderTimeMinutes: reminderTimeMinutes ?? this.reminderTimeMinutes,
     digestWeekday: digestWeekday ?? this.digestWeekday,
     hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
+    showProgressCharts: showProgressCharts ?? this.showProgressCharts,
+    colorPalette: colorPalette ?? this.colorPalette,
   );
 }
 
@@ -102,6 +120,11 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       reminderTimeMinutes: prefs.getInt(_reminderMinutesKey) ?? 8 * 60,
       digestWeekday: prefs.getInt(_digestWeekdayKey) ?? DateTime.monday,
       hasSeenOnboarding: prefs.getBool(_hasSeenOnboardingKey) ?? false,
+      showProgressCharts: prefs.getBool(_showProgressChartsKey) ?? true,
+      colorPalette: AppColorPalette.values.firstWhere(
+        (p) => p.name == prefs.getString(_colorPaletteKey),
+        orElse: () => AppColorPalette.pastel,
+      ),
     );
   }
 
@@ -157,6 +180,18 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(hasSeenOnboarding: seen);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hasSeenOnboardingKey, seen);
+  }
+
+  Future<void> setShowProgressCharts(bool show) async {
+    state = state.copyWith(showProgressCharts: show);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showProgressChartsKey, show);
+  }
+
+  Future<void> setColorPalette(AppColorPalette palette) async {
+    state = state.copyWith(colorPalette: palette);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_colorPaletteKey, palette.name);
   }
 }
 

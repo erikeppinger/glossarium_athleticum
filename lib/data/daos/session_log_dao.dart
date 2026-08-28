@@ -204,6 +204,63 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  /// Per-day totals across [start, end) - the series behind the Progress
+  /// tab's trend charts. Days with no logged work are omitted; the caller
+  /// decides whether to render gaps or a continuous line.
+  Future<List<DailyTotals>> getDailyTotals({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final query = select(loggedSets).join([
+      innerJoin(
+        sessionLogs,
+        sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+      ),
+    ])..where(
+      sessionLogs.loggedAt.isBiggerOrEqualValue(start) &
+          sessionLogs.loggedAt.isSmallerThanValue(end),
+    );
+    final rows = await query.get();
+
+    final byDay = <DateTime, List<TypedResult>>{};
+    for (final row in rows) {
+      final loggedAt = row.readTable(sessionLogs).loggedAt;
+      final day = DateTime(loggedAt.year, loggedAt.month, loggedAt.day);
+      byDay.putIfAbsent(day, () => []).add(row);
+    }
+
+    final result = <DailyTotals>[];
+    for (final entry in byDay.entries) {
+      var volume = 0.0;
+      var sets = 0;
+      var reps = 0;
+      var prs = 0;
+      final sessionIds = <String>{};
+      for (final row in entry.value) {
+        final set = row.readTable(loggedSets);
+        sets++;
+        if (set.reps != null) reps += set.reps!;
+        if (set.weight != null && set.reps != null) {
+          volume += set.weight! * set.reps!;
+        }
+        if (set.isPr) prs++;
+        sessionIds.add(row.readTable(sessionLogs).id);
+      }
+      result.add(
+        DailyTotals(
+          day: entry.key,
+          volume: volume,
+          sets: sets,
+          reps: reps,
+          prs: prs,
+          sessions: sessionIds.length,
+        ),
+      );
+    }
+    result.sort((a, b) => a.day.compareTo(b.day));
+    return result;
+  }
+
   /// The most recent logged top (heaviest) set for every exercise that has
   /// weight-based history - the Progress tab's cross-exercise dashboard.
   /// Same weight-only scope limitation as [getProgressionHistory].
@@ -286,6 +343,24 @@ class PeriodSummary {
     required this.sessionsCompleted,
     required this.totalVolume,
     required this.prCount,
+  });
+}
+
+class DailyTotals {
+  final DateTime day;
+  final double volume;
+  final int sets;
+  final int reps;
+  final int prs;
+  final int sessions;
+
+  const DailyTotals({
+    required this.day,
+    required this.volume,
+    required this.sets,
+    required this.reps,
+    required this.prs,
+    required this.sessions,
   });
 }
 

@@ -183,6 +183,87 @@ void main() {
     });
   });
 
+  group('getDailyTotals', () {
+    test('aggregates volume/sets/reps/PRs per day within the range', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 10),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60, isPr: true),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 6, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-2',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 12),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 5, weight: 70),
+        ],
+      );
+
+      final totals = await db.sessionLogDao.getDailyTotals(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+
+      expect(totals, hasLength(2));
+      expect(totals[0].day, DateTime(2026, 8, 10));
+      expect(totals[0].volume, 8 * 60.0 + 6 * 60.0);
+      expect(totals[0].sets, 2);
+      expect(totals[0].reps, 14);
+      expect(totals[0].prs, 1);
+      expect(totals[0].sessions, 1);
+      expect(totals[1].day, DateTime(2026, 8, 12));
+      expect(totals[1].volume, 5 * 70.0);
+    });
+
+    test('is ordered oldest-first, so a chart reads left to right', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-late',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 5, weight: 70),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-early',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 5),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 5, weight: 60),
+        ],
+      );
+
+      final totals = await db.sessionLogDao.getDailyTotals(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+      expect(totals.map((t) => t.day), [
+        DateTime(2026, 8, 5),
+        DateTime(2026, 8, 20),
+      ]);
+    });
+
+    test('excludes days outside the range', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 7, 31),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 5, weight: 60),
+        ],
+      );
+      final totals = await db.sessionLogDao.getDailyTotals(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+      expect(totals, isEmpty);
+    });
+  });
+
   group('getLatestTopSetPerExercise', () {
     test('picks the heaviest set from the most recent session', () async {
       await db.sessionLogDao.createSessionLog(

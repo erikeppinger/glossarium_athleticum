@@ -14,9 +14,11 @@ import '../../import/backup_import.dart';
 import '../../logic/units.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
+import '../../logic/muscle_group_colors.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../onboarding/onboarding_screen.dart';
 import 'app_preferences.dart';
+import 'color_palette_screen.dart';
 import 'backup_dialogs.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -45,6 +47,16 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(_themeModeLabel(prefs.themeMode)),
             onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
           ),
+          ListTile(
+            leading: const Icon(Icons.palette_outlined),
+            title: const Text('Colour palette'),
+            subtitle: Text(prefs.colorPalette.label),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const ColorPaletteScreen(),
+              ),
+            ),
+          ),
 
           const _SectionHeader('Calendar & progress'),
           ListTile(
@@ -62,6 +74,17 @@ class SettingsScreen extends ConsumerWidget {
               prefs.summaryPeriod == SummaryPeriod.week ? 'Weekly' : 'Monthly',
             ),
             onTap: () => _pickSummaryPeriod(context, ref, prefs.summaryPeriod),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.bar_chart),
+            title: const Text('Show progress charts'),
+            subtitle: const Text(
+              'Swipeable volume, sets, reps, and PR charts on the Progress tab.',
+            ),
+            value: prefs.showProgressCharts,
+            onChanged: (show) => ref
+                .read(appPreferencesProvider.notifier)
+                .setShowProgressCharts(show),
           ),
 
           const _SectionHeader('Notifications'),
