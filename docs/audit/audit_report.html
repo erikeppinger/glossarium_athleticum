@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Training App — User Audit Report</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f1f24;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    margin: 0;
+  }
+  h1 { font-size: 22pt; margin: 0 0 2mm; letter-spacing: -0.3pt; }
+  h2 {
+    font-size: 13pt;
+    margin: 9mm 0 3mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 1.5pt solid #5b4a8a;
+    color: #3d2f63;
+    page-break-after: avoid;
+  }
+  h3 { font-size: 11pt; margin: 5mm 0 1.5mm; page-break-after: avoid; }
+  p { margin: 0 0 2.5mm; }
+  .sub { color: #6b6b76; font-size: 9.5pt; margin-bottom: 6mm; }
+  .meta {
+    background: #f4f2f9;
+    border-left: 3pt solid #5b4a8a;
+    padding: 3mm 4mm;
+    margin-bottom: 7mm;
+    font-size: 9.5pt;
+  }
+  .meta div { margin: 0.5mm 0; }
+  table { width: 100%; border-collapse: collapse; margin: 3mm 0 5mm; font-size: 9.5pt; }
+  th {
+    text-align: left;
+    background: #efedf5;
+    padding: 2mm 2.5mm;
+    border-bottom: 1pt solid #cfc9de;
+    font-weight: 600;
+  }
+  td { padding: 2mm 2.5mm; border-bottom: 0.5pt solid #e2e0e8; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+  .sev {
+    display: inline-block;
+    padding: 0.6mm 2mm;
+    border-radius: 2mm;
+    font-size: 8pt;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .high { background: #b3261e; }
+  .med  { background: #b26a00; }
+  .low  { background: #4a6572; }
+  .fixed { background: #2e6b4f; }
+  .finding {
+    page-break-inside: avoid;
+    margin-bottom: 5mm;
+    padding-left: 3mm;
+    border-left: 2pt solid #ddd9e8;
+  }
+  .finding h3 { margin-top: 0; }
+  .label { font-weight: 600; color: #4a4a55; }
+  code {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 9pt;
+    background: #f2f1f6;
+    padding: 0.3mm 1mm;
+    border-radius: 1mm;
+  }
+  ul { margin: 0 0 3mm; padding-left: 5mm; }
+  li { margin-bottom: 1mm; }
+  .foot {
+    margin-top: 8mm;
+    padding-top: 3mm;
+    border-top: 0.5pt solid #d8d5e0;
+    font-size: 8.5pt;
+    color: #6b6b76;
+  }
+</style>
+</head>
+<body>
+
+<h1>Training App — User Audit</h1>
+<div class="sub">Simulated first-time-user walkthrough &amp; capability audit</div>
+
+<div class="meta">
+  <div><span class="label">Build audited:</span> commit <code>6290d46</code>, Android debug build on emulator (API 35, GMT)</div>
+  <div><span class="label">Date:</span> 28 August 2026</div>
+  <div><span class="label">Method:</span> new-user task walkthrough on device, cross-checked against the codebase for capabilities that exist in the data layer but are unreachable from the UI</div>
+  <div><span class="label">Baseline:</span> 179 automated tests passing, <code>flutter analyze</code> clean</div>
+</div>
+
+<p>
+  This audit simulates a person picking the app up for the first time and trying to
+  do the obvious things: find an exercise, build a plan, train, and look back at
+  what they did. Findings are ordered by how likely they are to block or mislead a
+  real user, not by how hard they are to fix.
+</p>
+
+<h2>Summary of findings</h2>
+
+<table>
+  <tr>
+    <th style="width:9%">#</th>
+    <th style="width:15%">Severity</th>
+    <th style="width:46%">Finding</th>
+    <th style="width:30%">Area</th>
+  </tr>
+  <tr><td>1</td><td><span class="sev high">High</span></td><td>A plan cannot be deleted or renamed</td><td>Plans</td></tr>
+  <tr><td>2</td><td><span class="sev high">High</span></td><td>A completed workout cannot be reviewed afterwards</td><td>History</td></tr>
+  <tr><td>3</td><td><span class="sev med">Medium</span></td><td>Calendar says “No sessions on this day” before any day is picked</td><td>Calendar</td></tr>
+  <tr><td>4</td><td><span class="sev med">Medium</span></td><td>Leaving a session mid-workout silently discards it</td><td>Execution</td></tr>
+  <tr><td>5</td><td><span class="sev med">Medium</span></td><td>A library exercise cannot be edited after creation</td><td>Exercise library</td></tr>
+  <tr><td>6</td><td><span class="sev med">Medium</span></td><td>Progression advice always reads in kg, ignoring the lbs setting</td><td>Units</td></tr>
+  <tr><td>7</td><td><span class="sev low">Low</span></td><td>Body measurements are cm-only with no imperial option</td><td>Units</td></tr>
+  <tr><td>8</td><td><span class="sev low">Low</span></td><td>Imported sessions show a placeholder day (“Any”)</td><td>Plans</td></tr>
+  <tr><td>9</td><td><span class="sev low">Low</span></td><td>No search or filter inside a large plan</td><td>Plans</td></tr>
+  <tr><td>10</td><td><span class="sev fixed">Fixed</span></td><td>Chart Y-axis labels overlapped near the top</td><td>Progress</td></tr>
+  <tr><td>11</td><td><span class="sev fixed">Fixed</span></td><td>Per-exercise history was unreachable from the dashboard</td><td>Progress</td></tr>
+  <tr><td>12</td><td><span class="sev fixed">Fixed</span></td><td>History chart axis had no unit label</td><td>Progress</td></tr>
+</table>
+
+<h2>Detailed findings</h2>
+
+<div class="finding">
+<h3>1. A plan cannot be deleted or renamed <span class="sev high">High</span></h3>
+<p>
+  <span class="label">What happens:</span> After a few imports the plan list accumulates
+  entries — during this audit the device held <em>“training_plan_template (second edit)”</em>
+  and <em>“neu”</em> alongside the real programme — with no way to remove or rename any of them.
+</p>
+<p>
+  <span class="label">Why it matters:</span> The only route to a clean list is
+  <em>Settings → Delete all data</em>, which also destroys every logged workout. A user
+  tidying up their plan list can lose their entire training history in the process.
+</p>
+<p>
+  <span class="label">Note:</span> <code>PlanDao.deletePlan()</code> already exists and is
+  unit-tested, including correct cascade behaviour. This is purely a missing UI entry point,
+  so it is a small change with a large usability payoff.
+</p>
+</div>
+
+<div class="finding">
+<h3>2. A completed workout cannot be reviewed afterwards <span class="sev high">High</span></h3>
+<p>
+  <span class="label">What happens:</span> Finishing a session writes a full record —
+  every set, rep, weight, RPE and PR flag. None of it is readable afterwards. The only
+  views over history are per-exercise charts and the Progress dashboard.
+</p>
+<p>
+  <span class="label">Why it matters:</span> “What did I actually do on Monday?” is one of
+  the most common questions a trainee asks, and it is the natural way to decide what to
+  load next session. The data is captured but effectively write-only.
+</p>
+<p>
+  <span class="label">Suggested shape:</span> Tapping a completed (green-check) day on the
+  calendar opens that session’s log. <code>SessionLogDao.getLogsForPlanSession()</code> and
+  <code>getLoggedSetsForSessionLog()</code> already return everything needed.
+</p>
+</div>
+
+<div class="finding">
+<h3>3. Calendar shows a misleading empty state <span class="sev med">Medium</span></h3>
+<p>
+  <span class="label">What happens:</span> On opening the Calendar tab, the panel below reads
+  <em>“No sessions on this day.”</em> — while today’s date visibly carries a scheduled-session dot.
+</p>
+<p>
+  <span class="label">Cause:</span> <code>_selectedDay</code> starts as <code>null</code>, so
+  the list is empty until the user taps a date, but the message is phrased as though a day
+  had been chosen and found empty.
+</p>
+<p>
+  <span class="label">Fix:</span> Either default the selection to today, or word the
+  no-selection state differently (“Select a day to see its sessions”). The first is likely
+  better — today is almost always what the user wants.
+</p>
+</div>
+
+<div class="finding">
+<h3>4. Leaving a session mid-workout silently discards it <span class="sev med">Medium</span></h3>
+<p>
+  <span class="label">What happens:</span> Execution mode holds all logged sets in memory and
+  only writes to the database on <em>Finish session</em>. Pressing back, or being pulled away
+  by the OS, discards everything with no warning and no recovery.
+</p>
+<p>
+  <span class="label">Why it matters:</span> This was an accepted simplification early on, but
+  the app now actively invites leaving mid-session — the floating rest timer exists precisely
+  so users can switch tabs during a rest. The feature encourages the exact behaviour that
+  loses data.
+</p>
+<p>
+  <span class="label">Fix (cheap):</span> A confirmation prompt on back-navigation when any set
+  is logged. <span class="label">Fix (better):</span> Persist sets as they are logged and treat
+  <em>Finish</em> as closing the session.
+</p>
+</div>
+
+<div class="finding">
+<h3>5. A library exercise cannot be edited after creation <span class="sev med">Medium</span></h3>
+<p>
+  Creating a custom exercise captures the full schema, but nothing can be corrected afterwards
+  — a typo in the name, or a missing video link, is permanent. There is also no way to delete a
+  custom exercise, although <code>ExerciseDao.deleteExercise()</code> exists. The detail screen
+  is read-only.
+</p>
+</div>
+
+<div class="finding">
+<h3>6. Progression advice ignores the lbs setting <span class="sev med">Medium</span></h3>
+<p>
+  With the weight unit set to pounds, the auto-progression suggestion on the history screen
+  still reads in kilograms — for example <em>“try 62.5kg next”</em> — because
+  <code>progression.dart</code>’s <code>formatWeight()</code> hard-codes the suffix and does no
+  conversion. Every other weight display converts correctly.
+</p>
+<p>
+  This is a correctness bug, not just cosmetic: a user training in pounds is being handed a
+  number in the wrong unit, with the wrong unit named next to it.
+</p>
+</div>
+
+<div class="finding">
+<h3>7. Body measurements are centimetre-only <span class="sev low">Low</span></h3>
+<p>
+  Circumference fields are labelled and stored in centimetres regardless of the weight-unit
+  preference. A user who selected pounds has reasonably signalled a preference for imperial
+  units, and will likely expect inches. Bodyweight itself does convert correctly.
+</p>
+</div>
+
+<div class="finding">
+<h3>8. Imported sessions show a placeholder day <span class="sev low">Low</span></h3>
+<p>
+  Sessions imported without a weekday display as <em>“Week 1 • Any • Block 1 – Legs”</em>.
+  “Any” is an internal placeholder surfacing in the UI; it reads as though it were a real
+  choice the user made. Omitting the segment entirely would be clearer.
+</p>
+</div>
+
+<div class="finding">
+<h3>9. No search inside a large plan <span class="sev low">Low</span></h3>
+<p>
+  The nine-block programme used for testing contains 30+ sessions in a single scrollable list.
+  There is no search, filter, or collapse-by-block. The exercise library has search; plan detail
+  does not, and it is the screen where a long list is most likely.
+</p>
+</div>
+
+<h2>Fixed during this audit</h2>
+
+<div class="finding">
+<h3>10–12. Chart and labelling defects <span class="sev fixed">Fixed</span></h3>
+<ul>
+  <li>
+    <span class="label">Y-axis label overlap.</span> The volume chart drew “1K” and “1.1K” on top
+    of each other. Fixed by a shared <code>niceAxis()</code> helper using Heckbert
+    “nice numbers” stepping: the axis maximum is now always an exact multiple of the gridline
+    interval, so the top value <em>is</em> a tick and no stray label can crowd one. Applied to
+    the history chart as well, replacing its hard-coded version.
+  </li>
+  <li>
+    <span class="label">Dashboard rows were dead ends.</span> The Progress dashboard listed each
+    exercise’s latest top set but could not be tapped, so the trend behind that number was
+    unreachable. Rows now open the exercise’s full weight-over-time chart.
+  </li>
+  <li>
+    <span class="label">Unlabelled chart axis.</span> The history chart’s Y axis showed bare
+    numbers with no unit. It now names the active unit in the title.
+  </li>
+</ul>
+</div>
+
+<h2>What held up well</h2>
+<ul>
+  <li><span class="label">Data safety.</span> Backup/restore round-trips cleanly, including
+      forward-compatibility: a backup taken before body measurements existed still restores.
+      Destructive actions are consistently confirmed.</li>
+  <li><span class="label">Unit handling.</span> Weight is stored in kilograms throughout and
+      converted only at display boundaries — the correct architecture, and it holds everywhere
+      except the progression text noted above.</li>
+  <li><span class="label">Notifications.</span> The Android 13 permission prompt fires at the
+      right moment, the switch correctly stays off if permission is refused, and scheduled
+      alarms were verified landing at the right wall-clock times via <code>dumpsys alarm</code>.</li>
+  <li><span class="label">Accessibility.</span> Colour is never the sole carrier of meaning —
+      muscle areas always show their name as text beside the colour — and the palette picker
+      previews real swatches so the choice can be made by eye.</li>
+  <li><span class="label">Empty states.</span> Newly added screens explain what to do rather
+      than showing a blank page. The calendar is the one exception, noted above.</li>
+</ul>
+
+<h2>Recommended order of work</h2>
+<ol>
+  <li>Delete/rename a plan (#1) — highest ratio of user pain to implementation cost; the data
+      layer is already done and tested.</li>
+  <li>Session log review (#2) — unlocks data the app already collects.</li>
+  <li>Progression unit bug (#6) — small, and currently shows wrong numbers.</li>
+  <li>Abandoned-session protection (#4) — at minimum a confirmation prompt.</li>
+  <li>Calendar empty state (#3) — a one-line change.</li>
+  <li>Edit/delete a library exercise (#5).</li>
+  <li>Remaining low-severity items (#7–#9) as convenient.</li>
+</ol>
+
+<div class="foot">
+  Training App — local-first training planner. Audit performed against commit <code>6290d46</code>.
+  Findings 10–12 were fixed in the same pass and are recorded for completeness.
+</div>
+
+</body>
+</html>

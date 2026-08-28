@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Training App — Overview</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f1f24;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    margin: 0;
+  }
+  .hero {
+    background: linear-gradient(135deg, #5b4a8a 0%, #7d5fa8 100%);
+    color: #fff;
+    padding: 12mm 10mm;
+    border-radius: 4mm;
+    margin-bottom: 8mm;
+  }
+  .hero h1 { font-size: 27pt; margin: 0 0 2mm; letter-spacing: -0.5pt; }
+  .hero .tag { font-size: 12.5pt; opacity: 0.95; margin: 0 0 4mm; font-weight: 300; }
+  .hero .line { font-size: 10pt; opacity: 0.88; margin: 0; }
+  h2 {
+    font-size: 13pt;
+    margin: 8mm 0 3mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 1.5pt solid #5b4a8a;
+    color: #3d2f63;
+    page-break-after: avoid;
+  }
+  p { margin: 0 0 3mm; }
+  .grid { display: flex; flex-wrap: wrap; gap: 4mm; margin-bottom: 4mm; }
+  .card {
+    flex: 1 1 calc(50% - 2mm);
+    background: #f7f6fa;
+    border: 0.5pt solid #ddd9e8;
+    border-radius: 3mm;
+    padding: 4mm 4.5mm;
+    page-break-inside: avoid;
+  }
+  .card h3 {
+    font-size: 10.5pt;
+    margin: 0 0 1.5mm;
+    color: #3d2f63;
+  }
+  .card p { font-size: 9.5pt; margin: 0; color: #45454f; }
+  .pill {
+    display: inline-block;
+    background: #ece8f5;
+    color: #3d2f63;
+    border-radius: 10mm;
+    padding: 1mm 3mm;
+    font-size: 8.5pt;
+    font-weight: 600;
+    margin: 0 1.5mm 1.5mm 0;
+  }
+  .highlight {
+    background: #f0f7f3;
+    border-left: 3pt solid #2e6b4f;
+    padding: 3.5mm 4mm;
+    border-radius: 0 2mm 2mm 0;
+    margin: 4mm 0;
+    page-break-inside: avoid;
+  }
+  .highlight strong { color: #1f4d38; }
+  ul { margin: 0 0 3mm; padding-left: 5mm; }
+  li { margin-bottom: 1.2mm; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-bottom: 4mm; }
+  th { text-align: left; background: #efedf5; padding: 2mm 2.5mm; font-weight: 600; }
+  td { padding: 2mm 2.5mm; border-bottom: 0.5pt solid #e2e0e8; }
+  .foot {
+    margin-top: 7mm;
+    padding-top: 3mm;
+    border-top: 0.5pt solid #d8d5e0;
+    font-size: 8.5pt;
+    color: #6b6b76;
+  }
+  code {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 9pt;
+    background: #f2f1f6;
+    padding: 0.3mm 1mm;
+    border-radius: 1mm;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Training App</h1>
+  <p class="tag">Plan it, train it, see it work — without handing your data to anyone.</p>
+  <p class="line">A local-first strength &amp; conditioning planner for Android. No account, no cloud, no tracking.</p>
+</div>
+
+<h2>The idea</h2>
+<p>
+  Most training apps make you choose between a real programme and a usable phone experience:
+  either you keep a spreadsheet that no gym floor is comfortable with, or you use an app that
+  wants a subscription, an account, and your workout history on someone else’s server.
+</p>
+<p>
+  This app takes the spreadsheet you already have, turns it into something you can actually
+  train from, and keeps every byte on your own device.
+</p>
+
+<h2>What it does</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>Bring your own programme</h3>
+    <p>Import a plan from a spreadsheet or plan file. Unrecognised exercise names are never
+       silently guessed — you resolve each one, or add it as a custom exercise.</p>
+  </div>
+  <div class="card">
+    <h3>An exercise library that explains itself</h3>
+    <p>Descriptions, cues, safety notes and reference videos. Search, filter by category or
+       muscle area, or by who created an exercise — you, or a plan you imported.</p>
+  </div>
+  <div class="card">
+    <h3>Built for the gym floor</h3>
+    <p>Execution mode logs every set inline with big touch targets. A rest timer runs between
+       sets and follows you across the app, so checking something mid-rest doesn’t lose it.</p>
+  </div>
+  <div class="card">
+    <h3>Schedule how you like</h3>
+    <p>Drop sessions onto a calendar in any order. Completed days are marked. Optional
+       reminders on training days, plus a weekly overview of what’s planned.</p>
+  </div>
+  <div class="card">
+    <h3>Progress you can read at a glance</h3>
+    <p>Week or month summaries — sessions completed, volume, personal records — with swipeable
+       trend charts and a per-exercise drill-down into weight over time.</p>
+  </div>
+  <div class="card">
+    <h3>Track the body, not just the lifts</h3>
+    <p>Bodyweight, body fat and five circumference measurements over time, charted alongside
+       your training history.</p>
+  </div>
+</div>
+
+<div class="highlight">
+  <strong>Your data stays yours.</strong> Everything lives in a database on your phone.
+  There is no account and no server — the release build does not request internet permission
+  at all. Backups are encrypted with a passphrase you choose (Argon2id + AES-256-GCM) and go
+  wherever you put them. Sharing a plan with a training partner uses the normal Android share
+  sheet — it happens because you tapped share, never in the background. The only outbound
+  links are the reference-video URLs you tap yourself, which open in your browser.
+</div>
+
+<h2>Details worth noticing</h2>
+
+<table>
+  <tr><th style="width:34%">Detail</th><th>Why it’s there</th></tr>
+  <tr>
+    <td>Rest timer survives leaving the screen</td>
+    <td>Stored as a fixed end time, not a ticking counter — it can’t drift or reset when the
+        app is backgrounded, and it vibrates when rest is up.</td>
+  </tr>
+  <tr>
+    <td>Personal records detected automatically</td>
+    <td>Compared against your full history plus earlier sets in the same session, so a PR is
+        flagged the moment you hit it.</td>
+  </tr>
+  <tr>
+    <td>Progression suggestions</td>
+    <td>Reads your recent sessions and suggests a next load — including recognising a plateau
+        or a missed target rather than pushing weight blindly.</td>
+  </tr>
+  <tr>
+    <td>Colour-blind-safe palettes</td>
+    <td>Muscle areas are colour-coded across the app, with Okabe–Ito and Paul Tol schemes and a
+        hue-free option. Colour is always paired with a text label, never the only signal.</td>
+  </tr>
+  <tr>
+    <td>kg or lbs, Monday or Sunday</td>
+    <td>Weight is stored in kilograms and converted only for display, so switching units never
+        rewrites or corrupts your history.</td>
+  </tr>
+  <tr>
+    <td>Plans stay editable</td>
+    <td>Change sets, reps, rest or notes on an existing session; reorder or remove exercises.
+        A programme you follow for months is one you’ll want to adjust.</td>
+  </tr>
+</table>
+
+<h2>Where it stands</h2>
+<p>
+  The app is feature-complete for personal use and has been exercised end-to-end with a real
+  nine-block strength programme — imported from a spreadsheet, cross-referenced against a
+  second source for exercise descriptions and video links, scheduled, trained, and reviewed.
+</p>
+<div>
+  <span class="pill">179 automated tests</span>
+  <span class="pill">Static analysis clean</span>
+  <span class="pill">Encrypted backups</span>
+  <span class="pill">No internet permission in release builds</span>
+  <span class="pill">Android · iOS &amp; desktop planned</span>
+</div>
+
+<h2>What’s next</h2>
+<ul>
+  <li>Reviewing a completed workout session in full, not just its aggregate numbers.</li>
+  <li>Managing the plan list — renaming and deleting plans.</li>
+  <li>Distribution through Play Store internal testing, with in-app feedback, to get the app
+      in front of real users before broadening it.</li>
+</ul>
+
+<div class="foot">
+  Training App — local-first training planner. Built with Flutter; data stored locally with
+  Drift/SQLite. Prepared 28 August 2026.
+</div>
+
+</body>
+</html>
