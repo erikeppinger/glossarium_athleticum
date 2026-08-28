@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../history/history_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
+import 'create_exercise_screen.dart';
 import 'exercise_detail_screen.dart';
 import 'exercise_library_providers.dart';
 
@@ -17,7 +18,20 @@ class ExerciseLibraryScreen extends ConsumerWidget {
     final selectedCategory = ref.watch(exerciseCategoryFilterProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Exercise Library')),
+      appBar: AppBar(
+        title: const Text('Exercise Library'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Create exercise',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const CreateExerciseScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
