@@ -11,6 +11,10 @@ const _weightUnitKey = 'weight_unit';
 const _weekStartKey = 'week_start';
 const _summaryPeriodKey = 'summary_period';
 const _themeModeKey = 'theme_mode';
+const _workoutRemindersKey = 'workout_reminders_enabled';
+const _weeklyDigestKey = 'weekly_digest_enabled';
+const _reminderMinutesKey = 'reminder_time_minutes';
+const _digestWeekdayKey = 'digest_weekday';
 
 class AppPreferences {
   final WeightUnit weightUnit;
@@ -18,11 +22,27 @@ class AppPreferences {
   final SummaryPeriod summaryPeriod;
   final ThemeMode themeMode;
 
+  /// A reminder on the morning of each scheduled workout.
+  final bool workoutRemindersEnabled;
+
+  /// A weekly "here's your training week" overview.
+  final bool weeklyDigestEnabled;
+
+  /// Minutes past midnight that reminders fire at (shared by both kinds).
+  final int reminderTimeMinutes;
+
+  /// Which weekday the weekly digest lands on (DateTime.monday..sunday).
+  final int digestWeekday;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
     this.summaryPeriod = SummaryPeriod.week,
     this.themeMode = ThemeMode.system,
+    this.workoutRemindersEnabled = false,
+    this.weeklyDigestEnabled = false,
+    this.reminderTimeMinutes = 8 * 60,
+    this.digestWeekday = DateTime.monday,
   });
 
   AppPreferences copyWith({
@@ -30,11 +50,20 @@ class AppPreferences {
     WeekStart? weekStart,
     SummaryPeriod? summaryPeriod,
     ThemeMode? themeMode,
+    bool? workoutRemindersEnabled,
+    bool? weeklyDigestEnabled,
+    int? reminderTimeMinutes,
+    int? digestWeekday,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
     summaryPeriod: summaryPeriod ?? this.summaryPeriod,
     themeMode: themeMode ?? this.themeMode,
+    workoutRemindersEnabled:
+        workoutRemindersEnabled ?? this.workoutRemindersEnabled,
+    weeklyDigestEnabled: weeklyDigestEnabled ?? this.weeklyDigestEnabled,
+    reminderTimeMinutes: reminderTimeMinutes ?? this.reminderTimeMinutes,
+    digestWeekday: digestWeekday ?? this.digestWeekday,
   );
 }
 
@@ -61,6 +90,10 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
         'dark' => ThemeMode.dark,
         _ => ThemeMode.system,
       },
+      workoutRemindersEnabled: prefs.getBool(_workoutRemindersKey) ?? false,
+      weeklyDigestEnabled: prefs.getBool(_weeklyDigestKey) ?? false,
+      reminderTimeMinutes: prefs.getInt(_reminderMinutesKey) ?? 8 * 60,
+      digestWeekday: prefs.getInt(_digestWeekdayKey) ?? DateTime.monday,
     );
   }
 
@@ -86,6 +119,30 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(themeMode: mode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_themeModeKey, mode.name);
+  }
+
+  Future<void> setWorkoutRemindersEnabled(bool enabled) async {
+    state = state.copyWith(workoutRemindersEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_workoutRemindersKey, enabled);
+  }
+
+  Future<void> setWeeklyDigestEnabled(bool enabled) async {
+    state = state.copyWith(weeklyDigestEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_weeklyDigestKey, enabled);
+  }
+
+  Future<void> setReminderTimeMinutes(int minutes) async {
+    state = state.copyWith(reminderTimeMinutes: minutes);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_reminderMinutesKey, minutes);
+  }
+
+  Future<void> setDigestWeekday(int weekday) async {
+    state = state.copyWith(digestWeekday: weekday);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_digestWeekdayKey, weekday);
   }
 }
 

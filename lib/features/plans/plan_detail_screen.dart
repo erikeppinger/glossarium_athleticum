@@ -16,6 +16,7 @@ import '../../data/daos/plan_dao.dart';
 import '../../export/plan_export.dart';
 import '../calendar/calendar_screen.dart';
 import '../execution/start_session_helper.dart';
+import '../notifications/reminder_coordinator.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
 
@@ -153,6 +154,8 @@ class PlanDetailScreen extends ConsumerWidget {
     await db.planDao.assignSessionDate(session.id, picked);
     ref.invalidate(planDetailsProvider(planId));
     ref.invalidate(scheduledSessionsProvider);
+    // What's scheduled changed, so any pending workout reminders are stale.
+    await resyncReminders(ref);
   }
 
   Future<void> _handleExportAction(

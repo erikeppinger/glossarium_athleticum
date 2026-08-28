@@ -14,6 +14,7 @@ import '../../import/backup_import.dart';
 import '../../logic/units.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
+import '../notifications/reminder_coordinator.dart';
 import 'app_preferences.dart';
 import 'backup_dialogs.dart';
 
@@ -58,6 +59,41 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(_themeModeLabel(prefs.themeMode)),
             onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
           ),
+          const Divider(),
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('Workout reminders'),
+            subtitle: const Text(
+              'A reminder on the day of each scheduled workout.',
+            ),
+            value: prefs.workoutRemindersEnabled,
+            onChanged: (enabled) =>
+                _toggleWorkoutReminders(context, ref, enabled),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.view_week_outlined),
+            title: const Text('Weekly overview'),
+            subtitle: Text(
+              'A weekly summary of planned sessions, on ${_weekdayName(prefs.digestWeekday)}.',
+            ),
+            value: prefs.weeklyDigestEnabled,
+            onChanged: (enabled) => _toggleWeeklyDigest(context, ref, enabled),
+          ),
+          if (prefs.workoutRemindersEnabled || prefs.weeklyDigestEnabled) ...[
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('Reminder time'),
+              subtitle: Text(_formatMinutes(prefs.reminderTimeMinutes)),
+              onTap: () => _pickReminderTime(context, ref, prefs.reminderTimeMinutes),
+            ),
+            if (prefs.weeklyDigestEnabled)
+              ListTile(
+                leading: const Icon(Icons.today),
+                title: const Text('Weekly overview day'),
+                subtitle: Text(_weekdayName(prefs.digestWeekday)),
+                onTap: () => _pickDigestWeekday(context, ref, prefs.digestWeekday),
+              ),
+          ],
           const Divider(),
           ListTile(
             leading: const Icon(Icons.feedback_outlined),
@@ -194,6 +230,106 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (choice == null || choice == current) return;
     await ref.read(appPreferencesProvider.notifier).setThemeMode(choice);
+  }
+
+  static const _weekdayNames = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+
+  String _weekdayName(int weekday) => _weekdayNames[weekday - 1];
+
+  String _formatMinutes(int minutes) {
+    final h = (minutes ~/ 60).toString().padLeft(2, '0');
+    final m = (minutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  /// Turning a reminder on needs the OS permission first - if it's refused,
+  /// the switch stays off rather than silently pretending to be enabled.
+  Future<bool> _ensurePermission(BuildContext context, WidgetRef ref) async {
+    final granted = await ref
+        .read(notificationServiceProvider)
+        .requestPermissions();
+    if (!granted && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Notifications are turned off for this app. Enable them in '
+            'Android settings to use reminders.',
+          ),
+        ),
+      );
+    }
+    return granted;
+  }
+
+  Future<void> _toggleWorkoutReminders(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    if (enabled && !await _ensurePermission(context, ref)) return;
+    await ref
+        .read(appPreferencesProvider.notifier)
+        .setWorkoutRemindersEnabled(enabled);
+    await resyncReminders(ref);
+  }
+
+  Future<void> _toggleWeeklyDigest(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    if (enabled && !await _ensurePermission(context, ref)) return;
+    await ref
+        .read(appPreferencesProvider.notifier)
+        .setWeeklyDigestEnabled(enabled);
+    await resyncReminders(ref);
+  }
+
+  Future<void> _pickReminderTime(
+    BuildContext context,
+    WidgetRef ref,
+    int current,
+  ) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+    await ref
+        .read(appPreferencesProvider.notifier)
+        .setReminderTimeMinutes(picked.hour * 60 + picked.minute);
+    await resyncReminders(ref);
+  }
+
+  Future<void> _pickDigestWeekday(
+    BuildContext context,
+    WidgetRef ref,
+    int current,
+  ) async {
+    final choice = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Weekly overview day'),
+        children: [
+          for (var weekday = 1; weekday <= 7; weekday++)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(weekday),
+              child: Text(_weekdayName(weekday)),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setDigestWeekday(choice);
+    await resyncReminders(ref);
   }
 
   Future<void> _sendFeedback(BuildContext context) async {

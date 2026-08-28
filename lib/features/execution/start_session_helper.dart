@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../calendar/calendar_screen.dart';
+import '../notifications/reminder_coordinator.dart';
 import '../plans/plan_providers.dart';
 import 'execution_screen.dart';
 
@@ -54,6 +55,7 @@ Future<void> startSessionWithMoveToTodayPrompt(
     await db.planDao.assignSessionDate(session.id, todayDateOnly);
     ref.invalidate(scheduledSessionsProvider);
     ref.invalidate(planDetailsProvider(session.planId));
+    await resyncReminders(ref);
   }
 
   if (!context.mounted) return;
