@@ -30,3 +30,17 @@ Ideas and requests that don't fit neatly into a `development-plan.md` phase yet,
 - **Bodyweight / body-measurements tracking** — flagged during a usability review, not requested yet. Separate from exercise logs (no place to record it at all today); common in training apps. Would need a new table plus a place to chart it - probably alongside the Progress tab.
 - **Guided tour / onboarding** — see the first item in this file; still not built, and now more valuable given the app's grown surface area.
 - **User feedback loop for real-world testing** — advisory question, partially acted on (the in-app "Send feedback" mailto: link above is the lightweight qualitative half). For distribution: Google Play's *Internal testing* track (no review, up to 100 testers via email list, live within minutes) or *Closed testing* track (small review, needed once you want to grow past ~100 or use a public opt-in link) both support in-app review prompts (`in_app_review` package) and give you a Play Console crash/ANR dashboard for free. Pair that with something lightweight for qualitative feedback - a simple in-app "Send feedback" mailto: link, or a shared Google Form - rather than building a custom feedback backend. This avoids any new server infrastructure; the main cost is a one-time $25 Play Console developer registration fee.
+
+## From the 2026-08-28 user audit
+
+See `docs/audit/Training-App-Audit-Report.pdf` for the full write-up. Open findings, highest impact first:
+
+- **Plans can't be deleted or renamed** (High) — `PlanDao.deletePlan()` exists and is tested; this is purely a missing UI entry point. Today the only way to tidy the plan list is "Delete all data", which also destroys logged history.
+- **Completed workouts can't be reviewed** (High) — every set/rep/weight/RPE/PR is written on Finish, but nothing reads it back. Suggested: tapping a green-check day on the calendar opens that session's log (`getLogsForPlanSession` + `getLoggedSetsForSessionLog` already return everything needed).
+- **Calendar's empty state is misleading** (Medium) — `_selectedDay` starts null, so it says "No sessions on this day" before any day is picked, even when today has a session marker. Default the selection to today.
+- **Abandoning a session silently discards it** (Medium) — sets live in memory until Finish. This mattered less before the floating rest timer; now the app actively invites leaving mid-session. At minimum warn on back-navigation.
+- **Library exercises can't be edited or deleted** (Medium) — creation captures the full schema but nothing can be corrected afterwards. `ExerciseDao.deleteExercise()` exists, unused.
+- **Progression advice ignores the lbs setting** (Medium) — `progression.dart`'s `formatWeight()` hard-codes "kg" and does no conversion, so a user training in pounds gets a number in the wrong unit. A correctness bug, not cosmetic.
+- **Body measurements are cm-only** (Low) — no imperial option, though bodyweight itself converts.
+- **"Any" placeholder day surfaces in the UI** (Low) — imported sessions read "Week 1 • Any • ...".
+- **No search inside a large plan** (Low) — the nine-block programme is 30+ sessions in one flat list.
