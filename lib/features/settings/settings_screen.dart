@@ -29,6 +29,7 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          const _SectionHeader('Units & display'),
           ListTile(
             leading: const Icon(Icons.monitor_weight_outlined),
             title: const Text('Weight unit'),
@@ -37,6 +38,14 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _pickWeightUnit(context, ref, prefs.weightUnit),
           ),
+          ListTile(
+            leading: const Icon(Icons.dark_mode_outlined),
+            title: const Text('Theme'),
+            subtitle: Text(_themeModeLabel(prefs.themeMode)),
+            onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
+          ),
+
+          const _SectionHeader('Calendar & progress'),
           ListTile(
             leading: const Icon(Icons.calendar_view_week),
             title: const Text('Week starts on'),
@@ -53,13 +62,8 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _pickSummaryPeriod(context, ref, prefs.summaryPeriod),
           ),
-          ListTile(
-            leading: const Icon(Icons.dark_mode_outlined),
-            title: const Text('Theme'),
-            subtitle: Text(_themeModeLabel(prefs.themeMode)),
-            onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
-          ),
-          const Divider(),
+
+          const _SectionHeader('Notifications'),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
             title: const Text('Workout reminders'),
@@ -94,14 +98,8 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => _pickDigestWeekday(context, ref, prefs.digestWeekday),
               ),
           ],
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.feedback_outlined),
-            title: const Text('Send feedback'),
-            subtitle: const Text('Report a bug or suggest something, by email.'),
-            onTap: () => _sendFeedback(context),
-          ),
-          const Divider(),
+
+          const _SectionHeader('Backup & data'),
           ListTile(
             leading: const Icon(Icons.upload_file),
             title: const Text('Export full backup'),
@@ -118,7 +116,6 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _importBackup(context, ref),
           ),
-          const Divider(),
           ListTile(
             leading: Icon(
               Icons.delete_forever,
@@ -133,6 +130,15 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _deleteAllData(context, ref),
           ),
+
+          const _SectionHeader('About'),
+          ListTile(
+            leading: const Icon(Icons.feedback_outlined),
+            title: const Text('Send feedback'),
+            subtitle: const Text('Report a bug or suggest something, by email.'),
+            onTap: () => _sendFeedback(context),
+          ),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -457,5 +463,24 @@ class SettingsScreen extends ConsumerWidget {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('All data deleted.')));
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+
+  const _SectionHeader(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
   }
 }

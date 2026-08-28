@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
 import '../../data/daos/exercise_dao.dart';
+import '../../home_screen.dart' show settingsAppBarAction;
 import '../history/history_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import 'create_exercise_screen.dart';
@@ -33,6 +34,7 @@ class ExerciseLibraryScreen extends ConsumerWidget {
               ),
             ),
           ),
+          settingsAppBarAction(context),
         ],
       ),
       body: Column(

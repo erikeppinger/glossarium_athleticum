@@ -24,12 +24,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _index = 0;
   StreamSubscription<List<SharedMediaFile>>? _sharedFilesSub;
 
+  // Settings deliberately isn't one of these - it's a rarely-used
+  // destination, so it lives behind a gear action in each tab's app bar
+  // (see settingsAppBarAction) rather than taking up a fifth of the
+  // bottom bar's width.
   static const _screens = [
     ExerciseLibraryScreen(),
     PlanListScreen(),
     CalendarScreen(),
     ProgressScreen(),
-    SettingsScreen(),
   ];
 
   @override
@@ -94,12 +97,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icon(Icons.insights),
             label: 'Progress',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
         ],
       ),
     );
   }
 }
+
+/// The gear that opens Settings, shown in every top-level tab's app bar.
+/// Settings is a rarely-visited destination, so it doesn't earn a slot in
+/// the bottom navigation bar alongside the four everyday tabs.
+Widget settingsAppBarAction(BuildContext context) => IconButton(
+  icon: const Icon(Icons.settings),
+  tooltip: 'Settings',
+  onPressed: () => Navigator.of(context).push(
+    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+  ),
+);

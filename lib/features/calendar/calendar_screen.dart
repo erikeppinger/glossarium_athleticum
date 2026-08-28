@@ -4,6 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../home_screen.dart' show settingsAppBarAction;
 import '../execution/start_session_helper.dart';
 import '../settings/app_preferences.dart';
 
@@ -41,7 +42,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         ref.watch(loggedPlanSessionIdsProvider).valueOrNull ?? const <int>{};
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Calendar')),
+      appBar: AppBar(
+        title: const Text('Calendar'),
+        actions: [settingsAppBarAction(context)],
+      ),
       body: sessionsAsync.when(
         data: (sessions) {
           final byDay = <DateTime, List<ScheduledSession>>{};

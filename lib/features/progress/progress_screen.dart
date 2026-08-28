@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/daos/session_log_dao.dart';
+import '../../home_screen.dart' show settingsAppBarAction;
 import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
 import '../plans/plan_providers.dart';
@@ -49,6 +50,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                 ? null
                 : () => _shareSummary(period, range, summaryAsync.value!),
           ),
+          settingsAppBarAction(context),
         ],
       ),
       body: ListView(

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../home_screen.dart' show settingsAppBarAction;
 import 'plan_detail_screen.dart';
 import 'plan_import_screen.dart';
 import 'plan_providers.dart';
@@ -17,7 +18,10 @@ class PlanListScreen extends ConsumerWidget {
     final plansAsync = ref.watch(plansListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Plans')),
+      appBar: AppBar(
+        title: const Text('Plans'),
+        actions: [settingsAppBarAction(context)],
+      ),
       body: plansAsync.when(
         data: (plans) {
           if (plans.isEmpty) {
