@@ -161,6 +161,120 @@ void main() {
     },
   );
 
+  group('editing an existing session\'s exercises', () {
+    late int firstExerciseId;
+    late int secondExerciseId;
+
+    setUp(() async {
+      await db.planDao.createPlan(
+        id: 'plan-1',
+        name: 'Plan A',
+        sessions: [pushDay],
+      );
+      final exercises =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.exercises;
+      firstExerciseId = exercises[0].id;
+      secondExerciseId = exercises[1].id;
+    });
+
+    Future<List<PlanExercise>> currentExercises() async =>
+        (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.exercises;
+
+    test('updatePlanExercise edits prescription fields and bumps updated_at', () async {
+      final before = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
+      await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
+
+      await db.planDao.updatePlanExercise(
+        planExerciseId: firstExerciseId,
+        sets: 5,
+        reps: '5',
+        weightIntensity: '80kg',
+        restSec: 180,
+        notes: 'Heavier top set',
+      );
+
+      final exercises = await currentExercises();
+      expect(exercises[0].sets, 5);
+      expect(exercises[0].reps, '5');
+      expect(exercises[0].weightIntensity, '80kg');
+      expect(exercises[0].restSec, 180);
+      expect(exercises[0].notes, 'Heavier top set');
+      expect(
+        exercises[0].exerciseName,
+        'Bench Press',
+        reason: 'which exercise the row points at is not editable here',
+      );
+
+      final after = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
+      expect(after.isAfter(before), isTrue);
+    });
+
+    test('deletePlanExercise removes the row and closes the order gap', () async {
+      await db.planDao.deletePlanExercise(firstExerciseId);
+
+      final exercises = await currentExercises();
+      expect(exercises, hasLength(1));
+      expect(exercises.single.exerciseName, 'Overhead Press');
+      expect(
+        exercises.single.order,
+        1,
+        reason: 'the survivor should be renumbered so orders stay contiguous',
+      );
+    });
+
+    test('a new exercise added after a delete does not collide on order', () async {
+      await db.planDao.deletePlanExercise(firstExerciseId);
+      await db.planDao.addExerciseToSession(
+        sessionId: (await db.planDao.getPlanDetails(
+          'plan-1',
+        ))!.sessions.single.session.id,
+        input: const PlanExerciseInput(
+          order: 0,
+          exerciseName: 'Lateral Raise',
+          sets: 3,
+          reps: '12',
+        ),
+      );
+
+      final exercises = await currentExercises();
+      expect(exercises.map((e) => e.order), [1, 2]);
+    });
+
+    test('movePlanExercise swaps order with its neighbour', () async {
+      await db.planDao.movePlanExercise(
+        planExerciseId: secondExerciseId,
+        up: true,
+      );
+
+      final exercises = await currentExercises();
+      expect(exercises.map((e) => e.exerciseName), [
+        'Overhead Press',
+        'Bench Press',
+      ]);
+      expect(exercises.map((e) => e.order), [1, 2]);
+    });
+
+    test('movePlanExercise is a no-op at the ends of the list', () async {
+      await db.planDao.movePlanExercise(
+        planExerciseId: firstExerciseId,
+        up: true,
+      );
+      expect((await currentExercises()).map((e) => e.exerciseName), [
+        'Bench Press',
+        'Overhead Press',
+      ]);
+
+      await db.planDao.movePlanExercise(
+        planExerciseId: secondExerciseId,
+        up: false,
+      );
+      expect((await currentExercises()).map((e) => e.exerciseName), [
+        'Bench Press',
+        'Overhead Press',
+      ]);
+    });
+  });
+
   test('assignSessionDate bumps the parent plan\'s updated_at', () async {
     await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
     final sessionId =

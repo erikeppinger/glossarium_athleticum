@@ -321,6 +321,108 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
         .get();
   }
 
+  /// Edits one exercise-in-session row in place. Only the prescription
+  /// fields are editable - swapping which exercise a row points at is a
+  /// remove-then-add, not an edit. Bumps the parent plan's `updated_at`.
+  Future<void> updatePlanExercise({
+    required int planExerciseId,
+    required int sets,
+    required String reps,
+    required String weightIntensity,
+    int? restSec,
+    required String notes,
+  }) {
+    return transaction(() async {
+      final planId = await _planIdForPlanExercise(planExerciseId);
+      await (update(
+        planExercises,
+      )..where((e) => e.id.equals(planExerciseId))).write(
+        PlanExercisesCompanion(
+          sets: Value(sets),
+          reps: Value(reps),
+          weightIntensity: Value(weightIntensity),
+          restSec: Value(restSec),
+          notes: Value(notes),
+        ),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Removes one exercise from a session, closing the gap it leaves in the
+  /// remaining rows' `order` values so they stay contiguous (1, 2, 3, ...) -
+  /// [addExerciseToSession] derives the next order from the current max, so
+  /// leaving holes would be harmless but leaving duplicates would not.
+  Future<void> deletePlanExercise(int planExerciseId) {
+    return transaction(() async {
+      final row = await (select(
+        planExercises,
+      )..where((e) => e.id.equals(planExerciseId))).getSingle();
+      final planId = await _planIdForPlanExercise(planExerciseId);
+
+      await (delete(
+        planExercises,
+      )..where((e) => e.id.equals(planExerciseId))).go();
+
+      final remaining =
+          await (select(planExercises)
+                ..where((e) => e.sessionId.equals(row.sessionId))
+                ..orderBy([(e) => OrderingTerm.asc(e.order)]))
+              .get();
+      for (var i = 0; i < remaining.length; i++) {
+        await (update(
+          planExercises,
+        )..where((e) => e.id.equals(remaining[i].id))).write(
+          PlanExercisesCompanion(order: Value(i + 1)),
+        );
+      }
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Moves one exercise up or down within its session, swapping `order`
+  /// with its neighbour. A no-op at either end of the list.
+  Future<void> movePlanExercise({
+    required int planExerciseId,
+    required bool up,
+  }) {
+    return transaction(() async {
+      final row = await (select(
+        planExercises,
+      )..where((e) => e.id.equals(planExerciseId))).getSingle();
+      final planId = await _planIdForPlanExercise(planExerciseId);
+
+      final siblings =
+          await (select(planExercises)
+                ..where((e) => e.sessionId.equals(row.sessionId))
+                ..orderBy([(e) => OrderingTerm.asc(e.order)]))
+              .get();
+      final index = siblings.indexWhere((e) => e.id == planExerciseId);
+      final swapIndex = up ? index - 1 : index + 1;
+      if (swapIndex < 0 || swapIndex >= siblings.length) return;
+
+      final other = siblings[swapIndex];
+      await (update(planExercises)..where((e) => e.id.equals(row.id))).write(
+        PlanExercisesCompanion(order: Value(other.order)),
+      );
+      await (update(planExercises)..where((e) => e.id.equals(other.id))).write(
+        PlanExercisesCompanion(order: Value(row.order)),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  Future<String> _planIdForPlanExercise(int planExerciseId) async {
+    final query = select(planExercises).join([
+      innerJoin(
+        planSessions,
+        planSessions.id.equalsExp(planExercises.sessionId),
+      ),
+    ])..where(planExercises.id.equals(planExerciseId));
+    final row = await query.getSingle();
+    return row.readTable(planSessions).planId;
+  }
+
   /// Deletes a plan and its sessions/exercises, children before parents -
   /// same reasoning as [MaintenanceDao.wipeAllData]: this must not assume
   /// SQLite's foreign_keys pragma is on. Does NOT touch SessionLogs/

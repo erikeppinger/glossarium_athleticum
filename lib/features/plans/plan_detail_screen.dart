@@ -16,6 +16,7 @@ import '../../data/daos/plan_dao.dart';
 import '../../export/plan_export.dart';
 import '../calendar/calendar_screen.dart';
 import '../execution/start_session_helper.dart';
+import 'edit_session_screen.dart';
 import 'plan_providers.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
@@ -97,6 +98,18 @@ class PlanDetailScreen extends ConsumerWidget {
                                   : dateFormat.format(
                                       session.session.assignedDate!,
                                     ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            tooltip: 'Edit session',
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => EditSessionScreen(
+                                  sessionId: session.session.id,
+                                  planId: planId,
+                                ),
+                              ),
                             ),
                           ),
                           FilledButton.icon(
