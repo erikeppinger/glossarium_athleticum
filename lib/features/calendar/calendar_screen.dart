@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../execution/start_session_helper.dart';
+import '../settings/app_preferences.dart';
 
 final scheduledSessionsProvider = FutureProvider<List<ScheduledSession>>((
   ref,
@@ -29,6 +30,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionsAsync = ref.watch(scheduledSessionsProvider);
+    final weekStart = ref.watch(appPreferencesProvider).weekStart;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),
@@ -50,6 +52,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 firstDay: DateTime(DateTime.now().year - 1),
                 lastDay: DateTime(DateTime.now().year + 2),
                 focusedDay: _focusedDay,
+                startingDayOfWeek: weekStart == WeekStart.sunday
+                    ? StartingDayOfWeek.sunday
+                    : StartingDayOfWeek.monday,
                 selectedDayPredicate: (day) =>
                     selected != null && isSameDay(day, selected),
                 eventLoader: (day) => byDay[_dayKey(day)] ?? const [],

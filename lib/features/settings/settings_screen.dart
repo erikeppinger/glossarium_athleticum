@@ -10,8 +10,10 @@ import '../../data/local_storage.dart';
 import '../../data/seed/exercise_seed_loader.dart';
 import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
+import '../../logic/units.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
+import 'app_preferences.dart';
 import 'backup_dialogs.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -19,10 +21,29 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final prefs = ref.watch(appPreferencesProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          ListTile(
+            leading: const Icon(Icons.monitor_weight_outlined),
+            title: const Text('Weight unit'),
+            subtitle: Text(
+              prefs.weightUnit == WeightUnit.kg ? 'Kilograms (kg)' : 'Pounds (lbs)',
+            ),
+            onTap: () => _pickWeightUnit(context, ref, prefs.weightUnit),
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_view_week),
+            title: const Text('Week starts on'),
+            subtitle: Text(
+              prefs.weekStart == WeekStart.monday ? 'Monday' : 'Sunday',
+            ),
+            onTap: () => _pickWeekStart(context, ref, prefs.weekStart),
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.upload_file),
             title: const Text('Export full backup'),
@@ -57,6 +78,50 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _pickWeightUnit(
+    BuildContext context,
+    WidgetRef ref,
+    WeightUnit current,
+  ) async {
+    final choice = await showDialog<WeightUnit>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Weight unit'),
+        children: [
+          for (final unit in WeightUnit.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(unit),
+              child: Text(unit == WeightUnit.kg ? 'Kilograms (kg)' : 'Pounds (lbs)'),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setWeightUnit(choice);
+  }
+
+  Future<void> _pickWeekStart(
+    BuildContext context,
+    WidgetRef ref,
+    WeekStart current,
+  ) async {
+    final choice = await showDialog<WeekStart>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Week starts on'),
+        children: [
+          for (final start in WeekStart.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(start),
+              child: Text(start == WeekStart.monday ? 'Monday' : 'Sunday'),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setWeekStart(choice);
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {

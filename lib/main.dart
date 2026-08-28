@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/app_database_provider.dart';
 import 'data/seed/exercise_seed_loader.dart';
+import 'features/settings/app_preferences.dart';
 import 'home_screen.dart';
 
 void main() {
@@ -12,6 +13,7 @@ void main() {
 final _startupProvider = FutureProvider<void>((ref) async {
   final db = ref.watch(appDatabaseProvider);
   await seedExerciseLibrary(db);
+  await ref.read(appPreferencesProvider.notifier).load();
 });
 
 class TrainingApp extends StatelessWidget {

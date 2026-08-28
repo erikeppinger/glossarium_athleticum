@@ -8,6 +8,8 @@ import '../../data/daos/plan_dao.dart';
 import '../../data/daos/session_log_dao.dart';
 import '../../logic/progression.dart';
 import '../../logic/rest_timer.dart';
+import '../../logic/units.dart';
+import '../settings/app_preferences.dart';
 import 'rest_timer_controller.dart';
 
 final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
@@ -63,17 +65,20 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     super.dispose();
   }
 
-  List<_LoggedSetForm> _formsFor(PlanExercise exercise) {
+  List<_LoggedSetForm> _formsFor(PlanExercise exercise, WeightUnit unit) {
     return _formsByExerciseRowId.putIfAbsent(exercise.id, () {
-      final weightHint = RegExp(
-        r'[\d.]+',
-      ).stringMatch(exercise.weightIntensity);
+      final weightHintKg = double.tryParse(
+        RegExp(r'[\d.]+').stringMatch(exercise.weightIntensity) ?? '',
+      );
+      final weightHint = weightHintKg == null
+          ? ''
+          : formatWeightNumber(kgToDisplay(weightHintKg, unit));
       final repsHint = RegExp(r'^\d+').stringMatch(exercise.reps) ?? '';
       return List.generate(
         exercise.sets,
         (_) => _LoggedSetForm(
           repsHint: repsHint,
-          weightHint: weightHint ?? '',
+          weightHint: weightHint,
         ),
       );
     });
@@ -83,6 +88,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   Widget build(BuildContext context) {
     final detailsAsync = ref.watch(_sessionDetailsProvider(widget.planSessionId));
     final restTimer = ref.watch(restTimerControllerProvider);
+    final unit = ref.watch(appPreferencesProvider).weightUnit;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Log session')),
@@ -106,8 +112,9 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                     for (final exercise in details.exercises)
                       _ExerciseCard(
                         exercise: exercise,
-                        forms: _formsFor(exercise),
-                        onSetLogged: (form) => _logSet(exercise, form),
+                        forms: _formsFor(exercise, unit),
+                        unit: unit,
+                        onSetLogged: (form) => _logSet(exercise, form, unit),
                       ),
                     const SizedBox(height: 24),
                   ],
@@ -117,7 +124,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: FilledButton(
-                    onPressed: _finishing ? null : () => _finishSession(details),
+                    onPressed: _finishing ? null : () => _finishSession(details, unit),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(56),
                     ),
@@ -134,9 +141,14 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     );
   }
 
-  Future<void> _logSet(PlanExercise exercise, _LoggedSetForm form) async {
+  Future<void> _logSet(
+    PlanExercise exercise,
+    _LoggedSetForm form,
+    WeightUnit unit,
+  ) async {
     final db = ref.read(appDatabaseProvider);
-    final weight = double.tryParse(form.weight.text);
+    final typedWeight = double.tryParse(form.weight.text);
+    final weight = typedWeight == null ? null : displayToKg(typedWeight, unit);
 
     if (weight != null) {
       final priorWeights = _priorWeightsByExerciseId.putIfAbsent(
@@ -159,23 +171,29 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     );
   }
 
-  Future<void> _finishSession(PlanSessionDetails details) async {
+  Future<void> _finishSession(
+    PlanSessionDetails details,
+    WeightUnit unit,
+  ) async {
     setState(() => _finishing = true);
     final db = ref.read(appDatabaseProvider);
     final entries = <LoggedSetInput>[];
 
     for (final exercise in details.exercises) {
       if (exercise.exerciseId == null) continue;
-      final forms = _formsFor(exercise);
+      final forms = _formsFor(exercise, unit);
       for (var i = 0; i < forms.length; i++) {
         final form = forms[i];
         if (!form.logged) continue;
+        final typedWeight = double.tryParse(form.weight.text);
         entries.add(
           LoggedSetInput(
             exerciseId: exercise.exerciseId!,
             setNumber: i + 1,
             reps: int.tryParse(form.reps.text),
-            weight: double.tryParse(form.weight.text),
+            weight: typedWeight == null
+                ? null
+                : displayToKg(typedWeight, unit),
             rpe: double.tryParse(form.rpe.text),
             isPr: form.isPr,
           ),
@@ -237,11 +255,13 @@ class _RestTimerBanner extends ConsumerWidget {
 class _ExerciseCard extends StatelessWidget {
   final PlanExercise exercise;
   final List<_LoggedSetForm> forms;
+  final WeightUnit unit;
   final void Function(_LoggedSetForm form) onSetLogged;
 
   const _ExerciseCard({
     required this.exercise,
     required this.forms,
+    required this.unit,
     required this.onSetLogged,
   });
 
@@ -268,6 +288,7 @@ class _ExerciseCard extends StatelessWidget {
               _SetRow(
                 setNumber: i + 1,
                 form: forms[i],
+                unit: unit,
                 onLog: () => onSetLogged(forms[i]),
               ),
           ],
@@ -280,11 +301,13 @@ class _ExerciseCard extends StatelessWidget {
 class _SetRow extends StatelessWidget {
   final int setNumber;
   final _LoggedSetForm form;
+  final WeightUnit unit;
   final VoidCallback onLog;
 
   const _SetRow({
     required this.setNumber,
     required this.form,
+    required this.unit,
     required this.onLog,
   });
 
@@ -311,7 +334,9 @@ class _SetRow extends StatelessWidget {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: 'Weight'),
+              decoration: InputDecoration(
+                labelText: unit == WeightUnit.lbs ? 'Weight (lbs)' : 'Weight (kg)',
+              ),
             ),
           ),
           const SizedBox(width: 8),

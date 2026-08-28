@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../../data/app_database_provider.dart';
 import '../../logic/progression.dart';
+import '../../logic/units.dart';
+import '../settings/app_preferences.dart';
 
 final _progressionHistoryProvider = FutureProvider.family<
   List<ProgressionHistoryEntry>,
@@ -31,6 +33,7 @@ class HistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final historyAsync = ref.watch(_progressionHistoryProvider(exerciseId));
+    final unit = ref.watch(appPreferencesProvider).weightUnit;
 
     return Scaffold(
       appBar: AppBar(title: Text(exerciseName)),
@@ -50,12 +53,13 @@ class HistoryScreen extends ConsumerWidget {
           final maxWeight = sorted
               .map((e) => e.weight)
               .reduce((a, b) => a > b ? a : b);
+          final maxWeightDisplay = kgToDisplay(maxWeight, unit);
           // Round the axis top up to a clean multiple of 10 and pick an
           // interval that divides it evenly, so grid labels never land close
           // enough together to overlap (fl_chart's default interval can
           // otherwise pick e.g. 70 when maxY is 72, cramming both labels at
           // the top).
-          final chartMaxY = ((maxWeight * 1.2) / 10).ceil() * 10.0;
+          final chartMaxY = ((maxWeightDisplay * 1.2) / 10).ceil() * 10.0;
           final chartInterval = chartMaxY / 5;
 
           return ListView(
@@ -109,7 +113,10 @@ class HistoryScreen extends ConsumerWidget {
                       LineChartBarData(
                         spots: [
                           for (var i = 0; i < sorted.length; i++)
-                            FlSpot(i.toDouble(), sorted[i].weight),
+                            FlSpot(
+                              i.toDouble(),
+                              kgToDisplay(sorted[i].weight, unit),
+                            ),
                         ],
                         isCurved: false,
                         dotData: const FlDotData(show: true),
@@ -122,7 +129,7 @@ class HistoryScreen extends ConsumerWidget {
               Text('Sessions', style: Theme.of(context).textTheme.titleMedium),
               for (final entry in sorted.reversed)
                 ListTile(
-                  title: Text('${formatWeight(entry.weight)} × ${entry.reps}'),
+                  title: Text('${formatWeightInUnit(entry.weight, unit)} × ${entry.reps}'),
                   subtitle: Text(DateFormat.yMMMd().format(entry.date)),
                   trailing: entry.weight == maxWeight
                       ? const Icon(Icons.emoji_events, color: Colors.amber)
