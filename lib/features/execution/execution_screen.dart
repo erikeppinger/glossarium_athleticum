@@ -116,6 +116,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                         forms: _formsFor(exercise, unit),
                         unit: unit,
                         onSetLogged: (form) => _logSet(exercise, form, unit),
+                        onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
                       ),
                     const SizedBox(height: 24),
                   ],
@@ -171,6 +172,26 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       Duration(seconds: restSec),
       planSessionId: widget.planSessionId,
     );
+  }
+
+  /// Reverts a mis-tapped or mis-typed set back to editable, before
+  /// "Finish session" writes anything - nothing's persisted yet, so this is
+  /// purely in-memory. Also un-counts it from this session's own PR
+  /// tracking, so a later set of the same exercise isn't compared against a
+  /// PR that got undone.
+  void _unlogSet(PlanExercise exercise, _LoggedSetForm form, WeightUnit unit) {
+    if (form.isPr) {
+      final typedWeight = double.tryParse(form.weight.text);
+      if (typedWeight != null) {
+        final weight = displayToKg(typedWeight, unit);
+        final key = exercise.exerciseId ?? exercise.exerciseName;
+        _priorWeightsByExerciseId[key]?.remove(weight);
+      }
+    }
+    setState(() {
+      form.logged = false;
+      form.isPr = false;
+    });
   }
 
   Future<void> _finishSession(
@@ -261,12 +282,14 @@ class _ExerciseCard extends StatelessWidget {
   final List<_LoggedSetForm> forms;
   final WeightUnit unit;
   final void Function(_LoggedSetForm form) onSetLogged;
+  final void Function(_LoggedSetForm form) onSetUnlogged;
 
   const _ExerciseCard({
     required this.exercise,
     required this.forms,
     required this.unit,
     required this.onSetLogged,
+    required this.onSetUnlogged,
   });
 
   @override
@@ -294,6 +317,7 @@ class _ExerciseCard extends StatelessWidget {
                 form: forms[i],
                 unit: unit,
                 onLog: () => onSetLogged(forms[i]),
+                onUnlog: () => onSetUnlogged(forms[i]),
               ),
           ],
         ),
@@ -307,12 +331,14 @@ class _SetRow extends StatelessWidget {
   final _LoggedSetForm form;
   final WeightUnit unit;
   final VoidCallback onLog;
+  final VoidCallback onUnlog;
 
   const _SetRow({
     required this.setNumber,
     required this.form,
     required this.unit,
     required this.onLog,
+    required this.onUnlog,
   });
 
   @override
@@ -356,9 +382,13 @@ class _SetRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           if (form.logged)
-            Icon(
-              form.isPr ? Icons.emoji_events : Icons.check_circle,
-              color: form.isPr ? Colors.amber.shade700 : Colors.green,
+            IconButton(
+              onPressed: onUnlog,
+              tooltip: 'Undo - edit this set again',
+              icon: Icon(
+                form.isPr ? Icons.emoji_events : Icons.check_circle,
+                color: form.isPr ? Colors.amber.shade700 : Colors.green,
+              ),
             )
           else
             IconButton.filled(
