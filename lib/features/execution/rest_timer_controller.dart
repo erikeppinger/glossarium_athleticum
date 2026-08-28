@@ -7,8 +7,13 @@ import '../../logic/rest_timer.dart';
 class RestTimerState {
   final Duration? remaining;
   final Duration total;
+  final int? planSessionId;
 
-  const RestTimerState({required this.remaining, required this.total});
+  const RestTimerState({
+    required this.remaining,
+    required this.total,
+    this.planSessionId,
+  });
 
   bool get isRunning => remaining != null && remaining! > Duration.zero;
 
@@ -18,15 +23,23 @@ class RestTimerState {
 /// Drives the rest-timer UI off a fixed end time (see logic/rest_timer.dart
 /// for why) rather than counting down tick-by-tick, so it can't drift or
 /// reset if the app is backgrounded mid-rest.
+///
+/// Deliberately NOT autoDispose: `rest_timer_overlay.dart` watches this from
+/// `home_screen.dart` (always mounted) so the timer keeps running and stays
+/// visible even after the execution screen that started it is popped.
 class RestTimerController extends StateNotifier<RestTimerState> {
   RestTimerController() : super(RestTimerState.idle);
 
   Timer? _ticker;
   DateTime? _endTime;
 
-  void start(Duration duration) {
+  void start(Duration duration, {required int planSessionId}) {
     _endTime = DateTime.now().add(duration);
-    state = RestTimerState(remaining: duration, total: duration);
+    state = RestTimerState(
+      remaining: duration,
+      total: duration,
+      planSessionId: planSessionId,
+    );
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
   }
@@ -42,7 +55,11 @@ class RestTimerController extends StateNotifier<RestTimerState> {
     if (end == null) return;
     final now = DateTime.now();
     final remaining = remainingRestTime(endTime: end, now: now);
-    state = RestTimerState(remaining: remaining, total: state.total);
+    state = RestTimerState(
+      remaining: remaining,
+      total: state.total,
+      planSessionId: state.planSessionId,
+    );
     if (isRestTimerFinished(endTime: end, now: now)) {
       _ticker?.cancel();
       _endTime = null;
@@ -57,6 +74,6 @@ class RestTimerController extends StateNotifier<RestTimerState> {
 }
 
 final restTimerControllerProvider =
-    StateNotifierProvider.autoDispose<RestTimerController, RestTimerState>(
+    StateNotifierProvider<RestTimerController, RestTimerState>(
       (ref) => RestTimerController(),
     );

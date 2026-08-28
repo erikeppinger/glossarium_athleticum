@@ -6,6 +6,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'features/calendar/calendar_screen.dart';
 import 'features/exercise_library/exercise_library_screen.dart';
+import 'features/execution/rest_timer_overlay.dart';
 import 'features/plans/plan_list_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/sharing/incoming_share_handler.dart';
@@ -59,7 +60,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _screens),
+      body: Stack(
+        children: [
+          IndexedStack(index: _index, children: _screens),
+          const RestTimerOverlay(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (index) => setState(() => _index = index),

@@ -168,6 +168,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     final restSec = exercise.restSec ?? 90;
     ref.read(restTimerControllerProvider.notifier).start(
       Duration(seconds: restSec),
+      planSessionId: widget.planSessionId,
     );
   }
 
