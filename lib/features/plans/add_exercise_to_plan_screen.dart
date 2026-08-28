@@ -9,6 +9,10 @@ import 'plan_providers.dart';
 const _newPlanSentinel = '__new_plan__';
 const _newSessionSentinel = -1;
 
+// Matches the day values used by the CSV plan template and existing
+// imported plans (e.g. templates/training_plan_template.csv).
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
 /// Lets the user add an exercise (already in the library) into a plan,
 /// creating a new plan and/or a new session inline if needed - the "add
 /// from the library" path called out alongside the long-press quick-add,
@@ -32,11 +36,11 @@ class _AddExerciseToPlanScreenState
     extends ConsumerState<AddExerciseToPlanScreen> {
   String? _selectedPlanId;
   int? _selectedSessionId;
+  String? _newSessionDay;
   bool _submitting = false;
 
   final _newPlanNameController = TextEditingController();
   final _newSessionWeekController = TextEditingController(text: '1');
-  final _newSessionDayController = TextEditingController();
   final _newSessionNameController = TextEditingController();
 
   final _setsController = TextEditingController(text: '3');
@@ -48,7 +52,6 @@ class _AddExerciseToPlanScreenState
   late final List<TextEditingController> _allControllers = [
     _newPlanNameController,
     _newSessionWeekController,
-    _newSessionDayController,
     _newSessionNameController,
     _setsController,
     _repsController,
@@ -125,12 +128,17 @@ class _AddExerciseToPlanScreenState
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextField(
-                            controller: _newSessionDayController,
+                          child: InputDecorator(
                             decoration: const InputDecoration(
                               labelText: 'Day',
-                              hintText: 'e.g. Mon',
                               border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: () => _pickDay(context),
+                              child: Text(_newSessionDay ?? 'Choose a day'),
                             ),
                           ),
                         ),
@@ -265,6 +273,24 @@ class _AddExerciseToPlanScreenState
     });
   }
 
+  Future<void> _pickDay(BuildContext context) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Choose a day'),
+        children: [
+          for (final day in _weekdays)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(day),
+              child: Text(day),
+            ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    setState(() => _newSessionDay = choice);
+  }
+
   bool _canSubmit() {
     if (_selectedPlanId == null) return false;
     if (_selectedPlanId == _newPlanSentinel &&
@@ -278,7 +304,7 @@ class _AddExerciseToPlanScreenState
         _selectedPlanId == _newPlanSentinel ||
         _selectedSessionId == _newSessionSentinel;
     if (needsNewSessionFields &&
-        (_newSessionDayController.text.trim().isEmpty ||
+        (_newSessionDay == null ||
             _newSessionNameController.text.trim().isEmpty)) {
       return false;
     }
@@ -303,7 +329,7 @@ class _AddExerciseToPlanScreenState
       sessionId = await db.planDao.addSession(
         planId: planId!,
         weekNumber: int.tryParse(_newSessionWeekController.text.trim()) ?? 1,
-        day: _newSessionDayController.text.trim(),
+        day: _newSessionDay!,
         sessionName: _newSessionNameController.text.trim(),
       );
     }
