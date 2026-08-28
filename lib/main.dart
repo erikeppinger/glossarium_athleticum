@@ -16,14 +16,22 @@ final _startupProvider = FutureProvider<void>((ref) async {
   await ref.read(appPreferencesProvider.notifier).load();
 });
 
-class TrainingApp extends StatelessWidget {
+class TrainingApp extends ConsumerWidget {
   const TrainingApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(appPreferencesProvider).themeMode;
     return MaterialApp(
       title: 'Training App',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+        ),
+      ),
+      themeMode: themeMode,
       scrollBehavior: const _GlowScrollBehavior(),
       home: const _Startup(),
     );

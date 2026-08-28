@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../logic/rest_timer.dart';
@@ -63,6 +64,11 @@ class RestTimerController extends StateNotifier<RestTimerState> {
     if (isRestTimerFinished(endTime: end, now: now)) {
       _ticker?.cancel();
       _endTime = null;
+      // A one-time cue that rest is over - important now that the timer can
+      // be followed to another tab (rest_timer_overlay.dart) where the
+      // countdown itself isn't visible.
+      HapticFeedback.vibrate();
+      SystemSound.play(SystemSoundType.alert);
     }
   }
 

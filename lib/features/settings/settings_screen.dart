@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/app_database_provider.dart';
 import '../../data/local_storage.dart';
@@ -50,6 +51,19 @@ class SettingsScreen extends ConsumerWidget {
               prefs.summaryPeriod == SummaryPeriod.week ? 'Weekly' : 'Monthly',
             ),
             onTap: () => _pickSummaryPeriod(context, ref, prefs.summaryPeriod),
+          ),
+          ListTile(
+            leading: const Icon(Icons.dark_mode_outlined),
+            title: const Text('Theme'),
+            subtitle: Text(_themeModeLabel(prefs.themeMode)),
+            onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.feedback_outlined),
+            title: const Text('Send feedback'),
+            subtitle: const Text('Report a bug or suggest something, by email.'),
+            onTap: () => _sendFeedback(context),
           ),
           const Divider(),
           ListTile(
@@ -152,6 +166,48 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (choice == null || choice == current) return;
     await ref.read(appPreferencesProvider.notifier).setSummaryPeriod(choice);
+  }
+
+  String _themeModeLabel(ThemeMode mode) => switch (mode) {
+    ThemeMode.system => 'Match system',
+    ThemeMode.light => 'Light',
+    ThemeMode.dark => 'Dark',
+  };
+
+  Future<void> _pickThemeMode(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeMode current,
+  ) async {
+    final choice = await showDialog<ThemeMode>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Theme'),
+        children: [
+          for (final mode in ThemeMode.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(mode),
+              child: Text(_themeModeLabel(mode)),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setThemeMode(choice);
+  }
+
+  Future<void> _sendFeedback(BuildContext context) async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'erik.eppinger@gmail.com',
+      query: 'subject=Training App feedback',
+    );
+    final launched = await launchUrl(uri);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No email app found.')),
+      );
+    }
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {

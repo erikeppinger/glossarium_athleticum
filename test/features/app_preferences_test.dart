@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:training_app/features/settings/app_preferences.dart';
@@ -45,5 +46,16 @@ void main() {
     final reloaded = AppPreferencesNotifier();
     await reloaded.load();
     expect(reloaded.state.summaryPeriod, SummaryPeriod.month);
+  });
+
+  test('setThemeMode updates state and persists', () async {
+    final notifier = AppPreferencesNotifier();
+    expect(notifier.state.themeMode, ThemeMode.system);
+    await notifier.setThemeMode(ThemeMode.dark);
+    expect(notifier.state.themeMode, ThemeMode.dark);
+
+    final reloaded = AppPreferencesNotifier();
+    await reloaded.load();
+    expect(reloaded.state.themeMode, ThemeMode.dark);
   });
 }

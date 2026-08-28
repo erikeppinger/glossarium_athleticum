@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,26 +10,31 @@ export '../../logic/summary_period.dart' show WeekStart, SummaryPeriod;
 const _weightUnitKey = 'weight_unit';
 const _weekStartKey = 'week_start';
 const _summaryPeriodKey = 'summary_period';
+const _themeModeKey = 'theme_mode';
 
 class AppPreferences {
   final WeightUnit weightUnit;
   final WeekStart weekStart;
   final SummaryPeriod summaryPeriod;
+  final ThemeMode themeMode;
 
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
     this.summaryPeriod = SummaryPeriod.week,
+    this.themeMode = ThemeMode.system,
   });
 
   AppPreferences copyWith({
     WeightUnit? weightUnit,
     WeekStart? weekStart,
     SummaryPeriod? summaryPeriod,
+    ThemeMode? themeMode,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
     summaryPeriod: summaryPeriod ?? this.summaryPeriod,
+    themeMode: themeMode ?? this.themeMode,
   );
 }
 
@@ -50,6 +56,11 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       summaryPeriod: prefs.getString(_summaryPeriodKey) == 'month'
           ? SummaryPeriod.month
           : SummaryPeriod.week,
+      themeMode: switch (prefs.getString(_themeModeKey)) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      },
     );
   }
 
@@ -69,6 +80,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(summaryPeriod: period);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_summaryPeriodKey, period.name);
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    state = state.copyWith(themeMode: mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_themeModeKey, mode.name);
   }
 }
 
