@@ -8,6 +8,7 @@ import 'features/calendar/calendar_screen.dart';
 import 'features/exercise_library/exercise_library_screen.dart';
 import 'features/execution/rest_timer_overlay.dart';
 import 'features/plans/plan_list_screen.dart';
+import 'features/progress/progress_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/sharing/incoming_share_handler.dart';
 
@@ -26,6 +27,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ExerciseLibraryScreen(),
     PlanListScreen(),
     CalendarScreen(),
+    ProgressScreen(),
     SettingsScreen(),
   ];
 
@@ -81,6 +83,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.calendar_month),
             label: 'Calendar',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.insights),
+            label: 'Progress',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings),

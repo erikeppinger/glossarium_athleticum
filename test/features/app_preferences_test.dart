@@ -35,4 +35,15 @@ void main() {
     await reloaded.load();
     expect(reloaded.state.weekStart, WeekStart.sunday);
   });
+
+  test('setSummaryPeriod updates state and persists', () async {
+    final notifier = AppPreferencesNotifier();
+    expect(notifier.state.summaryPeriod, SummaryPeriod.week);
+    await notifier.setSummaryPeriod(SummaryPeriod.month);
+    expect(notifier.state.summaryPeriod, SummaryPeriod.month);
+
+    final reloaded = AppPreferencesNotifier();
+    await reloaded.load();
+    expect(reloaded.state.summaryPeriod, SummaryPeriod.month);
+  });
 }

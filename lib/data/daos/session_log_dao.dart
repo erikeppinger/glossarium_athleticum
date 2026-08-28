@@ -159,6 +159,98 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return rows.map((r) => r.read(sessionLogs.planSessionId)!).toSet();
   }
 
+  /// Adherence/volume/PR counts for the half-open range [start, end) - the
+  /// data behind the Progress tab's week/month overview summary.
+  Future<PeriodSummary> getPeriodSummary({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final scheduledQuery = selectOnly(planSessions)
+      ..addColumns([planSessions.id])
+      ..where(
+        planSessions.assignedDate.isBiggerOrEqualValue(start) &
+            planSessions.assignedDate.isSmallerThanValue(end),
+      );
+    final scheduledIds = (await scheduledQuery.get())
+        .map((r) => r.read(planSessions.id)!)
+        .toSet();
+
+    final logsQuery = select(sessionLogs)
+      ..where(
+        (l) =>
+            l.loggedAt.isBiggerOrEqualValue(start) &
+            l.loggedAt.isSmallerThanValue(end),
+      );
+    final logsInPeriod = await logsQuery.get();
+    final completedSessionIds = logsInPeriod.map((l) => l.planSessionId).toSet();
+
+    var totalVolume = 0.0;
+    var prCount = 0;
+    for (final log in logsInPeriod) {
+      final sets = await getLoggedSetsForSessionLog(log.id);
+      for (final s in sets) {
+        if (s.weight != null && s.reps != null) {
+          totalVolume += s.weight! * s.reps!;
+        }
+        if (s.isPr) prCount++;
+      }
+    }
+
+    return PeriodSummary(
+      sessionsScheduled: scheduledIds.length,
+      sessionsCompleted: completedSessionIds.intersection(scheduledIds).length,
+      totalVolume: totalVolume,
+      prCount: prCount,
+    );
+  }
+
+  /// The most recent logged top (heaviest) set for every exercise that has
+  /// weight-based history - the Progress tab's cross-exercise dashboard.
+  /// Same weight-only scope limitation as [getProgressionHistory].
+  Future<List<ExerciseProgressSummary>> getLatestTopSetPerExercise() async {
+    final query = select(loggedSets).join([
+      innerJoin(
+        sessionLogs,
+        sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+      ),
+    ])..where(loggedSets.weight.isNotNull() & loggedSets.reps.isNotNull());
+    final rows = await query.get();
+
+    final byExercise = <String, List<TypedResult>>{};
+    for (final row in rows) {
+      final exerciseId = row.readTable(loggedSets).exerciseId;
+      byExercise.putIfAbsent(exerciseId, () => []).add(row);
+    }
+
+    final result = <ExerciseProgressSummary>[];
+    for (final entry in byExercise.entries) {
+      final rowsForExercise = entry.value;
+      final latestDate = rowsForExercise
+          .map((r) => r.readTable(sessionLogs).loggedAt)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+      final rowsInLatestSession = rowsForExercise.where(
+        (r) => r.readTable(sessionLogs).loggedAt == latestDate,
+      );
+      final topSet = rowsInLatestSession.reduce(
+        (a, b) =>
+            a.readTable(loggedSets).weight! >= b.readTable(loggedSets).weight!
+            ? a
+            : b,
+      );
+      result.add(
+        ExerciseProgressSummary(
+          exerciseId: entry.key,
+          lastLoggedAt: latestDate,
+          topWeight: topSet.readTable(loggedSets).weight!,
+          topReps: topSet.readTable(loggedSets).reps!,
+          isPr: topSet.readTable(loggedSets).isPr,
+        ),
+      );
+    }
+    result.sort((a, b) => b.lastLoggedAt.compareTo(a.lastLoggedAt));
+    return result;
+  }
+
   /// Every session log in the database, each with its sets - what a full
   /// backup needs to round-trip execution history.
   Future<List<SessionLogWithSets>> getAllSessionLogsWithSets() async {
@@ -181,4 +273,34 @@ class SessionLogWithSets {
   final List<LoggedSet> sets;
 
   const SessionLogWithSets({required this.log, required this.sets});
+}
+
+class PeriodSummary {
+  final int sessionsScheduled;
+  final int sessionsCompleted;
+  final double totalVolume;
+  final int prCount;
+
+  const PeriodSummary({
+    required this.sessionsScheduled,
+    required this.sessionsCompleted,
+    required this.totalVolume,
+    required this.prCount,
+  });
+}
+
+class ExerciseProgressSummary {
+  final String exerciseId;
+  final DateTime lastLoggedAt;
+  final double topWeight;
+  final int topReps;
+  final bool isPr;
+
+  const ExerciseProgressSummary({
+    required this.exerciseId,
+    required this.lastLoggedAt,
+    required this.topWeight,
+    required this.topReps,
+    required this.isPr,
+  });
 }

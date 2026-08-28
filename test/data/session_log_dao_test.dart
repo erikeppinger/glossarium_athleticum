@@ -129,6 +129,102 @@ void main() {
     expect(await db.sessionLogDao.getLoggedPlanSessionIds(), {sessionId});
   });
 
+  group('getPeriodSummary', () {
+    test('counts scheduled/completed sessions, volume, and PRs within range', () async {
+      await db.planDao.assignSessionDate(sessionId, DateTime(2026, 8, 10));
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 10),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60, isPr: true),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60),
+        ],
+      );
+      // Outside the range below - shouldn't be counted.
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-2',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 9, 1),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 100),
+        ],
+      );
+
+      final summary = await db.sessionLogDao.getPeriodSummary(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+
+      expect(summary.sessionsScheduled, 1);
+      expect(summary.sessionsCompleted, 1);
+      expect(summary.totalVolume, 8 * 60.0 * 2);
+      expect(summary.prCount, 1);
+    });
+
+    test('an unscheduled but logged session counts as volume/PRs but not completed', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 10),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      final summary = await db.sessionLogDao.getPeriodSummary(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+
+      expect(summary.sessionsScheduled, 0);
+      expect(summary.sessionsCompleted, 0);
+      expect(summary.totalVolume, 8 * 60.0);
+    });
+  });
+
+  group('getLatestTopSetPerExercise', () {
+    test('picks the heaviest set from the most recent session', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 6),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 55),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-2',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 6, weight: 65, isPr: true),
+        ],
+      );
+
+      final summaries = await db.sessionLogDao.getLatestTopSetPerExercise();
+      expect(summaries, hasLength(1));
+      expect(summaries.single.exerciseId, 'EX_BP');
+      expect(summaries.single.topWeight, 65.0);
+      expect(summaries.single.topReps, 6);
+      expect(summaries.single.isPr, isTrue);
+      expect(summaries.single.lastLoggedAt, DateTime(2026, 8, 13));
+    });
+
+    test('excludes sets with no weight/reps (time/distance exercises)', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, durationSec: 30),
+        ],
+      );
+      expect(await db.sessionLogDao.getLatestTopSetPerExercise(), isEmpty);
+    });
+  });
+
   group('getProgressionHistory', () {
     test('reduces each session to its top (heaviest) set', () async {
       await db.sessionLogDao.createSessionLog(

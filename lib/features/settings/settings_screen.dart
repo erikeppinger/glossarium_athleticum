@@ -43,6 +43,14 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _pickWeekStart(context, ref, prefs.weekStart),
           ),
+          ListTile(
+            leading: const Icon(Icons.insights),
+            title: const Text('Progress summary period'),
+            subtitle: Text(
+              prefs.summaryPeriod == SummaryPeriod.week ? 'Weekly' : 'Monthly',
+            ),
+            onTap: () => _pickSummaryPeriod(context, ref, prefs.summaryPeriod),
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.upload_file),
@@ -122,6 +130,28 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (choice == null || choice == current) return;
     await ref.read(appPreferencesProvider.notifier).setWeekStart(choice);
+  }
+
+  Future<void> _pickSummaryPeriod(
+    BuildContext context,
+    WidgetRef ref,
+    SummaryPeriod current,
+  ) async {
+    final choice = await showDialog<SummaryPeriod>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Progress summary period'),
+        children: [
+          for (final period in SummaryPeriod.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(period),
+              child: Text(period == SummaryPeriod.week ? 'Weekly' : 'Monthly'),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setSummaryPeriod(choice);
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
