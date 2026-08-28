@@ -85,13 +85,20 @@
 <body>
 
 <h1>Training App — User Audit</h1>
-<div class="sub">Simulated first-time-user walkthrough &amp; capability audit</div>
+<div class="sub">Simulated first-time-user walkthrough &amp; capability audit — <strong>all findings resolved</strong></div>
 
 <div class="meta">
-  <div><span class="label">Build audited:</span> commit <code>6290d46</code>, Android debug build on emulator (API 35, GMT)</div>
-  <div><span class="label">Date:</span> 28 August 2026</div>
+  <div><span class="label">Audited at:</span> commit <code>6290d46</code>, Android debug build on emulator (API 35, GMT)</div>
+  <div><span class="label">Resolved at:</span> commit <code>c042b03</code></div>
+  <div><span class="label">Date:</span> 28–29 August 2026</div>
   <div><span class="label">Method:</span> new-user task walkthrough on device, cross-checked against the codebase for capabilities that exist in the data layer but are unreachable from the UI</div>
-  <div><span class="label">Baseline:</span> 179 automated tests passing, <code>flutter analyze</code> clean</div>
+  <div><span class="label">Baseline → now:</span> 179 → 201 automated tests passing, <code>flutter analyze</code> clean throughout</div>
+</div>
+
+<div class="meta" style="background:#f0f7f3;border-left-color:#2e6b4f;">
+  <strong>Status:</strong> every finding in this report has been fixed. The
+  detail below is retained as a record of what was wrong and why it mattered —
+  the reasoning behind each fix is more durable than the fix itself.
 </div>
 
 <p>
@@ -110,19 +117,71 @@
     <th style="width:46%">Finding</th>
     <th style="width:30%">Area</th>
   </tr>
-  <tr><td>1</td><td><span class="sev high">High</span></td><td>A plan cannot be deleted or renamed</td><td>Plans</td></tr>
-  <tr><td>2</td><td><span class="sev high">High</span></td><td>A completed workout cannot be reviewed afterwards</td><td>History</td></tr>
-  <tr><td>3</td><td><span class="sev med">Medium</span></td><td>Calendar says “No sessions on this day” before any day is picked</td><td>Calendar</td></tr>
-  <tr><td>4</td><td><span class="sev med">Medium</span></td><td>Leaving a session mid-workout silently discards it</td><td>Execution</td></tr>
-  <tr><td>5</td><td><span class="sev med">Medium</span></td><td>A library exercise cannot be edited after creation</td><td>Exercise library</td></tr>
-  <tr><td>6</td><td><span class="sev med">Medium</span></td><td>Progression advice always reads in kg, ignoring the lbs setting</td><td>Units</td></tr>
-  <tr><td>7</td><td><span class="sev low">Low</span></td><td>Body measurements are cm-only with no imperial option</td><td>Units</td></tr>
-  <tr><td>8</td><td><span class="sev low">Low</span></td><td>Imported sessions show a placeholder day (“Any”)</td><td>Plans</td></tr>
-  <tr><td>9</td><td><span class="sev low">Low</span></td><td>No search or filter inside a large plan</td><td>Plans</td></tr>
+  <tr><td>1</td><td><span class="sev high">High</span> <span class="sev fixed">Fixed</span></td><td>A plan cannot be deleted or renamed</td><td>Plans</td></tr>
+  <tr><td>2</td><td><span class="sev high">High</span> <span class="sev fixed">Fixed</span></td><td>A completed workout cannot be reviewed afterwards</td><td>History</td></tr>
+  <tr><td>3</td><td><span class="sev med">Medium</span> <span class="sev fixed">Fixed</span></td><td>Calendar says “No sessions on this day” before any day is picked</td><td>Calendar</td></tr>
+  <tr><td>4</td><td><span class="sev med">Medium</span> <span class="sev fixed">Fixed</span></td><td>Leaving a session mid-workout silently discards it</td><td>Execution</td></tr>
+  <tr><td>5</td><td><span class="sev med">Medium</span> <span class="sev fixed">Fixed</span></td><td>A library exercise cannot be deleted after creation</td><td>Exercise library</td></tr>
+  <tr><td>6</td><td><span class="sev med">Medium</span> <span class="sev fixed">Fixed</span></td><td>Progression advice always reads in kg, ignoring the lbs setting</td><td>Units</td></tr>
+  <tr><td>7</td><td><span class="sev low">Low</span> <span class="sev fixed">Fixed</span></td><td>Body measurements are cm-only with no imperial option</td><td>Units</td></tr>
+  <tr><td>8</td><td><span class="sev low">Low</span> <span class="sev fixed">Fixed</span></td><td>Imported sessions show a placeholder day (“Any”)</td><td>Plans</td></tr>
+  <tr><td>9</td><td><span class="sev low">Low</span> <span class="sev fixed">Fixed</span></td><td>No search or filter inside a large plan</td><td>Plans</td></tr>
   <tr><td>10</td><td><span class="sev fixed">Fixed</span></td><td>Chart Y-axis labels overlapped near the top</td><td>Progress</td></tr>
   <tr><td>11</td><td><span class="sev fixed">Fixed</span></td><td>Per-exercise history was unreachable from the dashboard</td><td>Progress</td></tr>
   <tr><td>12</td><td><span class="sev fixed">Fixed</span></td><td>History chart axis had no unit label</td><td>Progress</td></tr>
 </table>
+
+<h2>The deletion model</h2>
+<p>
+  Finding #1 was really a symptom. The underlying problem was that deletion was
+  all-or-nothing: the only working delete was <em>Settings → Delete all data</em>,
+  so tidying up three junk plans cost you every workout you had ever logged.
+</p>
+<p>
+  The redesign rests on one asymmetry: <strong>plans are cheap, logged workouts
+  are irreplaceable.</strong> A plan can be re-imported from a spreadsheet in a
+  minute. A record of what you lifted last March cannot be recovered by any
+  means. So the model protects history hard and treats plan structure as
+  disposable.
+</p>
+<ul>
+  <li>
+    <span class="label">Archive is the default, delete is the exception.</span>
+    Most “make this go away” impulses are really “get it out of my way”.
+    Archiving hides a plan, keeps every byte, and is instantly reversible — so
+    it gets an undo snackbar rather than a confirmation dialog. Asking someone
+    to confirm a harmless action only teaches them to dismiss dialogs unread.
+  </li>
+  <li>
+    <span class="label">Deletion states its blast radius in real numbers.</span>
+    Not “Are you sure?” but <em>“This plan has 12 logged workouts (148 sets)
+    recorded between 2 March and 20 August.”</em> Nobody can consent to a loss
+    they cannot see.
+  </li>
+  <li>
+    <span class="label">History is separable from the plan that produced it.</span>
+    Deleting a plan offers to keep the logged workouts: sessions that were
+    actually trained are retained as detached tombstones so history stays
+    readable, while never-trained sessions are dropped. Destroying history is a
+    second, explicit choice — never a side effect of the first.
+  </li>
+  <li>
+    <span class="label">Exercises refuse to vanish silently.</span> Deleting one
+    first shows where it is used (“appears 3 times in Nine-Block Strength
+    Program”) and how much history it carries, removes it from plans, and leaves
+    logged sets intact.
+  </li>
+  <li>
+    <span class="label">Individual workouts can be deleted too.</span> A
+    mis-logged session no longer requires nuking the plan around it.
+  </li>
+</ul>
+<p>
+  Eleven tests in <code>test/data/plan_deletion_test.dart</code> pin these
+  semantics — including that an untrained plan leaves nothing behind, that a
+  trained one keeps exactly the sessions with history, and that deleting one
+  plan never touches another’s logs.
+</p>
 
 <h2>Detailed findings</h2>
 
@@ -295,21 +354,37 @@
       than showing a blank page. The calendar is the one exception, noted above.</li>
 </ul>
 
-<h2>Recommended order of work</h2>
-<ol>
-  <li>Delete/rename a plan (#1) — highest ratio of user pain to implementation cost; the data
-      layer is already done and tested.</li>
-  <li>Session log review (#2) — unlocks data the app already collects.</li>
-  <li>Progression unit bug (#6) — small, and currently shows wrong numbers.</li>
-  <li>Abandoned-session protection (#4) — at minimum a confirmation prompt.</li>
-  <li>Calendar empty state (#3) — a one-line change.</li>
-  <li>Edit/delete a library exercise (#5).</li>
-  <li>Remaining low-severity items (#7–#9) as convenient.</li>
-</ol>
+<h2>How each finding was resolved</h2>
+<table>
+  <tr><th style="width:9%">#</th><th style="width:40%">Resolution</th><th>Where</th></tr>
+  <tr><td>1</td><td>Rename / archive / delete, with the impact-aware model above</td><td><code>plan_actions.dart</code>, <code>PlanDao</code></td></tr>
+  <tr><td>2</td><td>Workout history list plus a set-by-set detail view, reachable from Progress and from tapping a completed calendar day</td><td><code>workout_history_screen.dart</code></td></tr>
+  <tr><td>3</td><td>Calendar selection defaults to today</td><td><code>calendar_screen.dart</code></td></tr>
+  <tr><td>4</td><td>Back-navigation with unsaved sets now warns, naming how many would be lost</td><td><code>execution_screen.dart</code></td></tr>
+  <tr><td>5</td><td>Custom exercises can be deleted, showing usage first and keeping logged sets</td><td><code>exercise_detail_screen.dart</code></td></tr>
+  <tr><td>6</td><td>Progression text converts and names the active unit; regression-tested</td><td><code>progression.dart</code></td></tr>
+  <tr><td>7</td><td>Circumferences convert to inches when pounds are selected</td><td><code>units.dart</code></td></tr>
+  <tr><td>8</td><td>The internal “Any” placeholder is omitted from display</td><td>plan detail, calendar</td></tr>
+  <tr><td>9</td><td>Search over sessions and exercises, shown once a plan exceeds 8 sessions</td><td><code>plan_detail_screen.dart</code></td></tr>
+</table>
+
+<h2>One change beyond the audit</h2>
+<p>
+  Body-measurement tracking was made <strong>opt-in</strong> rather than always
+  present. Weighing yourself is not a neutral act — plenty of people train
+  deliberately without tracking weight, and for some it is actively unhelpful.
+  The app now asks once, on the way into a first session, and stores the answer
+  as three states rather than two: <em>not yet asked</em>, <em>enabled</em>, and
+  <em>declined</em>. The distinction matters — it means a “no” is remembered as a
+  no and the question is never repeated. It remains available in Settings for
+  anyone who changes their mind, and turning it off hides the feature without
+  deleting anything already recorded.
+</p>
 
 <div class="foot">
-  Training App — local-first training planner. Audit performed against commit <code>6290d46</code>.
-  Findings 10–12 were fixed in the same pass and are recorded for completeness.
+  Training App — local-first training planner. Audited at commit <code>6290d46</code>;
+  all findings resolved at <code>c042b03</code>. This report is kept as a record of
+  the reasoning, not just the outcome.
 </div>
 
 </body>

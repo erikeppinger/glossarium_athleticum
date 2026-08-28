@@ -44,3 +44,21 @@ See `docs/audit/Training-App-Audit-Report.pdf` for the full write-up. Open findi
 - **Body measurements are cm-only** (Low) — no imperial option, though bodyweight itself converts.
 - **"Any" placeholder day surfaces in the UI** (Low) — imported sessions read "Week 1 • Any • ...".
 - **No search inside a large plan** (Low) — the nine-block programme is 30+ sessions in one flat list.
+
+## Audit findings — all resolved (2026-08-29, commit `c042b03`)
+
+Every finding from `docs/audit/Training-App-Audit-Report.pdf` is fixed. The report is kept as a record of the reasoning.
+
+**The deletion model** (the substantial one). Deletion was all-or-nothing: only "Delete all data" worked, so tidying plans cost you your training history. Redesigned around one asymmetry — *plans are cheap, logged workouts are irreplaceable*:
+- `Plans.archivedAt` (schemaVersion 4→5) — archive hides a plan losslessly and reversibly, with an undo snackbar rather than a confirmation dialog.
+- `PlanDao.getPlanDeletionImpact()` — deletion always states its blast radius in real numbers first ("12 logged workouts, 148 sets, March–August").
+- `deletePlanKeepingHistory()` vs `deletePlanAndHistory()` — deleting a plan offers to keep logged workouts; trained sessions are retained as detached tombstones, untrained ones dropped. Destroying history is a separate explicit choice.
+- `ExerciseDao.getExerciseUsage()` / `deleteExerciseKeepingHistory()` — exercises show where they're used before deletion and never take logged sets with them.
+- `SessionLogDao.deleteSessionLog()` — individual workouts deletable.
+- Semantics pinned by 11 tests in `test/data/plan_deletion_test.dart`.
+
+**Body-measurement tracking is now opt-in** (beyond the audit). Tri-state `BodyTracking` preference — `notAsked`/`enabled`/`declined` — so a "no" is remembered and never re-asked. Prompted once on first session start; re-enableable from Settings; turning it off hides the UI without deleting records.
+
+Other fixes: workout history (list + set-by-set detail, reachable from Progress and completed calendar days); progression advice now honours the lbs setting (was a real correctness bug — hard-coded "kg", no conversion); calendar defaults selection to today; unsaved-session warning on back-navigation; plan search; imperial circumferences; "Any" placeholder hidden.
+
+**Still open**: editing an existing custom exercise in place (creation and deletion exist, editing doesn't), and exercise images (unchanged — still needs licensed sources).
