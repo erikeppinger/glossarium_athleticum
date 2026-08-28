@@ -9,6 +9,7 @@ import '../../data/daos/session_log_dao.dart';
 import '../../logic/progression.dart';
 import '../../logic/rest_timer.dart';
 import '../../logic/units.dart';
+import '../calendar/calendar_screen.dart';
 import '../settings/app_preferences.dart';
 import 'rest_timer_controller.dart';
 
@@ -209,6 +210,8 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         loggedAt: DateTime.now(),
         entries: entries,
       );
+      // One-shot FutureProvider - won't notice this write on its own.
+      ref.invalidate(loggedPlanSessionIdsProvider);
     }
 
     if (mounted) Navigator.of(context).pop();

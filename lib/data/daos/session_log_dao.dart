@@ -150,6 +150,15 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     });
   }
 
+  /// Every `PlanSessions` id that has at least one logged workout - lets the
+  /// calendar mark scheduled days as completed without loading full log data.
+  Future<Set<int>> getLoggedPlanSessionIds() async {
+    final query = selectOnly(sessionLogs)
+      ..addColumns([sessionLogs.planSessionId]);
+    final rows = await query.get();
+    return rows.map((r) => r.read(sessionLogs.planSessionId)!).toSet();
+  }
+
   /// Every session log in the database, each with its sets - what a full
   /// backup needs to round-trip execution history.
   Future<List<SessionLogWithSets>> getAllSessionLogsWithSets() async {

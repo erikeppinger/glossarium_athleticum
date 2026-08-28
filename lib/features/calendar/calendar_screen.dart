@@ -14,6 +14,11 @@ final scheduledSessionsProvider = FutureProvider<List<ScheduledSession>>((
   return db.planDao.getAllScheduledSessions();
 });
 
+final loggedPlanSessionIdsProvider = FutureProvider<Set<int>>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return db.sessionLogDao.getLoggedPlanSessionIds();
+});
+
 DateTime _dayKey(DateTime date) => DateTime(date.year, date.month, date.day);
 
 class CalendarScreen extends ConsumerStatefulWidget {
@@ -26,11 +31,14 @@ class CalendarScreen extends ConsumerStatefulWidget {
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  CalendarFormat _calendarFormat = CalendarFormat.month;
 
   @override
   Widget build(BuildContext context) {
     final sessionsAsync = ref.watch(scheduledSessionsProvider);
     final weekStart = ref.watch(appPreferencesProvider).weekStart;
+    final loggedIds =
+        ref.watch(loggedPlanSessionIdsProvider).valueOrNull ?? const <int>{};
 
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),
@@ -52,6 +60,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 firstDay: DateTime(DateTime.now().year - 1),
                 lastDay: DateTime(DateTime.now().year + 2),
                 focusedDay: _focusedDay,
+                calendarFormat: _calendarFormat,
                 startingDayOfWeek: weekStart == WeekStart.sunday
                     ? StartingDayOfWeek.sunday
                     : StartingDayOfWeek.monday,
@@ -64,7 +73,38 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     _focusedDay = focusedDay;
                   });
                 },
+                onFormatChanged: (format) =>
+                    setState(() => _calendarFormat = format),
                 onPageChanged: (focusedDay) => _focusedDay = focusedDay,
+                calendarBuilders: CalendarBuilders<ScheduledSession>(
+                  markerBuilder: (context, day, events) {
+                    if (events.isEmpty) return null;
+                    final hasCompleted = events.any(
+                      (s) => loggedIds.contains(s.session.id),
+                    );
+                    if (hasCompleted) {
+                      return Positioned(
+                        bottom: 1,
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: Colors.green.shade700,
+                        ),
+                      );
+                    }
+                    return Positioned(
+                      bottom: 1,
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
               const Divider(height: 1),
               Expanded(

@@ -114,6 +114,21 @@ void main() {
     expect(await db.sessionLogDao.getPriorWeights('EX_BP'), isEmpty);
   });
 
+  test('getLoggedPlanSessionIds returns only sessions with a logged workout', () async {
+    expect(await db.sessionLogDao.getLoggedPlanSessionIds(), isEmpty);
+
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-1',
+      planSessionId: sessionId,
+      loggedAt: DateTime(2026, 8, 20),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+      ],
+    );
+
+    expect(await db.sessionLogDao.getLoggedPlanSessionIds(), {sessionId});
+  });
+
   group('getProgressionHistory', () {
     test('reduces each session to its top (heaviest) set', () async {
       await db.sessionLogDao.createSessionLog(
