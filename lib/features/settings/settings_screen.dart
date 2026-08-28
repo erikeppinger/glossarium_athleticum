@@ -15,6 +15,7 @@ import '../../logic/units.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
 import '../notifications/reminder_coordinator.dart';
+import '../onboarding/onboarding_screen.dart';
 import 'app_preferences.dart';
 import 'backup_dialogs.dart';
 
@@ -132,6 +133,17 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           const _SectionHeader('About'),
+          ListTile(
+            leading: const Icon(Icons.explore_outlined),
+            title: const Text('Take the tour'),
+            subtitle: const Text('A quick walkthrough of the main features.'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (context) => const OnboardingScreen(),
+              ),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.feedback_outlined),
             title: const Text('Send feedback'),

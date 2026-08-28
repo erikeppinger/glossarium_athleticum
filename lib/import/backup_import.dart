@@ -52,6 +52,9 @@ Future<void> importBackupJson(
   final exercisesJson = json['exercises'];
   final plansJson = json['plans'];
   final sessionLogsJson = json['session_logs'] as List? ?? const [];
+  // Absent in backups taken before body measurements existed - treated as
+  // "none recorded" rather than a malformed file.
+  final measurementsJson = json['body_measurements'] as List? ?? const [];
   if (exercisesJson is! List || plansJson is! List) {
     throw const BackupJsonFormatException('Not a valid backup file.');
   }
@@ -104,6 +107,22 @@ Future<void> importBackupJson(
       planSessionId: session.id,
       loggedAt: DateTime.parse(map['logged_at'] as String),
       entries: entries,
+    );
+  }
+
+  for (final measurementJson in measurementsJson) {
+    final map = measurementJson as Map<String, dynamic>;
+    await db.bodyMeasurementDao.upsert(
+      id: map['id'] as String,
+      measuredAt: DateTime.parse(map['measured_at'] as String),
+      weightKg: (map['weight_kg'] as num?)?.toDouble(),
+      bodyFatPercent: (map['body_fat_percent'] as num?)?.toDouble(),
+      chestCm: (map['chest_cm'] as num?)?.toDouble(),
+      waistCm: (map['waist_cm'] as num?)?.toDouble(),
+      hipsCm: (map['hips_cm'] as num?)?.toDouble(),
+      thighCm: (map['thigh_cm'] as num?)?.toDouble(),
+      armCm: (map['arm_cm'] as num?)?.toDouble(),
+      notes: map['notes'] as String? ?? '',
     );
   }
 }

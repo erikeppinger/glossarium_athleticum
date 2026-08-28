@@ -106,6 +106,8 @@ Future<Map<String, dynamic>> buildBackupJson(
     );
   }
 
+  final measurements = await db.bodyMeasurementDao.getAll();
+
   return {
     'schema_version': backupSchemaVersion,
     'exported_at': DateTime.now().toIso8601String(),
@@ -113,5 +115,23 @@ Future<Map<String, dynamic>> buildBackupJson(
     'exercises': [for (final e in customExercises) exerciseToJson(e)],
     'plans': planJsonList,
     'session_logs': logJsonList,
+    'body_measurements': [
+      for (final m in measurements) bodyMeasurementToJson(m),
+    ],
+  };
+}
+
+Map<String, dynamic> bodyMeasurementToJson(BodyMeasurement m) {
+  return {
+    'id': m.id,
+    'measured_at': m.measuredAt.toIso8601String(),
+    if (m.weightKg != null) 'weight_kg': m.weightKg,
+    if (m.bodyFatPercent != null) 'body_fat_percent': m.bodyFatPercent,
+    if (m.chestCm != null) 'chest_cm': m.chestCm,
+    if (m.waistCm != null) 'waist_cm': m.waistCm,
+    if (m.hipsCm != null) 'hips_cm': m.hipsCm,
+    if (m.thighCm != null) 'thigh_cm': m.thighCm,
+    if (m.armCm != null) 'arm_cm': m.armCm,
+    if (m.notes.isNotEmpty) 'notes': m.notes,
   };
 }

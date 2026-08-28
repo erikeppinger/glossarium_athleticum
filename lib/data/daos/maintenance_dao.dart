@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../app_database.dart';
+import '../tables/body_measurements_table.dart';
 import '../tables/exercises_table.dart';
 import '../tables/plans_table.dart';
 import '../tables/session_logs_table.dart';
@@ -10,7 +11,15 @@ part 'maintenance_dao.g.dart';
 /// Cross-cutting database operations that don't belong to one feature -
 /// currently just the "delete all data" wipe (Phase 3).
 @DriftAccessor(
-  tables: [Exercises, Plans, PlanSessions, PlanExercises, SessionLogs, LoggedSets],
+  tables: [
+    Exercises,
+    Plans,
+    PlanSessions,
+    PlanExercises,
+    SessionLogs,
+    LoggedSets,
+    BodyMeasurements,
+  ],
 )
 class MaintenanceDao extends DatabaseAccessor<AppDatabase>
     with _$MaintenanceDaoMixin {
@@ -28,6 +37,9 @@ class MaintenanceDao extends DatabaseAccessor<AppDatabase>
       await delete(planSessions).go();
       await delete(plans).go();
       await delete(exercises).go();
+      // No FK dependencies of its own, but it's still user data - a "delete
+      // all data" that silently kept bodyweight history would be a lie.
+      await delete(bodyMeasurements).go();
     });
   }
 }

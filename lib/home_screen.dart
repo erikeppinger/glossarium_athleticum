@@ -8,7 +8,9 @@ import 'features/calendar/calendar_screen.dart';
 import 'features/exercise_library/exercise_library_screen.dart';
 import 'features/execution/rest_timer_overlay.dart';
 import 'features/notifications/reminder_coordinator.dart';
+import 'features/onboarding/onboarding_screen.dart';
 import 'features/plans/plan_list_screen.dart';
+import 'features/settings/app_preferences.dart';
 import 'features/progress/progress_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/sharing/incoming_share_handler.dart';
@@ -48,7 +50,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Re-derive pending reminders on every launch: a day has passed since
     // some were scheduled, and a reinstall/restore clears the OS's copy.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) resyncReminders(ref);
+      if (!mounted) return;
+      resyncReminders(ref);
+      if (!ref.read(appPreferencesProvider).hasSeenOnboarding) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (context) => const OnboardingScreen(),
+          ),
+        );
+      }
     });
   }
 

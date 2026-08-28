@@ -10,6 +10,8 @@ mixin _$MaintenanceDaoMixin on DatabaseAccessor<AppDatabase> {
   $PlanExercisesTable get planExercises => attachedDatabase.planExercises;
   $SessionLogsTable get sessionLogs => attachedDatabase.sessionLogs;
   $LoggedSetsTable get loggedSets => attachedDatabase.loggedSets;
+  $BodyMeasurementsTable get bodyMeasurements =>
+      attachedDatabase.bodyMeasurements;
   MaintenanceDaoManager get managers => MaintenanceDaoManager(this);
 }
 
@@ -28,4 +30,9 @@ class MaintenanceDaoManager {
       $$SessionLogsTableTableManager(_db.attachedDatabase, _db.sessionLogs);
   $$LoggedSetsTableTableManager get loggedSets =>
       $$LoggedSetsTableTableManager(_db.attachedDatabase, _db.loggedSets);
+  $$BodyMeasurementsTableTableManager get bodyMeasurements =>
+      $$BodyMeasurementsTableTableManager(
+        _db.attachedDatabase,
+        _db.bodyMeasurements,
+      );
 }

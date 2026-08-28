@@ -15,6 +15,7 @@ const _workoutRemindersKey = 'workout_reminders_enabled';
 const _weeklyDigestKey = 'weekly_digest_enabled';
 const _reminderMinutesKey = 'reminder_time_minutes';
 const _digestWeekdayKey = 'digest_weekday';
+const _hasSeenOnboardingKey = 'has_seen_onboarding';
 
 class AppPreferences {
   final WeightUnit weightUnit;
@@ -34,6 +35,9 @@ class AppPreferences {
   /// Which weekday the weekly digest lands on (DateTime.monday..sunday).
   final int digestWeekday;
 
+  /// Whether the first-launch tour has been completed or skipped.
+  final bool hasSeenOnboarding;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -43,6 +47,7 @@ class AppPreferences {
     this.weeklyDigestEnabled = false,
     this.reminderTimeMinutes = 8 * 60,
     this.digestWeekday = DateTime.monday,
+    this.hasSeenOnboarding = false,
   });
 
   AppPreferences copyWith({
@@ -54,6 +59,7 @@ class AppPreferences {
     bool? weeklyDigestEnabled,
     int? reminderTimeMinutes,
     int? digestWeekday,
+    bool? hasSeenOnboarding,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -64,6 +70,7 @@ class AppPreferences {
     weeklyDigestEnabled: weeklyDigestEnabled ?? this.weeklyDigestEnabled,
     reminderTimeMinutes: reminderTimeMinutes ?? this.reminderTimeMinutes,
     digestWeekday: digestWeekday ?? this.digestWeekday,
+    hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
   );
 }
 
@@ -94,6 +101,7 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       weeklyDigestEnabled: prefs.getBool(_weeklyDigestKey) ?? false,
       reminderTimeMinutes: prefs.getInt(_reminderMinutesKey) ?? 8 * 60,
       digestWeekday: prefs.getInt(_digestWeekdayKey) ?? DateTime.monday,
+      hasSeenOnboarding: prefs.getBool(_hasSeenOnboardingKey) ?? false,
     );
   }
 
@@ -143,6 +151,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(digestWeekday: weekday);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_digestWeekdayKey, weekday);
+  }
+
+  Future<void> setHasSeenOnboarding(bool seen) async {
+    state = state.copyWith(hasSeenOnboarding: seen);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hasSeenOnboardingKey, seen);
   }
 }
 

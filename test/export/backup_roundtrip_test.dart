@@ -197,6 +197,40 @@ void main() {
     expect(plans.map((p) => p.name), ['My Plan']);
   });
 
+  test('body measurements survive an export/restore round-trip', () async {
+    await seedFullState();
+    await db.bodyMeasurementDao.upsert(
+      id: 'bm-1',
+      measuredAt: DateTime(2026, 8, 20),
+      weightKg: 82.5,
+      waistCm: 88,
+      notes: 'Morning, fasted',
+    );
+
+    final backup = await buildBackupJson(db);
+    await importBackupJson(backup, db);
+
+    final measurements = await db.bodyMeasurementDao.getAll();
+    expect(measurements, hasLength(1));
+    expect(measurements.single.weightKg, 82.5);
+    expect(measurements.single.waistCm, 88);
+    expect(measurements.single.notes, 'Morning, fasted');
+    expect(measurements.single.measuredAt, DateTime(2026, 8, 20));
+  });
+
+  test('a backup with no body_measurements key still restores', () async {
+    // Backups taken before body measurements existed omit the key entirely;
+    // that's "none recorded", not a malformed file.
+    await seedFullState();
+    final backup = await buildBackupJson(db);
+    backup.remove('body_measurements');
+
+    await importBackupJson(backup, db);
+
+    expect(await db.bodyMeasurementDao.getAll(), isEmpty);
+    expect((await db.planDao.getAllPlans()).map((p) => p.name), ['My Plan']);
+  });
+
   test('importBackupJson throws for an unsupported schema version', () async {
     await expectLater(
       importBackupJson({

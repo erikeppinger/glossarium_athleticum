@@ -9,6 +9,7 @@ import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
 import '../plans/plan_providers.dart';
 import '../settings/app_preferences.dart';
+import 'body_measurements_screen.dart';
 import 'progress_providers.dart';
 
 /// The Progress tab: a chooseable week/month overview summary (sessions
@@ -49,6 +50,15 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             onPressed: summaryAsync.valueOrNull == null
                 ? null
                 : () => _shareSummary(period, range, summaryAsync.value!),
+          ),
+          IconButton(
+            icon: const Icon(Icons.straighten),
+            tooltip: 'Body measurements',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const BodyMeasurementsScreen(),
+              ),
+            ),
           ),
           settingsAppBarAction(context),
         ],
