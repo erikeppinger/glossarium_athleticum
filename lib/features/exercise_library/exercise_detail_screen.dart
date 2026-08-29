@@ -4,9 +4,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/local_storage.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import '../history/history_screen.dart';
+import '../shared/attachment_image.dart';
+import 'create_exercise_screen.dart';
 import 'exercise_library_providers.dart';
 
 /// Shows everything the library has on one exercise - description, safety
@@ -43,20 +46,37 @@ class ExerciseDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // Seed-library entries are reseeded on every launch, so deleting
-          // one would silently come back - only custom exercises are
-          // genuinely removable.
-          if (exercise.isCustom)
+          // Seed-library entries are reseeded on every launch, so editing or
+          // deleting one would silently be undone - only custom exercises
+          // are genuinely mutable.
+          if (exercise.isCustom) ...[
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit exercise',
+              onPressed: () => _edit(context),
+            ),
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete exercise',
               onPressed: () => _delete(context, ref),
             ),
+          ],
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (exercise.imagePath != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: AttachmentImage(
+                fileName: exercise.imagePath!,
+                width: double.infinity,
+                height: 200,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -131,6 +151,18 @@ class ExerciseDetailScreen extends ConsumerWidget {
     );
   }
 
+  /// Opens the shared create/edit form pre-filled with this exercise. Pops
+  /// afterwards because this screen holds an immutable snapshot taken when it
+  /// was pushed - reopening it from the (refreshed) list shows the edit.
+  Future<void> _edit(BuildContext context) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => CreateExerciseScreen(existing: exercise),
+      ),
+    );
+    if (saved == true && context.mounted) Navigator.of(context).pop();
+  }
+
   /// Shows where the exercise is used before removing it, and never destroys
   /// logged sets as a side effect - a record of what you actually lifted
   /// shouldn't disappear because a library entry was tidied up.
@@ -173,6 +205,10 @@ class ExerciseDetailScreen extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
+    // Nothing else references the image once the row is gone.
+    if (exercise.imagePath != null) {
+      await deleteAttachment(exercise.imagePath!);
+    }
     await db.exerciseDao.deleteExerciseKeepingHistory(exercise.id);
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);

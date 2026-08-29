@@ -32,6 +32,17 @@ class Exercises extends Table {
   /// when creating a custom exercise. Null if not provided.
   TextColumn get author => text().nullable()();
 
+  /// Filename of a user-attached image, relative to the attachments
+  /// directory (see lib/data/local_storage.dart) - not an absolute path,
+  /// because the app's sandbox path changes across reinstalls and OS
+  /// upgrades, which would silently break every stored absolute path.
+  ///
+  /// Deliberately user-supplied rather than bundled stock imagery: shipping
+  /// ~38 scraped exercise photos would be a licensing problem for anyone
+  /// publishing the app, and a user's own photo of their actual setup is
+  /// more useful anyway. Null when no image has been attached.
+  TextColumn get imagePath => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

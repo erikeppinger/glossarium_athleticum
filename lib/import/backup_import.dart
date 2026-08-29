@@ -31,6 +31,11 @@ ExercisesCompanion _exerciseFromJson(Map<String, dynamic> json) {
     safetyNotes: Value(json['safety_notes'] as String? ?? ''),
     videoReference: Value(json['video_reference'] as String? ?? ''),
     isCustom: Value(json['is_custom'] as bool? ?? true),
+    // Absent in backups taken before these fields existed - null is the
+    // correct "not recorded" value, so no special-casing is needed.
+    sourcePlanName: Value(json['source_plan_name'] as String?),
+    author: Value(json['author'] as String?),
+    imagePath: Value(json['image_path'] as String?),
   );
 }
 

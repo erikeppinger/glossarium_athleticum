@@ -231,6 +231,41 @@ void main() {
     expect((await db.planDao.getAllPlans()).map((p) => p.name), ['My Plan']);
   });
 
+  test('custom exercise attribution and image survive a round-trip', () async {
+    // Regression: author/sourcePlanName/imagePath were silently dropped by
+    // export, so a restored library lost creator attribution entirely.
+    await db.exerciseDao.upsertExercise(
+      ExercisesCompanion.insert(
+        id: 'EX_CUSTOM',
+        name: 'Coach Special',
+        category: 'Custom',
+        movementPattern: '',
+        muscleGroups: '',
+        equipment: '',
+        difficulty: 'Beginner',
+        measurementType: 'Weight x Reps',
+        isCustom: const Value(true),
+        author: const Value('Coach Erik'),
+        sourcePlanName: const Value('Nine-Block Strength Program'),
+        imagePath: const Value('12345.jpg'),
+      ),
+    );
+
+    final backup = await buildBackupJson(db);
+    await importBackupJson(backup, db);
+
+    final restored = await db.exerciseDao.getExerciseById('EX_CUSTOM');
+    expect(restored, isNotNull);
+    expect(restored!.author, 'Coach Erik');
+    expect(restored.sourcePlanName, 'Nine-Block Strength Program');
+    expect(
+      restored.imagePath,
+      '12345.jpg',
+      reason: 'the filename round-trips even though the image file itself '
+          'is not part of the JSON envelope',
+    );
+  });
+
   test('importBackupJson throws for an unsupported schema version', () async {
     await expectLater(
       importBackupJson({

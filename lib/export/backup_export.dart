@@ -29,6 +29,16 @@ Map<String, dynamic> exerciseToJson(Exercise exercise) {
     'safety_notes': exercise.safetyNotes,
     'video_reference': exercise.videoReference,
     'is_custom': exercise.isCustom,
+    // Attribution was previously dropped by backup/restore, so a restored
+    // library lost track of which plan an exercise came from and who wrote it.
+    if (exercise.sourcePlanName != null)
+      'source_plan_name': exercise.sourcePlanName,
+    if (exercise.author != null) 'author': exercise.author,
+    // The filename only - the image file itself is not part of the JSON
+    // envelope. Restoring onto a different device leaves the reference
+    // dangling, which AttachmentImage renders as a placeholder rather than
+    // failing.
+    if (exercise.imagePath != null) 'image_path': exercise.imagePath,
   };
 }
 

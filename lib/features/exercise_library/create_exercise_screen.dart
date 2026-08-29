@@ -1,11 +1,15 @@
 import 'package:drift/drift.dart' show Value;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/local_storage.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
+import '../plans/plan_providers.dart';
+import '../shared/attachment_image.dart';
 import 'exercise_library_providers.dart';
 
 const _difficulties = ['Beginner', 'Intermediate', 'Advanced'];
@@ -17,11 +21,16 @@ const _measurementTypes = [
   'Reps',
 ];
 
-/// Lets the user define a brand-new exercise (not just a bare name, like the
-/// unmatched-exercise-during-import flow does) - full library metadata plus
-/// a preview before saving, then a prompt to add it straight into a plan.
+/// Creates a new exercise, or edits an existing custom one.
+///
+/// One screen for both: the fields, validation, and preview are identical, and
+/// a separate near-duplicate edit screen would drift out of sync. Pass
+/// [existing] to edit; omit it to create.
 class CreateExerciseScreen extends ConsumerStatefulWidget {
-  const CreateExerciseScreen({super.key});
+  /// The exercise being edited, or null when creating a new one.
+  final Exercise? existing;
+
+  const CreateExerciseScreen({super.key, this.existing});
 
   @override
   ConsumerState<CreateExerciseScreen> createState() =>
@@ -32,18 +41,38 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   bool _previewing = false;
   bool _saving = false;
 
-  String? _category;
-  String? _difficulty;
-  String? _measurementType;
+  Exercise? get _existing => widget.existing;
+  bool get _isEditing => _existing != null;
 
-  final _nameController = TextEditingController();
-  final _movementPatternController = TextEditingController();
-  final _muscleGroupsController = TextEditingController();
-  final _equipmentController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _safetyNotesController = TextEditingController();
-  final _videoReferenceController = TextEditingController();
-  final _authorController = TextEditingController();
+  late String? _category = _existing?.category;
+  late String? _difficulty = _existing?.difficulty;
+  late String? _measurementType = _existing?.measurementType;
+  late String? _imagePath = _existing?.imagePath;
+
+  late final _nameController = TextEditingController(
+    text: _existing?.name ?? '',
+  );
+  late final _movementPatternController = TextEditingController(
+    text: _existing?.movementPattern ?? '',
+  );
+  late final _muscleGroupsController = TextEditingController(
+    text: _existing?.muscleGroups ?? '',
+  );
+  late final _equipmentController = TextEditingController(
+    text: _existing?.equipment ?? '',
+  );
+  late final _descriptionController = TextEditingController(
+    text: _existing?.description ?? '',
+  );
+  late final _safetyNotesController = TextEditingController(
+    text: _existing?.safetyNotes ?? '',
+  );
+  late final _videoReferenceController = TextEditingController(
+    text: _existing?.videoReference ?? '',
+  );
+  late final _authorController = TextEditingController(
+    text: _existing?.author ?? '',
+  );
 
   late final _controllers = [
     _nameController,
@@ -75,7 +104,13 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_previewing ? 'Preview' : 'Create exercise'),
+        title: Text(
+          _previewing
+              ? 'Preview'
+              : _isEditing
+              ? 'Edit exercise'
+              : 'Create exercise',
+        ),
       ),
       body: _saving
           ? const Center(child: CircularProgressIndicator())
@@ -91,6 +126,12 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _ImagePickerField(
+          fileName: _imagePath,
+          onPicked: (name) => setState(() => _imagePath = name),
+          onCleared: () => setState(() => _imagePath = null),
+        ),
+        const SizedBox(height: 16),
         TextField(
           controller: _nameController,
           decoration: const InputDecoration(
@@ -293,7 +334,9 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
                 Expanded(
                   child: FilledButton(
                     onPressed: _save,
-                    child: const Text('Save exercise'),
+                    child: Text(
+                      _isEditing ? 'Save changes' : 'Save exercise',
+                    ),
                   ),
                 ),
               ],
@@ -397,8 +440,17 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final db = ref.read(appDatabaseProvider);
-    final id = const Uuid().v4();
+    // Editing reuses the existing id so plans and logged sets keep pointing
+    // at the same row; only creating mints a new one.
+    final id = _existing?.id ?? const Uuid().v4();
     final name = _nameController.text.trim();
+
+    // An image that was swapped out or removed leaves an orphan file behind
+    // otherwise - nothing else references it, so clean it up now.
+    final previousImage = _existing?.imagePath;
+    if (previousImage != null && previousImage != _imagePath) {
+      await deleteAttachment(previousImage);
+    }
 
     await db.exerciseDao.upsertExercise(
       ExercisesCompanion.insert(
@@ -419,14 +471,27 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
               ? null
               : _authorController.text.trim(),
         ),
+        imagePath: Value(_imagePath),
+        // Preserve provenance on edit - re-saving an imported exercise
+        // shouldn't make it look like it was created from scratch.
+        sourcePlanName: Value(_existing?.sourcePlanName),
       ),
     );
     // One-shot FutureProviders - won't notice this write on their own.
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
     ref.invalidate(creatorFilterOptionsProvider);
+    ref.invalidate(allExercisesForMatchingProvider);
 
     if (!mounted) return;
+
+    // Editing already has somewhere to go back to; only creation needs the
+    // "what now?" prompt.
+    if (_isEditing) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
     final addToPlan = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -486,6 +551,134 @@ class _PickerField extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(value ?? 'Choose $label'.toLowerCase()),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Picks an image for an exercise from the device.
+///
+/// User-supplied rather than bundled stock imagery, deliberately: shipping
+/// scraped exercise photos would be a licensing problem for anyone publishing
+/// the app, and a photo of your own bar setup or a coach's whiteboard cue is
+/// more useful than a generic render anyway.
+class _ImagePickerField extends StatefulWidget {
+  final String? fileName;
+  final ValueChanged<String> onPicked;
+  final VoidCallback onCleared;
+
+  const _ImagePickerField({
+    required this.fileName,
+    required this.onPicked,
+    required this.onCleared,
+  });
+
+  @override
+  State<_ImagePickerField> createState() => _ImagePickerFieldState();
+}
+
+class _ImagePickerFieldState extends State<_ImagePickerField> {
+  bool _picking = false;
+
+  Future<void> _pick() async {
+    setState(() => _picking = true);
+    try {
+      final file = await FilePicker.pickFile(type: FileType.image);
+      final path = file?.path;
+      if (path == null) return;
+      // Copied into the app's own attachments directory so the image
+      // survives the source being moved or deleted, and so "delete all data"
+      // can reliably wipe it.
+      widget.onPicked(await saveAttachment(path));
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    if (_picking) {
+      return const SizedBox(
+        height: 160,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (widget.fileName == null) {
+      return InkWell(
+        onTap: _pick,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 120,
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_photo_alternate_outlined, color: scheme.primary),
+              const SizedBox(height: 6),
+              Text('Add a photo', style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                'Optional - your own image of the setup or cue',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: AttachmentImage(
+            fileName: widget.fileName!,
+            height: 180,
+            width: double.infinity,
+          ),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: Row(
+            children: [
+              _OverlayButton(icon: Icons.edit, onPressed: _pick),
+              const SizedBox(width: 6),
+              _OverlayButton(
+                icon: Icons.close,
+                onPressed: widget.onCleared,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OverlayButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _OverlayButton({required this.icon, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black54,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 18, color: Colors.white),
         ),
       ),
     );

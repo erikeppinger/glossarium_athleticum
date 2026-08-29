@@ -164,6 +164,17 @@ class $ExercisesTable extends Exercises
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _imagePathMeta = const VerificationMeta(
+    'imagePath',
+  );
+  @override
+  late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
+    'image_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -180,6 +191,7 @@ class $ExercisesTable extends Exercises
     isCustom,
     sourcePlanName,
     author,
+    imagePath,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -311,6 +323,12 @@ class $ExercisesTable extends Exercises
         author.isAcceptableOrUnknown(data['author']!, _authorMeta),
       );
     }
+    if (data.containsKey('image_path')) {
+      context.handle(
+        _imagePathMeta,
+        imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
+    }
     return context;
   }
 
@@ -376,6 +394,10 @@ class $ExercisesTable extends Exercises
         DriftSqlType.string,
         data['${effectivePrefix}author'],
       ),
+      imagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_path'],
+      ),
     );
   }
 
@@ -412,6 +434,17 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   /// Free-text creator/author name (e.g. a coach's name), optionally set
   /// when creating a custom exercise. Null if not provided.
   final String? author;
+
+  /// Filename of a user-attached image, relative to the attachments
+  /// directory (see lib/data/local_storage.dart) - not an absolute path,
+  /// because the app's sandbox path changes across reinstalls and OS
+  /// upgrades, which would silently break every stored absolute path.
+  ///
+  /// Deliberately user-supplied rather than bundled stock imagery: shipping
+  /// ~38 scraped exercise photos would be a licensing problem for anyone
+  /// publishing the app, and a user's own photo of their actual setup is
+  /// more useful anyway. Null when no image has been attached.
+  final String? imagePath;
   const Exercise({
     required this.id,
     required this.name,
@@ -427,6 +460,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     required this.isCustom,
     this.sourcePlanName,
     this.author,
+    this.imagePath,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -448,6 +482,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     }
     if (!nullToAbsent || author != null) {
       map['author'] = Variable<String>(author);
+    }
+    if (!nullToAbsent || imagePath != null) {
+      map['image_path'] = Variable<String>(imagePath);
     }
     return map;
   }
@@ -472,6 +509,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       author: author == null && nullToAbsent
           ? const Value.absent()
           : Value(author),
+      imagePath: imagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imagePath),
     );
   }
 
@@ -495,6 +535,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       isCustom: serializer.fromJson<bool>(json['isCustom']),
       sourcePlanName: serializer.fromJson<String?>(json['sourcePlanName']),
       author: serializer.fromJson<String?>(json['author']),
+      imagePath: serializer.fromJson<String?>(json['imagePath']),
     );
   }
   @override
@@ -515,6 +556,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'isCustom': serializer.toJson<bool>(isCustom),
       'sourcePlanName': serializer.toJson<String?>(sourcePlanName),
       'author': serializer.toJson<String?>(author),
+      'imagePath': serializer.toJson<String?>(imagePath),
     };
   }
 
@@ -533,6 +575,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     bool? isCustom,
     Value<String?> sourcePlanName = const Value.absent(),
     Value<String?> author = const Value.absent(),
+    Value<String?> imagePath = const Value.absent(),
   }) => Exercise(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -550,6 +593,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
         ? sourcePlanName.value
         : this.sourcePlanName,
     author: author.present ? author.value : this.author,
+    imagePath: imagePath.present ? imagePath.value : this.imagePath,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -583,6 +627,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ? data.sourcePlanName.value
           : this.sourcePlanName,
       author: data.author.present ? data.author.value : this.author,
+      imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
     );
   }
 
@@ -602,7 +647,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('videoReference: $videoReference, ')
           ..write('isCustom: $isCustom, ')
           ..write('sourcePlanName: $sourcePlanName, ')
-          ..write('author: $author')
+          ..write('author: $author, ')
+          ..write('imagePath: $imagePath')
           ..write(')'))
         .toString();
   }
@@ -623,6 +669,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     isCustom,
     sourcePlanName,
     author,
+    imagePath,
   );
   @override
   bool operator ==(Object other) =>
@@ -641,7 +688,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.videoReference == this.videoReference &&
           other.isCustom == this.isCustom &&
           other.sourcePlanName == this.sourcePlanName &&
-          other.author == this.author);
+          other.author == this.author &&
+          other.imagePath == this.imagePath);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -659,6 +707,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<bool> isCustom;
   final Value<String?> sourcePlanName;
   final Value<String?> author;
+  final Value<String?> imagePath;
   final Value<int> rowid;
   const ExercisesCompanion({
     this.id = const Value.absent(),
@@ -675,6 +724,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.isCustom = const Value.absent(),
     this.sourcePlanName = const Value.absent(),
     this.author = const Value.absent(),
+    this.imagePath = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExercisesCompanion.insert({
@@ -692,6 +742,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.isCustom = const Value.absent(),
     this.sourcePlanName = const Value.absent(),
     this.author = const Value.absent(),
+    this.imagePath = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -716,6 +767,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<bool>? isCustom,
     Expression<String>? sourcePlanName,
     Expression<String>? author,
+    Expression<String>? imagePath,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -733,6 +785,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (isCustom != null) 'is_custom': isCustom,
       if (sourcePlanName != null) 'source_plan_name': sourcePlanName,
       if (author != null) 'author': author,
+      if (imagePath != null) 'image_path': imagePath,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -752,6 +805,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<bool>? isCustom,
     Value<String?>? sourcePlanName,
     Value<String?>? author,
+    Value<String?>? imagePath,
     Value<int>? rowid,
   }) {
     return ExercisesCompanion(
@@ -769,6 +823,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       isCustom: isCustom ?? this.isCustom,
       sourcePlanName: sourcePlanName ?? this.sourcePlanName,
       author: author ?? this.author,
+      imagePath: imagePath ?? this.imagePath,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -818,6 +873,9 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (author.present) {
       map['author'] = Variable<String>(author.value);
     }
+    if (imagePath.present) {
+      map['image_path'] = Variable<String>(imagePath.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -841,6 +899,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('isCustom: $isCustom, ')
           ..write('sourcePlanName: $sourcePlanName, ')
           ..write('author: $author, ')
+          ..write('imagePath: $imagePath, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3909,6 +3968,7 @@ typedef $$ExercisesTableCreateCompanionBuilder = ExercisesCompanion Function({
   Value<bool> isCustom,
   Value<String?> sourcePlanName,
   Value<String?> author,
+  Value<String?> imagePath,
   Value<int> rowid,
 });
 typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
@@ -3926,6 +3986,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
   Value<bool> isCustom,
   Value<String?> sourcePlanName,
   Value<String?> author,
+  Value<String?> imagePath,
   Value<int> rowid,
 });
 
@@ -4046,6 +4107,11 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<String> get author => $composableBuilder(
     column: $table.author,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4178,6 +4244,11 @@ class $$ExercisesTableOrderingComposer
     column: $table.author,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -4246,6 +4317,9 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get author =>
       $composableBuilder(column: $table.author, builder: (column) => column);
+
+  GeneratedColumn<String> get imagePath =>
+      $composableBuilder(column: $table.imagePath, builder: (column) => column);
 
   Expression<T> planExercisesRefs<T extends Object>(
     Expression<T> Function($$PlanExercisesTableAnnotationComposer a) f,
@@ -4340,6 +4414,7 @@ class $$ExercisesTableTableManager
                 Value<bool> isCustom = const Value.absent(),
                 Value<String?> sourcePlanName = const Value.absent(),
                 Value<String?> author = const Value.absent(),
+                Value<String?> imagePath = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
@@ -4356,6 +4431,7 @@ class $$ExercisesTableTableManager
                 isCustom: isCustom,
                 sourcePlanName: sourcePlanName,
                 author: author,
+                imagePath: imagePath,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4374,6 +4450,7 @@ class $$ExercisesTableTableManager
                 Value<bool> isCustom = const Value.absent(),
                 Value<String?> sourcePlanName = const Value.absent(),
                 Value<String?> author = const Value.absent(),
+                Value<String?> imagePath = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
@@ -4390,6 +4467,7 @@ class $$ExercisesTableTableManager
                 isCustom: isCustom,
                 sourcePlanName: sourcePlanName,
                 author: author,
+                imagePath: imagePath,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
