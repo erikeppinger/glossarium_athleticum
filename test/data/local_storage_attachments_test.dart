@@ -90,4 +90,71 @@ void main() {
 
     expect(await attachments.exists(), isFalse);
   });
+
+  // Regression: a fileName isn't always one this app generated itself -
+  // restoreExerciseImage feeds a plan/backup file's own `image_path` field
+  // straight into these functions, and that file can come from an
+  // untrusted source. A crafted path traversal must not be able to escape
+  // the attachments directory on either read or write.
+  group('path traversal in an untrusted fileName is neutralized', () {
+    late File secret;
+
+    setUp(() async {
+      secret = File('${tempRoot.path}/secret.txt');
+      await secret.writeAsString('sensitive-outside-attachments');
+    });
+
+    test('readAttachmentBytes cannot read a file outside the directory', () async {
+      final bytes = await readAttachmentBytes(
+        '../secret.txt',
+        directory: attachments,
+      );
+      expect(
+        bytes,
+        isNull,
+        reason: 'the traversal is stripped to a bare filename, which does '
+            'not exist inside the (empty) attachments directory',
+      );
+    });
+
+    test(
+      'saveAttachmentBytes cannot write outside the directory, even with '
+      'multiple ".." segments',
+      () async {
+        await saveAttachmentBytes(
+          [1, 2, 3],
+          '../../../evil.txt',
+          directory: attachments,
+        );
+
+        expect(
+          await File('${tempRoot.path}/evil.txt').exists(),
+          isFalse,
+          reason: 'must not have escaped to a parent directory',
+        );
+        expect(
+          await File('${attachments.path}/evil.txt').exists(),
+          isTrue,
+          reason: 'the sanitized basename is written inside attachments instead',
+        );
+      },
+    );
+
+    test('resolveAttachmentPath strips the traversal from the returned path', () async {
+      final path = await resolveAttachmentPath(
+        '../../secret.txt',
+        directory: attachments,
+      );
+      expect(path, '${attachments.path}${Platform.pathSeparator}secret.txt');
+    });
+
+    test('deleteAttachment cannot delete a file outside the directory', () async {
+      await deleteAttachment('../secret.txt', directory: attachments);
+      expect(
+        await secret.exists(),
+        isTrue,
+        reason: 'the real file outside attachments must be untouched',
+      );
+    });
+  });
 }

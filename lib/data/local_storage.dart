@@ -1,9 +1,25 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 final _random = Random();
+
+/// Every attachment path in this file is built through here rather than raw
+/// string interpolation. `fileName` isn't always a name this app generated
+/// itself - `restoreExerciseImage` (lib/export/exercise_json.dart) feeds a
+/// plan/backup file's own `image_path` field straight into these functions,
+/// and that file can come from an untrusted source (a shared plan, an
+/// "Open with" import). Without this, a crafted `image_path` like
+/// `"../../../../databases/training_app.sqlite"` would let a malicious plan
+/// file overwrite or read arbitrary files inside the app's own sandboxed
+/// storage on import/export. `p.basename` strips any directory component -
+/// including a leading `/` (Windows: any leading `\` too) `p.join` won't
+/// backtrack past - so the resolved path always stays inside [dir]
+/// regardless of what [fileName] actually contains.
+String _attachmentPath(Directory dir, String fileName) =>
+    p.join(dir.path, p.basename(fileName));
 
 /// Subdirectory (under the app's documents directory) where in-app media
 /// attachments will live once Phase 4+ implements them. Kept as a single
@@ -59,7 +75,7 @@ Future<String> saveAttachment(
       fileName ??
       '${DateTime.now().microsecondsSinceEpoch}_${_random.nextInt(1 << 32)}$extension';
 
-  await File(sourcePath).copy('${dir.path}/$name');
+  await File(sourcePath).copy(_attachmentPath(dir, name));
   return name;
 }
 
@@ -69,7 +85,7 @@ Future<String> resolveAttachmentPath(
   Directory? directory,
 }) async {
   final dir = directory ?? await getAttachmentsDirectory();
-  return '${dir.path}/$fileName';
+  return _attachmentPath(dir, fileName);
 }
 
 /// Removes a single attachment, ignoring one that's already gone - a missing
@@ -79,7 +95,7 @@ Future<void> deleteAttachment(
   Directory? directory,
 }) async {
   final dir = directory ?? await getAttachmentsDirectory();
-  final file = File('${dir.path}/$fileName');
+  final file = File(_attachmentPath(dir, fileName));
   if (await file.exists()) await file.delete();
 }
 
@@ -91,7 +107,7 @@ Future<List<int>?> readAttachmentBytes(
   Directory? directory,
 }) async {
   final dir = directory ?? await getAttachmentsDirectory();
-  final file = File('${dir.path}/$fileName');
+  final file = File(_attachmentPath(dir, fileName));
   if (!await file.exists()) return null;
   return file.readAsBytes();
 }
@@ -109,5 +125,5 @@ Future<void> saveAttachmentBytes(
   if (!await dir.exists()) {
     await dir.create(recursive: true);
   }
-  await File('${dir.path}/$fileName').writeAsBytes(bytes);
+  await File(_attachmentPath(dir, fileName)).writeAsBytes(bytes);
 }
