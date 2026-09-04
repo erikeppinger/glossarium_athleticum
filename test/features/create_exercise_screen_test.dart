@@ -56,4 +56,35 @@ void main() {
       await db.close();
     },
   );
+
+  testWidgets(
+    'tapping the "None (Bodyweight)" equipment quick pick fills the field',
+    (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      tester.view.physicalSize = const Size(1080, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(db)],
+          child: const MaterialApp(home: CreateExerciseScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ActionChip, 'None (Bodyweight)'));
+      await tester.pump();
+
+      final equipmentField = tester.widget<TextField>(
+        find.widgetWithText(TextField, 'Equipment'),
+      );
+      expect(equipmentField.controller!.text, 'None (Bodyweight)');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
 }

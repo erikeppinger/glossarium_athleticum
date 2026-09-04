@@ -254,6 +254,26 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
             border: OutlineInputBorder(),
           ),
         ),
+        const SizedBox(height: 8),
+        // Quick picks for exercises that need no fixed external weight (ab
+        // rollouts, band work, ...) - exact values the seed library and
+        // lib/logic/equipment_matching.dart already recognize (a
+        // "None (Bodyweight)"-style value always counts as doable
+        // regardless of what equipment someone has), so typing them by hand
+        // isn't the only way to get this right.
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final suggestion in const [
+              'None (Bodyweight)',
+              'Resistance Band',
+            ])
+              ActionChip(
+                label: Text(suggestion),
+                onPressed: () => _equipmentController.text = suggestion,
+              ),
+          ],
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: _descriptionController,
