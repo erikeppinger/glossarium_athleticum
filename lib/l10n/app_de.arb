@@ -1,0 +1,17 @@
+{
+  "@@locale": "de",
+  "settingsTitle": "Einstellungen",
+  "unitsAndDisplaySectionTitle": "Einheiten & Anzeige",
+  "weightUnitTitle": "Gewichtseinheit",
+  "weightUnitKg": "Kilogramm (kg)",
+  "weightUnitLbs": "Pfund (lbs)",
+  "themeTitle": "Design",
+  "clockFormatTitle": "Uhrzeitformat",
+  "colourPaletteTitle": "Farbpalette",
+  "fitnessLevelTitle": "Fitnesslevel",
+  "fitnessLevelSubtitle": "{level} - fließt in die automatischen Trainingsvorschläge im Übungsverlauf ein.",
+  "availableEquipmentTitle": "Verfügbare Ausrüstung",
+  "availableEquipmentEmptySubtitle": "Nur Körpergewicht - wird für den Filter \"Meine Ausrüstung\" in der Übungsbibliothek verwendet.",
+  "cancel": "Abbrechen",
+  "save": "Speichern"
+}

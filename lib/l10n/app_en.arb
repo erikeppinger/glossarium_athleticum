@@ -1,0 +1,65 @@
+{
+  "@@locale": "en",
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Settings screen app bar title"
+  },
+  "unitsAndDisplaySectionTitle": "Units & display",
+  "@unitsAndDisplaySectionTitle": {
+    "description": "Settings section header grouping weight unit, theme, clock format, colour palette, fitness level, and available equipment"
+  },
+  "weightUnitTitle": "Weight unit",
+  "@weightUnitTitle": {
+    "description": "Settings row title for the kg/lbs preference"
+  },
+  "weightUnitKg": "Kilograms (kg)",
+  "@weightUnitKg": {
+    "description": "Weight unit option/current-value label"
+  },
+  "weightUnitLbs": "Pounds (lbs)",
+  "@weightUnitLbs": {
+    "description": "Weight unit option/current-value label"
+  },
+  "themeTitle": "Theme",
+  "@themeTitle": {
+    "description": "Settings row title for light/dark/system theme"
+  },
+  "clockFormatTitle": "Clock format",
+  "@clockFormatTitle": {
+    "description": "Settings row title for 12h/24h time display"
+  },
+  "colourPaletteTitle": "Colour palette",
+  "@colourPaletteTitle": {
+    "description": "Settings row title for the muscle-group colour palette"
+  },
+  "fitnessLevelTitle": "Fitness level",
+  "@fitnessLevelTitle": {
+    "description": "Settings row title for the experience-level preference that feeds auto-progression"
+  },
+  "fitnessLevelSubtitle": "{level} - feeds auto-progression suggestions in exercise history.",
+  "@fitnessLevelSubtitle": {
+    "description": "Settings row subtitle showing the current fitness level and what it affects",
+    "placeholders": {
+      "level": {
+        "type": "String",
+        "example": "Intermediate"
+      }
+    }
+  },
+  "availableEquipmentTitle": "Available equipment",
+  "@availableEquipmentTitle": {
+    "description": "Settings row title for the owned-equipment preference that feeds the Exercise Library filter"
+  },
+  "availableEquipmentEmptySubtitle": "Bodyweight only - feeds the Exercise Library's \"My equipment\" filter.",
+  "@availableEquipmentEmptySubtitle": {
+    "description": "Settings row subtitle shown when no equipment has been selected yet"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Generic dialog cancel button"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Generic dialog save/confirm button"
+  }
+}

@@ -5,6 +5,7 @@ import 'data/app_database_provider.dart';
 import 'data/seed/exercise_seed_loader.dart';
 import 'features/settings/app_preferences.dart';
 import 'home_screen.dart';
+import 'l10n/app_localizations.dart';
 
 void main() {
   runApp(const ProviderScope(child: TrainingApp()));
@@ -24,6 +25,13 @@ class TrainingApp extends ConsumerWidget {
     final themeMode = ref.watch(appPreferencesProvider).themeMode;
     return MaterialApp(
       title: 'Training App',
+      // Only the Settings > Units & display section is actually migrated to
+      // AppLocalizations so far (see CLAUDE.md) - this wires up the
+      // pipeline and locale so that section, and anything migrated later,
+      // works correctly; every other screen's plain English literals are
+      // unaffected by the device locale until migrated too.
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

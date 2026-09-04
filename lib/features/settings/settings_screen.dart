@@ -18,6 +18,7 @@ import '../exercise_library/exercise_library_providers.dart';
 import '../../logic/muscle_group_colors.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../../l10n/app_localizations.dart';
 import 'app_preferences.dart';
 import 'color_palette_screen.dart';
 import 'backup_dialogs.dart';
@@ -35,13 +36,14 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(appPreferencesProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         children: [
           _Section(
-            title: 'Units & display',
+            title: l10n.unitsAndDisplaySectionTitle,
             icon: Icons.tune,
             summary:
                 '${prefs.weightUnit == WeightUnit.kg ? 'kg' : 'lbs'} • '
@@ -49,27 +51,29 @@ class SettingsScreen extends ConsumerWidget {
             children: [
           ListTile(
             leading: const Icon(Icons.monitor_weight_outlined),
-            title: const Text('Weight unit'),
+            title: Text(l10n.weightUnitTitle),
             subtitle: Text(
-              prefs.weightUnit == WeightUnit.kg ? 'Kilograms (kg)' : 'Pounds (lbs)',
+              prefs.weightUnit == WeightUnit.kg
+                  ? l10n.weightUnitKg
+                  : l10n.weightUnitLbs,
             ),
             onTap: () => _pickWeightUnit(context, ref, prefs.weightUnit),
           ),
           ListTile(
             leading: const Icon(Icons.dark_mode_outlined),
-            title: const Text('Theme'),
+            title: Text(l10n.themeTitle),
             subtitle: Text(_themeModeLabel(prefs.themeMode)),
             onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
           ),
           ListTile(
             leading: const Icon(Icons.access_time),
-            title: const Text('Clock format'),
+            title: Text(l10n.clockFormatTitle),
             subtitle: Text(prefs.clockFormat.label),
             onTap: () => _pickClockFormat(context, ref, prefs.clockFormat),
           ),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
-            title: const Text('Colour palette'),
+            title: Text(l10n.colourPaletteTitle),
             subtitle: Text(prefs.colorPalette.label),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
@@ -79,21 +83,19 @@ class SettingsScreen extends ConsumerWidget {
           ),
           ListTile(
             leading: const Icon(Icons.trending_up),
-            title: const Text('Fitness level'),
+            title: Text(l10n.fitnessLevelTitle),
             subtitle: Text(
-              '${prefs.experienceLevel.label} - feeds auto-progression '
-              'suggestions in exercise history.',
+              l10n.fitnessLevelSubtitle(prefs.experienceLevel.label),
             ),
             onTap: () =>
                 _pickExperienceLevel(context, ref, prefs.experienceLevel),
           ),
           ListTile(
             leading: const Icon(Icons.fitness_center),
-            title: const Text('Available equipment'),
+            title: Text(l10n.availableEquipmentTitle),
             subtitle: Text(
               prefs.availableEquipment.isEmpty
-                  ? 'Bodyweight only - feeds the Exercise Library\'s "My '
-                        'equipment" filter.'
+                  ? l10n.availableEquipmentEmptySubtitle
                   : prefs.availableEquipment.join(', '),
             ),
             onTap: () => _pickAvailableEquipment(
@@ -327,16 +329,21 @@ class SettingsScreen extends ConsumerWidget {
   ) async {
     final choice = await showDialog<WeightUnit>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Weight unit'),
-        children: [
-          for (final unit in WeightUnit.values)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(unit),
-              child: Text(unit == WeightUnit.kg ? 'Kilograms (kg)' : 'Pounds (lbs)'),
-            ),
-        ],
-      ),
+      builder: (context) {
+        final l10n = AppLocalizations.of(context)!;
+        return SimpleDialog(
+          title: Text(l10n.weightUnitTitle),
+          children: [
+            for (final unit in WeightUnit.values)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(context).pop(unit),
+                child: Text(
+                  unit == WeightUnit.kg ? l10n.weightUnitKg : l10n.weightUnitLbs,
+                ),
+              ),
+          ],
+        );
+      },
     );
     if (choice == null || choice == current) return;
     await ref.read(appPreferencesProvider.notifier).setWeightUnit(choice);
@@ -419,7 +426,7 @@ class SettingsScreen extends ConsumerWidget {
     final choice = await showDialog<ExperienceLevel>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Fitness level'),
+        title: Text(AppLocalizations.of(context)!.fitnessLevelTitle),
         children: [
           for (final level in ExperienceLevel.values)
             SimpleDialogOption(
@@ -445,7 +452,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Available equipment'),
+          title: Text(AppLocalizations.of(context)!.availableEquipmentTitle),
           content: SizedBox(
             width: double.maxFinite,
             child: SingleChildScrollView(
@@ -471,11 +478,11 @@ class SettingsScreen extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context)!.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(selection),
-              child: const Text('Save'),
+              child: Text(AppLocalizations.of(context)!.save),
             ),
           ],
         ),
@@ -501,7 +508,7 @@ class SettingsScreen extends ConsumerWidget {
     final choice = await showDialog<ThemeMode>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Theme'),
+        title: Text(AppLocalizations.of(context)!.themeTitle),
         children: [
           for (final mode in ThemeMode.values)
             SimpleDialogOption(
@@ -523,7 +530,7 @@ class SettingsScreen extends ConsumerWidget {
     final choice = await showDialog<ClockFormat>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Clock format'),
+        title: Text(AppLocalizations.of(context)!.clockFormatTitle),
         children: [
           for (final format in ClockFormat.values)
             SimpleDialogOption(
