@@ -359,7 +359,8 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     BodyWeightChange? weightChange, {
     required bool share,
   }) async {
-    final unit = ref.read(appPreferencesProvider).weightUnit;
+    final prefs = ref.read(appPreferencesProvider);
+    final unit = prefs.weightUnit;
     // Fetched regardless of the in-app showProgressCharts preference - the
     // report is a deliberate export, not the live screen, so it always
     // includes the volume chart.
@@ -374,6 +375,11 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       exerciseNames: names,
       unit: unit,
       weightChange: weightChange,
+      // Same Brief/Detailed default the plain-text share uses - previously
+      // the PDF ignored this setting entirely and always showed the
+      // exercise dashboard table, which looked like the Settings toggle did
+      // nothing when someone had it set to Brief.
+      includeExerciseDashboard: prefs.reportDetail == ReportDetail.detailed,
     );
 
     final fileName =

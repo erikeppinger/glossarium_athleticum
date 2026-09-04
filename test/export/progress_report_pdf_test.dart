@@ -83,6 +83,65 @@ void main() {
     expect(String.fromCharCodes(bytes.take(4)), '%PDF');
   });
 
+  // Regression test: the PDF used to always include the exercise dashboard
+  // table regardless of the user's Brief/Detailed default share setting -
+  // picking "Brief" in Settings changed the plain-text share but silently
+  // did nothing to the PDF export, which looked like the setting was broken.
+  test(
+    'includeExerciseDashboard: false omits the exercise dashboard table',
+    () async {
+      final dashboard = [
+        ExerciseProgressSummary(
+          exerciseId: 'EX006',
+          lastLoggedAt: DateTime.utc(2026, 9, 3),
+          topWeight: 110,
+          topReps: 8,
+          isPr: true,
+        ),
+        ExerciseProgressSummary(
+          exerciseId: 'EX003',
+          lastLoggedAt: DateTime.utc(2026, 8, 31),
+          topWeight: 22,
+          topReps: 10,
+          isPr: false,
+        ),
+      ];
+      const summary = PeriodSummary(
+        sessionsScheduled: 3,
+        sessionsCompleted: 3,
+        totalVolume: 14977,
+        prCount: 6,
+      );
+      const exerciseNames = {'EX006': 'Back Squat', 'EX003': 'Goblet Squat (Light)'};
+
+      final detailedBytes = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: summary,
+        dailyTotals: const [],
+        dashboard: dashboard,
+        exerciseNames: exerciseNames,
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+      );
+      final briefBytes = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: summary,
+        dailyTotals: const [],
+        dashboard: dashboard,
+        exerciseNames: exerciseNames,
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+        includeExerciseDashboard: false,
+      );
+
+      expect(String.fromCharCodes(briefBytes.take(4)), '%PDF');
+      // Dropping a whole table section (heading + two data rows) must
+      // produce a meaningfully smaller document, not just a coincidentally
+      // different one - guards against the flag being wired up but ignored.
+      expect(briefBytes.length, lessThan(detailedBytes.length - 100));
+    },
+  );
+
   test('many exercises (forcing a multi-page table) still produces a valid PDF', () async {
     final dashboard = [
       for (var i = 0; i < 60; i++)

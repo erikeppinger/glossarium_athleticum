@@ -10,12 +10,15 @@ import '../logic/chart_axis.dart';
 import '../logic/units.dart';
 
 /// Builds the "hand this to a coach" PDF version of the Progress tab's
-/// summary - one fixed layout (no Brief/Detailed split like the plain-text
-/// share, since a PDF is already the thorough format): header, summary
-/// stats, a volume-over-time chart, and the exercise dashboard as a real
-/// table. Deliberately excludes everything else on the Progress screen (the
-/// sets/reps/PRs mini-charts, a calendar view, per-exercise history) to stay
-/// a fast, uncluttered read.
+/// summary: header, summary stats, a volume-over-time chart, and (when
+/// [includeExerciseDashboard] is true) the exercise dashboard as a real
+/// table - the same Brief/Detailed split the plain-text share already has
+/// (see `progress_screen.dart`'s `_buildShareText`), so picking "Brief" as
+/// the default share detail in Settings affects the PDF export the same way
+/// it affects the plain-text one, instead of the PDF always showing
+/// everything regardless of that preference. Deliberately excludes
+/// everything else on the Progress screen (the sets/reps/PRs mini-charts, a
+/// calendar view, per-exercise history) to stay a fast, uncluttered read.
 ///
 /// Pure data in, bytes out - no DB/Riverpod/widget-tree dependency, matching
 /// this project's `lib/logic/`/`lib/export/` convention of keeping business
@@ -30,6 +33,7 @@ Future<Uint8List> buildProgressReportPdf({
   required WeightUnit unit,
   BodyWeightChange? weightChange,
   DateTime? generatedAt,
+  bool includeExerciseDashboard = true,
 }) async {
   final doc = pw.Document();
   final now = generatedAt ?? DateTime.now();
@@ -53,18 +57,20 @@ Future<Uint8List> buildProgressReportPdf({
         // a direct MultiPage child; wrapped inside another layout widget it
         // isn't, and a long dashboard would blow past the page-count guard
         // instead of paginating cleanly - found via a 60-exercise test).
-        pw.Text(
-          'Exercise dashboard',
-          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-        ),
-        pw.SizedBox(height: 8),
-        if (dashboard.isEmpty)
+        if (includeExerciseDashboard) ...[
           pw.Text(
-            'No logged sets yet.',
-            style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey600),
-          )
-        else
-          _exerciseTable(dashboard, exerciseNames, unit),
+            'Exercise dashboard',
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          if (dashboard.isEmpty)
+            pw.Text(
+              'No logged sets yet.',
+              style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey600),
+            )
+          else
+            _exerciseTable(dashboard, exerciseNames, unit),
+        ],
       ],
     ),
   );

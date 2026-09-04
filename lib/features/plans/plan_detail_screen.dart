@@ -22,6 +22,20 @@ import '../settings/backup_dialogs.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
 
+/// A session card's exercise list used to just join every exercise name with
+/// ", " - fine for a handful of exercises, but a plan with dozens (e.g. an
+/// imported spreadsheet with one row per exercise) turned the subtitle into
+/// an unreadable wall of text spanning many lines. Capped to the first few
+/// names plus a "+N more" count instead.
+String _exerciseSummary(List<PlanExercise> exercises) {
+  const shown = 3;
+  if (exercises.length <= shown) {
+    return exercises.map((e) => e.exerciseName).join(', ');
+  }
+  final names = exercises.take(shown).map((e) => e.exerciseName).join(', ');
+  return '$names, +${exercises.length - shown} more';
+}
+
 class PlanDetailScreen extends ConsumerStatefulWidget {
   final String planId;
 
@@ -200,9 +214,9 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                           ' • ${session.session.sessionName}',
                         ),
                         subtitle: Text(
-                          session.exercises
-                              .map((e) => e.exerciseName)
-                              .join(', '),
+                          _exerciseSummary(session.exercises),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       OverflowBar(
