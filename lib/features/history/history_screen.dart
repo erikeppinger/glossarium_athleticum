@@ -44,11 +44,13 @@ class HistoryScreen extends ConsumerWidget {
             );
           }
           final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
-          final suggestion = suggestNextSet(
-            history: sorted,
-            level: prefs.experienceLevel,
-            unit: unit,
-          );
+          final suggestion = prefs.progressionSuggestionsEnabled
+              ? suggestNextSet(
+                  history: sorted,
+                  level: prefs.experienceLevel,
+                  unit: unit,
+                )
+              : null;
           final maxWeight = sorted
               .map((e) => e.weight)
               .reduce((a, b) => a > b ? a : b);
@@ -62,24 +64,26 @@ class HistoryScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Card(
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Suggested next session',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(suggestion.rationale),
-                    ],
+              if (suggestion != null) ...[
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Suggested next session',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(suggestion.rationale),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
+              ],
               Text(
                 'Weight over time (${unit == WeightUnit.lbs ? 'lbs' : 'kg'})',
                 style: Theme.of(context).textTheme.titleMedium,

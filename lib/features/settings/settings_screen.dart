@@ -90,6 +90,18 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () =>
                 _pickExperienceLevel(context, ref, prefs.experienceLevel),
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.auto_graph),
+            title: const Text('Progression suggestions'),
+            subtitle: const Text(
+              'Shows a "Suggested next session" card in exercise history. '
+              'Turning this off does not affect logged data.',
+            ),
+            value: prefs.progressionSuggestionsEnabled,
+            onChanged: (enabled) => ref
+                .read(appPreferencesProvider.notifier)
+                .setProgressionSuggestionsEnabled(enabled),
+          ),
           ListTile(
             leading: const Icon(Icons.fitness_center),
             title: Text(l10n.availableEquipmentTitle),

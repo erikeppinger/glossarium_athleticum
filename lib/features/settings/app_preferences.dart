@@ -26,6 +26,7 @@ const _reportDetailKey = 'report_detail';
 const _clockFormatKey = 'clock_format';
 const _experienceLevelKey = 'experience_level';
 const _availableEquipmentKey = 'available_equipment';
+const _progressionSuggestionsEnabledKey = 'progression_suggestions_enabled';
 
 /// How times of day (currently just the reminder-time setting) are
 /// displayed and entered. [system] follows the device's own 24-hour setting
@@ -138,6 +139,12 @@ class AppPreferences {
   /// "never configured."
   final Set<String> availableEquipment;
 
+  /// Whether History's "Suggested next session" card (built from
+  /// `suggestNextSet`) is shown at all - some people find an algorithm
+  /// telling them what to lift next intrusive rather than helpful. Defaults
+  /// to on, matching the feature's existing always-on behavior.
+  final bool progressionSuggestionsEnabled;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -155,6 +162,7 @@ class AppPreferences {
     this.clockFormat = ClockFormat.system,
     this.experienceLevel = ExperienceLevel.intermediate,
     this.availableEquipment = const {},
+    this.progressionSuggestionsEnabled = true,
   });
 
   /// Whether the body-measurement UI should be visible at all.
@@ -177,6 +185,7 @@ class AppPreferences {
     ClockFormat? clockFormat,
     ExperienceLevel? experienceLevel,
     Set<String>? availableEquipment,
+    bool? progressionSuggestionsEnabled,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -195,6 +204,8 @@ class AppPreferences {
     clockFormat: clockFormat ?? this.clockFormat,
     experienceLevel: experienceLevel ?? this.experienceLevel,
     availableEquipment: availableEquipment ?? this.availableEquipment,
+    progressionSuggestionsEnabled:
+        progressionSuggestionsEnabled ?? this.progressionSuggestionsEnabled,
   );
 }
 
@@ -249,6 +260,8 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       ),
       availableEquipment:
           prefs.getStringList(_availableEquipmentKey)?.toSet() ?? const {},
+      progressionSuggestionsEnabled:
+          prefs.getBool(_progressionSuggestionsEnabledKey) ?? true,
     );
   }
 
@@ -346,6 +359,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(availableEquipment: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_availableEquipmentKey, value.toList());
+  }
+
+  Future<void> setProgressionSuggestionsEnabled(bool enabled) async {
+    state = state.copyWith(progressionSuggestionsEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_progressionSuggestionsEnabledKey, enabled);
   }
 }
 

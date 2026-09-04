@@ -98,4 +98,35 @@ void main() {
       await db.close();
     },
   );
+
+  testWidgets(
+    'the suggestion card is hidden entirely when progression suggestions are off',
+    (tester) async {
+      final db = await seedDb();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            appPreferencesProvider.overrideWith(
+              (ref) => AppPreferencesNotifier()
+                ..state = const AppPreferences(
+                  progressionSuggestionsEnabled: false,
+                ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: HistoryScreen(exerciseId: 'EX_BP', exerciseName: 'Bench Press'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Suggested next session'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
 }

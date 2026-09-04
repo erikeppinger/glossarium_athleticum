@@ -117,6 +117,23 @@ void main() {
     });
   });
 
+  group('progression suggestions', () {
+    test('defaults to enabled, matching the old always-on behavior', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.progressionSuggestionsEnabled, isTrue);
+    });
+
+    test('setProgressionSuggestionsEnabled updates state and persists', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setProgressionSuggestionsEnabled(false);
+      expect(notifier.state.progressionSuggestionsEnabled, isFalse);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.progressionSuggestionsEnabled, isFalse);
+    });
+  });
+
   test('setThemeMode updates state and persists', () async {
     final notifier = AppPreferencesNotifier();
     expect(notifier.state.themeMode, ThemeMode.system);
