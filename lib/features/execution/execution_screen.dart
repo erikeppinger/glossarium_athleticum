@@ -95,11 +95,27 @@ class _LoggedSetForm {
   }
 }
 
-class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
-  final Map<int, List<_LoggedSetForm>> _formsByExerciseRowId = {};
-  final Map<String, List<double>> _priorWeightsByExerciseId = {};
-  final Set<int> _skippedExerciseRowIds = {};
-  bool _finishing = false;
+/// One plan session's execution-mode progress - every set checked off, every
+/// typed-but-unlogged number, which exercises are skipped or added
+/// mid-session, all of it. Used to live directly on [_ExecutionScreenState],
+/// which meant leaving the screen at all (even just navigating back to a
+/// tab and returning) silently threw it all away, contradicting the leave
+/// dialog's own promise that "the rest timer keeps running... so you can
+/// come back to this session without losing anything" - the timer survived,
+/// nothing else did. Held in [_inProgressSessionProvider] instead (plain
+/// `Provider.family`, not autoDispose, same "survives navigation" shape as
+/// `restTimerControllerProvider`) so a session is only ever actually thrown
+/// away by [disposeAll] - finishing successfully, or explicitly choosing
+/// "Discard" in the leave dialog. Nothing here is reactive state Riverpod
+/// needs to notify anyone about - only [_ExecutionScreenState] itself reads
+/// or mutates it, triggering its own rebuilds via `setState` exactly as
+/// before, just against an object that outlives the widget instead of one
+/// of its fields.
+class _InProgressSession {
+  final Map<int, List<_LoggedSetForm>> formsByExerciseRowId = {};
+  final Map<String, List<double>> priorWeightsByExerciseId = {};
+  final Set<int> skippedExerciseRowIds = {};
+  bool finishing = false;
 
   // Exercises added via "Add exercise" mid-session, kept purely in memory -
   // never written to plan_exercises. Adding one used to call
@@ -110,26 +126,44 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   // that one training, not silently rewrite the plan. Negative, decrementing
   // ids keep these from ever colliding with a real (auto-increment, always
   // positive) plan_exercises.id.
-  final List<PlanExercise> _adHocExercises = [];
-  int _nextAdHocExerciseId = -1;
+  final List<PlanExercise> adHocExercises = [];
+  int nextAdHocExerciseId = -1;
 
-  List<PlanExercise> _allExercises(PlanSessionDetails details) => [
-    ...details.exercises,
-    ..._adHocExercises,
-  ];
-
-  @override
-  void dispose() {
-    for (final forms in _formsByExerciseRowId.values) {
+  /// Only ever called on a genuine end - finishing successfully or
+  /// discarding - never on a plain navigation-away, which is the entire
+  /// point of pulling this out of `State.dispose()`.
+  void disposeAll() {
+    for (final forms in formsByExerciseRowId.values) {
       for (final f in forms) {
         f.dispose();
       }
     }
-    super.dispose();
   }
+}
+
+final _inProgressSessionProvider = Provider.family<_InProgressSession, int>(
+  (ref, planSessionId) => _InProgressSession(),
+);
+
+enum _LeaveChoice { keepTraining, leave, discard }
+
+class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
+  _InProgressSession get _session =>
+      ref.read(_inProgressSessionProvider(widget.planSessionId));
+
+  List<PlanExercise> _allExercises(PlanSessionDetails details) => [
+    ...details.exercises,
+    ..._session.adHocExercises,
+  ];
+
+  // No dispose() override here anymore - the forms' TextEditingControllers
+  // are now owned by _InProgressSession, which outlives this State on
+  // purpose (see its own doc comment). _InProgressSession.disposeAll() is
+  // the only thing that ever disposes them, called from _finishSession and
+  // from choosing "Discard" in _confirmDiscard.
 
   List<_LoggedSetForm> _formsFor(PlanExercise exercise, WeightUnit unit) {
-    return _formsByExerciseRowId.putIfAbsent(exercise.id, () {
+    return _session.formsByExerciseRowId.putIfAbsent(exercise.id, () {
       final weightHintKg = double.tryParse(
         RegExp(r'[\d.]+').stringMatch(exercise.weightIntensity) ?? '',
       );
@@ -164,8 +198,8 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
 
   void _toggleSkip(int exerciseRowId) {
     setState(() {
-      if (!_skippedExerciseRowIds.remove(exerciseRowId)) {
-        _skippedExerciseRowIds.add(exerciseRowId);
+      if (!_session.skippedExerciseRowIds.remove(exerciseRowId)) {
+        _session.skippedExerciseRowIds.add(exerciseRowId);
       }
     });
   }
@@ -183,9 +217,9 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     if (chosen == null || !mounted) return;
 
     setState(() {
-      _adHocExercises.add(
+      _session.adHocExercises.add(
         PlanExercise(
-          id: _nextAdHocExerciseId--,
+          id: _session.nextAdHocExerciseId--,
           sessionId: sessionId,
           order: 0,
           exerciseId: chosen.id,
@@ -243,7 +277,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                         libraryExercise: ref
                             .watch(exerciseLookupProvider)
                             .valueOrNull?[exercise.exerciseId],
-                        skipped: _skippedExerciseRowIds.contains(exercise.id),
+                        skipped: _session.skippedExerciseRowIds.contains(exercise.id),
                         onSetLogged: (form) => _logSet(exercise, form, unit),
                         onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
                         onAddSet: () => _addSet(exercise, unit),
@@ -266,7 +300,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                     // focused, close enough to invite an accidental tap
                     // that ends the whole session mid-entry.
                     FilledButton(
-                      onPressed: _finishing
+                      onPressed: _session.finishing
                           ? null
                           : () => _finishSession(details, unit),
                       style: FilledButton.styleFrom(
@@ -297,48 +331,59 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   /// though "Finish session" would otherwise drop them silently (see
   /// _unloggedFilledForms).
   bool get _hasUnsavedSets =>
-      !_finishing &&
-      (_formsByExerciseRowId.values.any((forms) => forms.any((f) => f.logged)) ||
+      !_session.finishing &&
+      (_session.formsByExerciseRowId.values.any(
+            (forms) => forms.any((f) => f.logged),
+          ) ||
           _unloggedFilledForms.isNotEmpty);
 
   /// Sets where someone typed reps and/or weight but never tapped the
   /// per-set "Log set" check - easy to do, since typing the numbers looks
   /// and feels like the whole job. Without this check, "Finish session"
   /// would silently drop that data with no warning at all.
-  List<_LoggedSetForm> get _unloggedFilledForms => _formsByExerciseRowId.values
-      .expand((forms) => forms)
-      .where(
-        (f) =>
-            !f.logged &&
-            (f.reps.text.trim().isNotEmpty || f.weight.text.trim().isNotEmpty),
-      )
-      .toList();
+  List<_LoggedSetForm> get _unloggedFilledForms =>
+      _session.formsByExerciseRowId.values
+          .expand((forms) => forms)
+          .where(
+            (f) =>
+                !f.logged &&
+                (f.reps.text.trim().isNotEmpty ||
+                    f.weight.text.trim().isNotEmpty),
+          )
+          .toList();
 
   Future<void> _confirmDiscard() async {
-    final loggedCount = _formsByExerciseRowId.values
+    final loggedCount = _session.formsByExerciseRowId.values
         .expand((forms) => forms)
         .where((f) => f.logged)
         .length;
     final unloggedCount = _unloggedFilledForms.length;
     final totalCount = loggedCount + unloggedCount;
 
-    final discard = await showDialog<bool>(
+    final choice = await showDialog<_LeaveChoice>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Leave without finishing?'),
         content: Text(
           "You've entered $totalCount set${totalCount == 1 ? '' : 's'} that "
-          "haven't been saved yet. Leaving now discards them.\n\n"
-          'Tip: the rest timer keeps running if you switch tabs, so you can '
-          'come back to this session without losing anything.',
+          "haven't been saved yet.\n\n"
+          '"Leave" keeps everything exactly as it is, including the rest '
+          "timer - start this session again (or tap the timer's own chip) "
+          'to pick up right where you left off. "Discard" erases it for '
+          'good.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () =>
+                Navigator.of(context).pop(_LeaveChoice.keepTraining),
             child: const Text('Keep training'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(context).pop(_LeaveChoice.leave),
+            child: const Text('Leave'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(_LeaveChoice.discard),
             child: Text(
               'Discard',
               style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -348,7 +393,14 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       ),
     );
 
-    if (discard == true && mounted) Navigator.of(context).pop();
+    if (choice == _LeaveChoice.discard) {
+      _session.disposeAll();
+      ref.invalidate(_inProgressSessionProvider(widget.planSessionId));
+    }
+    if ((choice == _LeaveChoice.discard || choice == _LeaveChoice.leave) &&
+        mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _logSet(
@@ -369,7 +421,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     final weight = typedWeight == null ? null : displayToKg(typedWeight, unit);
 
     if (weight != null) {
-      final priorWeights = _priorWeightsByExerciseId.putIfAbsent(
+      final priorWeights = _session.priorWeightsByExerciseId.putIfAbsent(
         exercise.exerciseId ?? exercise.exerciseName,
         () => [],
       );
@@ -405,7 +457,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       if (typedWeight != null) {
         final weight = displayToKg(typedWeight, unit);
         final key = exercise.exerciseId ?? exercise.exerciseName;
-        _priorWeightsByExerciseId[key]?.remove(weight);
+        _session.priorWeightsByExerciseId[key]?.remove(weight);
       }
     }
     setState(() {
@@ -462,7 +514,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       if (!mounted) return;
     }
 
-    setState(() => _finishing = true);
+    setState(() => _session.finishing = true);
     final db = ref.read(appDatabaseProvider);
     final entries = <LoggedSetInput>[];
 
@@ -513,6 +565,13 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     if (restTimer.planSessionId == widget.planSessionId) {
       ref.read(restTimerControllerProvider.notifier).skip();
     }
+
+    // The session is genuinely over now - free its forms/controllers and
+    // drop the cached _InProgressSession, so a later Start on this same
+    // plan session begins from a clean slate rather than the just-finished
+    // one's leftover (now-persisted) state.
+    _session.disposeAll();
+    ref.invalidate(_inProgressSessionProvider(widget.planSessionId));
 
     if (mounted) Navigator.of(context).pop();
   }
@@ -762,9 +821,9 @@ class _ExerciseCard extends ConsumerWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             // A negative id marks an exercise added via "Add exercise"
-            // mid-session (see _ExecutionScreenState._adHocExercises) -
-            // never written to the plan, so this makes that explicit rather
-            // than letting it look identical to a normally-prescribed row.
+            // mid-session (see _InProgressSession.adHocExercises) - never
+            // written to the plan, so this makes that explicit rather than
+            // letting it look identical to a normally-prescribed row.
             if (exercise.id < 0)
               Text(
                 'Added for this session only - not saved to the plan.',
