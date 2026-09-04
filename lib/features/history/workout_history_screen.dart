@@ -221,7 +221,7 @@ class CompletedWorkoutScreen extends ConsumerWidget {
     await db.sessionLogDao.deleteSessionLog(logId);
     ref.invalidate(workoutHistoryProvider);
     ref.invalidate(loggedPlanSessionIdsProvider);
-    ref.invalidate(exerciseProgressDashboardProvider);
+    invalidateProgressProviders(ref);
 
     if (context.mounted) Navigator.of(context).pop();
   }

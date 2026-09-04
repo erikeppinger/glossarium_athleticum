@@ -15,6 +15,7 @@ import '../../import/gpx_import.dart';
 import '../../logic/units.dart';
 import '../execution/start_session_helper.dart';
 import '../history/workout_history_screen.dart';
+import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
 import '../shared/numeric_input_formatters.dart';
 
@@ -362,7 +363,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       distance: input.distanceKm == null ? null : input.distanceKm! * 1000,
       notes: input.notes.isEmpty ? null : input.notes,
     );
+    // One-shot FutureProviders - won't notice this write on their own (same
+    // gotcha as execution_screen.dart's _finishSession).
     ref.invalidate(adHocActivitiesProvider);
+    invalidateProgressProviders(ref);
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(
