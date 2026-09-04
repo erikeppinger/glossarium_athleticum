@@ -100,6 +100,23 @@ void main() {
     });
   });
 
+  group('available equipment', () {
+    test('defaults to empty', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.availableEquipment, isEmpty);
+    });
+
+    test('setAvailableEquipment updates state and persists', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setAvailableEquipment({'Barbell', 'Bench'});
+      expect(notifier.state.availableEquipment, {'Barbell', 'Bench'});
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.availableEquipment, {'Barbell', 'Bench'});
+    });
+  });
+
   test('setThemeMode updates state and persists', () async {
     final notifier = AppPreferencesNotifier();
     expect(notifier.state.themeMode, ThemeMode.system);

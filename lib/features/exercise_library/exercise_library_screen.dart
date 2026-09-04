@@ -38,6 +38,12 @@ class ExerciseLibraryScreen extends ConsumerWidget {
     final creatorOptionsAsync = ref.watch(creatorFilterOptionsProvider);
     final selectedCreator = ref.watch(exerciseCreatorFilterProvider);
     final selectedArea = ref.watch(exerciseAreaFilterProvider);
+    final availableEquipment = ref.watch(
+      appPreferencesProvider.select((p) => p.availableEquipment),
+    );
+    final equipmentFilterEnabled = ref.watch(
+      exerciseEquipmentFilterEnabledProvider,
+    );
     final palette = ref.watch(appPreferencesProvider).colorPalette;
 
     return Scaffold(
@@ -211,6 +217,24 @@ class ExerciseLibraryScreen extends ConsumerWidget {
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
           ),
+          // Hidden entirely until equipment has actually been configured
+          // (Settings or onboarding) - same "opt-in feature invisible until
+          // there's data for it" shape as the body-tracking card, since an
+          // empty owned-equipment set isn't itself a meaningful filter.
+          if (availableEquipment.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FilterChip(
+                  label: const Text('My equipment'),
+                  selected: equipmentFilterEnabled,
+                  onSelected: (selected) => ref
+                      .read(exerciseEquipmentFilterEnabledProvider.notifier)
+                      .state = selected,
+                ),
+              ),
+            ),
           const SizedBox(height: 8),
           Expanded(
             child: exercisesAsync.when(

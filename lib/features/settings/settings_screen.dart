@@ -87,6 +87,21 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () =>
                 _pickExperienceLevel(context, ref, prefs.experienceLevel),
           ),
+          ListTile(
+            leading: const Icon(Icons.fitness_center),
+            title: const Text('Available equipment'),
+            subtitle: Text(
+              prefs.availableEquipment.isEmpty
+                  ? 'Bodyweight only - feeds the Exercise Library\'s "My '
+                        'equipment" filter.'
+                  : prefs.availableEquipment.join(', '),
+            ),
+            onTap: () => _pickAvailableEquipment(
+              context,
+              ref,
+              prefs.availableEquipment,
+            ),
+          ),
             ],
           ),
 
@@ -416,6 +431,60 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (choice == null || choice == current) return;
     await ref.read(appPreferencesProvider.notifier).setExperienceLevel(choice);
+  }
+
+  Future<void> _pickAvailableEquipment(
+    BuildContext context,
+    WidgetRef ref,
+    Set<String> current,
+  ) async {
+    final tags = await ref.read(libraryEquipmentTagsProvider.future);
+    if (!context.mounted) return;
+    var selection = {...current};
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Available equipment'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final tag in tags)
+                    CheckboxListTile(
+                      title: Text(tag),
+                      value: selection.contains(tag),
+                      onChanged: (checked) => setState(() {
+                        if (checked ?? false) {
+                          selection.add(tag);
+                        } else {
+                          selection.remove(tag);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(selection),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    await ref
+        .read(appPreferencesProvider.notifier)
+        .setAvailableEquipment(result);
   }
 
   String _themeModeLabel(ThemeMode mode) => switch (mode) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../exercise_library/exercise_library_providers.dart';
 import '../settings/app_preferences.dart';
 
 /// The one interactive step in an otherwise static tour - lets the app feed
@@ -52,6 +53,85 @@ class _ExperienceLevelPage extends ConsumerWidget {
                       .setExperienceLevel(level),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The second interactive step - which equipment the user actually has
+/// access to, feeding the Exercise Library's "My equipment" filter (see
+/// `exercise_library_screen.dart`). Built from the library's own data
+/// (`libraryEquipmentTagsProvider`) rather than a hand-maintained list, so
+/// it stays accurate as exercises are added. Nothing selected is a valid,
+/// deliberate choice (bodyweight-only) - not an error state - so there's no
+/// "confirm" step here either, matching the experience-level page.
+class _EquipmentPage extends ConsumerWidget {
+  const _EquipmentPage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final owned = ref.watch(appPreferencesProvider).availableEquipment;
+    final tagsAsync = ref.watch(libraryEquipmentTagsProvider);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.fitness_center,
+            size: 88,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'What equipment do you have?',
+            style: Theme.of(context).textTheme.headlineSmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Select what you have access to - the Exercise Library can then '
+            'filter to what you can actually do. Leave blank for bodyweight '
+            'only; change this anytime in Settings.',
+            style: Theme.of(context).textTheme.bodyLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Flexible(
+            child: SingleChildScrollView(
+              child: tagsAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) => Text('Error: $error'),
+                data: (tags) => Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final tag in tags)
+                      FilterChip(
+                        label: Text(tag),
+                        selected: owned.contains(tag),
+                        onSelected: (selected) {
+                          final next = {...owned};
+                          if (selected) {
+                            next.add(tag);
+                          } else {
+                            next.remove(tag);
+                          }
+                          ref
+                              .read(appPreferencesProvider.notifier)
+                              .setAvailableEquipment(next);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -138,8 +218,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  // The interactive experience-level step comes after the static tour pages.
-  static final int _totalPages = _pages.length + 1;
+  // The two interactive steps (experience level, then equipment) come after
+  // the static tour pages.
+  static final int _totalPages = _pages.length + 2;
 
   @override
   Widget build(BuildContext context) {
@@ -161,9 +242,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 controller: _controller,
                 itemCount: _totalPages,
                 onPageChanged: (page) => setState(() => _page = page),
-                itemBuilder: (context, index) => index < _pages.length
-                    ? _TourPageView(page: _pages[index])
-                    : const _ExperienceLevelPage(),
+                itemBuilder: (context, index) {
+                  if (index < _pages.length) {
+                    return _TourPageView(page: _pages[index]);
+                  }
+                  return index == _pages.length
+                      ? const _ExperienceLevelPage()
+                      : const _EquipmentPage();
+                },
               ),
             ),
             Row(

@@ -25,6 +25,7 @@ const _bodyTrackingKey = 'body_tracking';
 const _reportDetailKey = 'report_detail';
 const _clockFormatKey = 'clock_format';
 const _experienceLevelKey = 'experience_level';
+const _availableEquipmentKey = 'available_equipment';
 
 /// How times of day (currently just the reminder-time setting) are
 /// displayed and entered. [system] follows the device's own 24-hour setting
@@ -127,6 +128,16 @@ class AppPreferences {
   /// before this preference existed.
   final ExperienceLevel experienceLevel;
 
+  /// Equipment tags (see `lib/logic/equipment_matching.dart`) the user says
+  /// they have access to - feeds the Exercise Library's "My equipment"
+  /// filter. Defaults to empty; the filter chip itself defaults to
+  /// inactive (same opt-in-per-session shape as the existing muscle-area
+  /// filter chip) rather than being gated on whether this has ever been
+  /// set, so "I deliberately own nothing but bodyweight" is a valid,
+  /// representable choice rather than being indistinguishable from
+  /// "never configured."
+  final Set<String> availableEquipment;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -143,6 +154,7 @@ class AppPreferences {
     this.reportDetail = ReportDetail.brief,
     this.clockFormat = ClockFormat.system,
     this.experienceLevel = ExperienceLevel.intermediate,
+    this.availableEquipment = const {},
   });
 
   /// Whether the body-measurement UI should be visible at all.
@@ -164,6 +176,7 @@ class AppPreferences {
     ReportDetail? reportDetail,
     ClockFormat? clockFormat,
     ExperienceLevel? experienceLevel,
+    Set<String>? availableEquipment,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -181,6 +194,7 @@ class AppPreferences {
     reportDetail: reportDetail ?? this.reportDetail,
     clockFormat: clockFormat ?? this.clockFormat,
     experienceLevel: experienceLevel ?? this.experienceLevel,
+    availableEquipment: availableEquipment ?? this.availableEquipment,
   );
 }
 
@@ -233,6 +247,8 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
         (l) => l.name == prefs.getString(_experienceLevelKey),
         orElse: () => ExperienceLevel.intermediate,
       ),
+      availableEquipment:
+          prefs.getStringList(_availableEquipmentKey)?.toSet() ?? const {},
     );
   }
 
@@ -324,6 +340,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(experienceLevel: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_experienceLevelKey, value.name);
+  }
+
+  Future<void> setAvailableEquipment(Set<String> value) async {
+    state = state.copyWith(availableEquipment: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_availableEquipmentKey, value.toList());
   }
 }
 
