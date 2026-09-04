@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -28,11 +29,37 @@ import 'exercise_detail_screen.dart';
 import 'exercise_library_import_screen.dart';
 import 'exercise_library_providers.dart';
 
-class ExerciseLibraryScreen extends ConsumerWidget {
+class ExerciseLibraryScreen extends ConsumerStatefulWidget {
   const ExerciseLibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExerciseLibraryScreen> createState() =>
+      _ExerciseLibraryScreenState();
+}
+
+class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
+  // Up to four filter rows (category, muscle area, creator, equipment) ate a
+  // lot of vertical space above the list, and stayed pinned there while
+  // scrolling - collapsing them once the user actually starts scrolling (and
+  // bringing them back once they scroll back up to the top) trades that
+  // space back to the list without removing the filters outright.
+  bool _filtersExpanded = true;
+
+  bool _handleScrollNotification(UserScrollNotification notification) {
+    if (notification.metrics.pixels <= 0) {
+      if (!_filtersExpanded) setState(() => _filtersExpanded = true);
+    } else if (notification.direction == ScrollDirection.reverse &&
+        _filtersExpanded) {
+      setState(() => _filtersExpanded = false);
+    } else if (notification.direction == ScrollDirection.forward &&
+        !_filtersExpanded) {
+      setState(() => _filtersExpanded = true);
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final exercisesAsync = ref.watch(filteredExercisesProvider);
     final categoriesAsync = ref.watch(exerciseCategoriesProvider);
     final selectedCategory = ref.watch(exerciseCategoryFilterProvider);
@@ -107,147 +134,167 @@ class ExerciseLibraryScreen extends ConsumerWidget {
                   ref.read(exerciseSearchQueryProvider.notifier).state = value,
             ),
           ),
-          categoriesAsync.when(
-            data: (categories) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: SizedBox(
-                height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _CategoryChip(
-                      label: 'All',
-                      selected: selectedCategory == null,
-                      onSelected: () => ref
-                          .read(exerciseCategoryFilterProvider.notifier)
-                          .state = null,
-                    ),
-                    for (final category in categories)
-                      _CategoryChip(
-                        label: category,
-                        selected: selectedCategory == category,
-                        onSelected: () => ref
-                            .read(exerciseCategoryFilterProvider.notifier)
-                            .state = category,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: SizedBox(
-                height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _CategoryChip(
-                      label: 'All areas',
-                      selected: selectedArea == null,
-                      onSelected: () =>
-                          ref.read(exerciseAreaFilterProvider.notifier).state =
-                              null,
-                    ),
-                    for (final area in MuscleArea.values)
-                      _CategoryChip(
-                        label: area.label,
-                        selected: selectedArea == area,
-                        swatch: colorForArea(area, palette),
-                        onSelected: () =>
-                            ref
-                                    .read(exerciseAreaFilterProvider.notifier)
-                                    .state =
-                                area,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          creatorOptionsAsync.when(
-            data: (options) => Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: SizedBox(
-                  height: 40,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: !_filtersExpanded
+                ? const SizedBox(width: double.infinity)
+                : Column(
                     children: [
-                      _CategoryChip(
-                        label: 'All creators',
-                        selected: selectedCreator == null,
-                        onSelected: () => ref
-                            .read(exerciseCreatorFilterProvider.notifier)
-                            .state = null,
-                      ),
-                      _CategoryChip(
-                        label: 'Own',
-                        selected: selectedCreator == ownExercisesFilter,
-                        swatch: colorForProvenance(ExerciseProvenance.own),
-                        onSelected: () => ref
-                            .read(exerciseCreatorFilterProvider.notifier)
-                            .state = ownExercisesFilter,
-                      ),
-                      for (final option in options)
-                        _CategoryChip(
-                          label: option.startsWith('plan:')
-                              ? 'Plan: ${option.substring(5)}'
-                              : 'By: ${option.substring(7)}',
-                          selected: selectedCreator == option,
-                          // Per-value, not colorForProvenance's fixed
-                          // per-category colour - every "Plan: ..." chip
-                          // would otherwise share the same green regardless
-                          // of which plan it is, defeating the point of
-                          // colour-coding a row meant to distinguish them.
-                          swatch: colorForCreatorValue(option),
-                          onSelected: () => ref
-                              .read(exerciseCreatorFilterProvider.notifier)
-                              .state = option,
+                      categoriesAsync.when(
+                        data: (categories) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: SizedBox(
+                            height: 40,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              children: [
+                                _CategoryChip(
+                                  label: 'All',
+                                  selected: selectedCategory == null,
+                                  onSelected: () => ref
+                                      .read(exerciseCategoryFilterProvider.notifier)
+                                      .state = null,
+                                ),
+                                for (final category in categories)
+                                  _CategoryChip(
+                                    label: category,
+                                    selected: selectedCategory == category,
+                                    onSelected: () => ref
+                                        .read(exerciseCategoryFilterProvider.notifier)
+                                        .state = category,
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: SizedBox(
+                            height: 40,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              children: [
+                                _CategoryChip(
+                                  label: 'All areas',
+                                  selected: selectedArea == null,
+                                  onSelected: () => ref
+                                      .read(exerciseAreaFilterProvider.notifier)
+                                      .state = null,
+                                ),
+                                for (final area in MuscleArea.values)
+                                  _CategoryChip(
+                                    label: area.label,
+                                    selected: selectedArea == area,
+                                    swatch: colorForArea(area, palette),
+                                    onSelected: () =>
+                                        ref
+                                                .read(exerciseAreaFilterProvider.notifier)
+                                                .state =
+                                            area,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      creatorOptionsAsync.when(
+                        data: (options) => Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: SizedBox(
+                              height: 40,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                children: [
+                                  _CategoryChip(
+                                    label: 'All creators',
+                                    selected: selectedCreator == null,
+                                    onSelected: () => ref
+                                        .read(exerciseCreatorFilterProvider.notifier)
+                                        .state = null,
+                                  ),
+                                  _CategoryChip(
+                                    label: 'Own',
+                                    selected: selectedCreator == ownExercisesFilter,
+                                    swatch: colorForProvenance(ExerciseProvenance.own),
+                                    onSelected: () => ref
+                                        .read(exerciseCreatorFilterProvider.notifier)
+                                        .state = ownExercisesFilter,
+                                  ),
+                                  for (final option in options)
+                                    _CategoryChip(
+                                      label: option.startsWith('plan:')
+                                          ? 'Plan: ${option.substring(5)}'
+                                          : 'By: ${option.substring(7)}',
+                                      selected: selectedCreator == option,
+                                      // Per-value, not colorForProvenance's
+                                      // fixed per-category colour - every
+                                      // "Plan: ..." chip would otherwise
+                                      // share the same green regardless of
+                                      // which plan it is, defeating the
+                                      // point of colour-coding a row meant
+                                      // to distinguish them.
+                                      swatch: colorForCreatorValue(option),
+                                      onSelected: () => ref
+                                          .read(exerciseCreatorFilterProvider.notifier)
+                                          .state = option,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
+                      ),
+                      // Hidden entirely until equipment has actually been
+                      // configured (Settings or onboarding) - same "opt-in
+                      // feature invisible until there's data for it" shape
+                      // as the body-tracking card, since an empty
+                      // owned-equipment set isn't itself a meaningful filter.
+                      if (availableEquipment.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FilterChip(
+                              label: const Text('My equipment'),
+                              selected: equipmentFilterEnabled,
+                              onSelected: (selected) => ref
+                                  .read(exerciseEquipmentFilterEnabledProvider.notifier)
+                                  .state = selected,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
                     ],
                   ),
-                ),
-              ),
-            ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
           ),
-          // Hidden entirely until equipment has actually been configured
-          // (Settings or onboarding) - same "opt-in feature invisible until
-          // there's data for it" shape as the body-tracking card, since an
-          // empty owned-equipment set isn't itself a meaningful filter.
-          if (availableEquipment.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FilterChip(
-                  label: const Text('My equipment'),
-                  selected: equipmentFilterEnabled,
-                  onSelected: (selected) => ref
-                      .read(exerciseEquipmentFilterEnabledProvider.notifier)
-                      .state = selected,
-                ),
-              ),
-            ),
-          const SizedBox(height: 8),
           Expanded(
             child: exercisesAsync.when(
               data: (exercises) {
                 if (exercises.isEmpty) {
                   return const Center(child: Text('No exercises match.'));
                 }
-                return ListView.builder(
-                  itemCount: exercises.length,
-                  itemBuilder: (context, index) => _ExerciseTile(
-                    exercise: exercises[index],
-                    palette: palette,
+                // NotificationListener (not a ScrollController) so this
+                // only ever reacts to the exercise list's own scrolling,
+                // never a horizontal filter-chip row's.
+                return NotificationListener<UserScrollNotification>(
+                  onNotification: _handleScrollNotification,
+                  child: ListView.builder(
+                    itemCount: exercises.length,
+                    itemBuilder: (context, index) => _ExerciseTile(
+                      exercise: exercises[index],
+                      palette: palette,
+                    ),
                   ),
                 );
               },
