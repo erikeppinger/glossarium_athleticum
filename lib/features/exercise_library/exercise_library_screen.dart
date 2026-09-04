@@ -25,6 +25,7 @@ import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_detail_screen.dart';
+import 'exercise_library_import_screen.dart';
 import 'exercise_library_providers.dart';
 
 class ExerciseLibraryScreen extends ConsumerWidget {
@@ -62,7 +63,7 @@ class ExerciseLibraryScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.file_download_outlined),
             tooltip: 'Import library',
-            onPressed: () => _importLibrary(context, ref),
+            onPressed: () => _showImportOptions(context, ref),
           ),
           PopupMenuButton<_LibraryExportAction>(
             icon: const Icon(Icons.file_upload_outlined),
@@ -267,6 +268,68 @@ class ExerciseLibraryScreen extends ConsumerWidget {
     ref.invalidate(allExercisesForMatchingProvider);
   }
 
+  Future<void> _showImportOptions(BuildContext context, WidgetRef ref) async {
+    final choice = await showModalBottomSheet<_LibraryImportSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.table_chart),
+              title: const Text('From spreadsheet (.csv)'),
+              subtitle: const Text('Excel/Sheets export, or the library template'),
+              onTap: () =>
+                  Navigator.of(context).pop(_LibraryImportSource.spreadsheet),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('From library file (.json)'),
+              subtitle: const Text("Exported from this app's Exercise Library"),
+              onTap: () => Navigator.of(context).pop(_LibraryImportSource.json),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('From encrypted library file (.tlibrary)'),
+              subtitle: const Text('A library shared with its own passphrase'),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(_LibraryImportSource.encryptedJson),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!context.mounted || choice == null) return;
+    switch (choice) {
+      case _LibraryImportSource.spreadsheet:
+        await _importFromSpreadsheet(context);
+      case _LibraryImportSource.json:
+      case _LibraryImportSource.encryptedJson:
+        await _importLibrary(context, ref);
+    }
+  }
+
+  Future<void> _importFromSpreadsheet(BuildContext context) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+    if (file == null || !context.mounted) return;
+
+    final bytes = await file.readAsBytes();
+    final csvContent = utf8.decode(bytes);
+
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            ExerciseLibraryImportScreen(csvContent: csvContent),
+      ),
+    );
+  }
+
   Future<void> _importLibrary(BuildContext context, WidgetRef ref) async {
     final file = await FilePicker.pickFile(
       type: FileType.custom,
@@ -379,6 +442,8 @@ class ExerciseLibraryScreen extends ConsumerWidget {
 }
 
 enum _LibraryExportAction { shareJson, shareEncrypted, saveJson, saveEncrypted }
+
+enum _LibraryImportSource { spreadsheet, json, encryptedJson }
 
 class _CategoryChip extends StatelessWidget {
   final String label;

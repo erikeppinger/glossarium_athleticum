@@ -12,8 +12,10 @@ import '../plans/plan_providers.dart';
 import '../shared/attachment_image.dart';
 import 'exercise_library_providers.dart';
 
-const _difficulties = ['Beginner', 'Intermediate', 'Advanced'];
-const _measurementTypes = [
+/// Shared with the spreadsheet importer (exercise_spreadsheet_parser.dart)
+/// so the two never validate against different value sets.
+const difficulties = ['Beginner', 'Intermediate', 'Advanced'];
+const measurementTypes = [
   'Weight x Reps',
   'Time',
   'Distance',
@@ -216,7 +218,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
           onTap: () => _pickFromList(
             context,
             title: 'Difficulty',
-            options: _difficulties,
+            options: difficulties,
             onPicked: (v) => setState(() => _difficulty = v),
           ),
         ),
@@ -443,7 +445,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
       builder: (context) => SimpleDialog(
         title: const Text('Measurement type'),
         children: [
-          for (final type in _measurementTypes)
+          for (final type in measurementTypes)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop(type),
               child: Text(type),
