@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../shared/numeric_input_formatters.dart';
 import 'plan_providers.dart';
 
 const _newPlanSentinel = '__new_plan__';
@@ -178,6 +179,7 @@ class _AddExerciseToPlanScreenState
                           child: TextField(
                             controller: _newSessionWeekController,
                             keyboardType: TextInputType.number,
+                            inputFormatters: integerInputFormatters,
                             decoration: const InputDecoration(
                               labelText: 'Week',
                               border: OutlineInputBorder(),
@@ -224,6 +226,7 @@ class _AddExerciseToPlanScreenState
                         child: TextField(
                           controller: _setsController,
                           keyboardType: TextInputType.number,
+                          inputFormatters: integerInputFormatters,
                           decoration: const InputDecoration(
                             labelText: 'Sets',
                             border: OutlineInputBorder(),
@@ -261,6 +264,7 @@ class _AddExerciseToPlanScreenState
                         child: TextField(
                           controller: _restController,
                           keyboardType: TextInputType.number,
+                          inputFormatters: integerInputFormatters,
                           decoration: const InputDecoration(
                             labelText: 'Rest (sec)',
                             border: OutlineInputBorder(),

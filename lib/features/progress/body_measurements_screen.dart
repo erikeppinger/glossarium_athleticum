@@ -8,6 +8,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../logic/units.dart';
 import '../settings/app_preferences.dart';
+import '../shared/numeric_input_formatters.dart';
 
 final bodyMeasurementsProvider = FutureProvider<List<BodyMeasurement>>((ref) {
   final db = ref.watch(appDatabaseProvider);
@@ -373,6 +374,7 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: decimalInputFormatters,
               decoration: InputDecoration(labelText: weightLabel),
             ),
             TextField(
@@ -380,6 +382,7 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: decimalInputFormatters,
               decoration: const InputDecoration(labelText: 'Body fat (%)'),
             ),
             const SizedBox(height: 8),
@@ -429,6 +432,7 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
   Widget _cmField(TextEditingController controller, String label) => TextField(
     controller: controller,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    inputFormatters: decimalInputFormatters,
     decoration: InputDecoration(labelText: label),
   );
 

@@ -13,6 +13,7 @@ import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart';
 import '../settings/app_preferences.dart';
 import '../shared/muscle_area_stripe.dart';
+import '../shared/numeric_input_formatters.dart';
 import 'rest_timer_controller.dart';
 
 /// Every top set ever logged for one exercise, most recent first - backs the
@@ -888,6 +889,7 @@ class _SetRow extends StatelessWidget {
               controller: form.reps,
               enabled: !form.logged,
               keyboardType: TextInputType.number,
+              inputFormatters: integerInputFormatters,
               decoration: const InputDecoration(labelText: 'Reps'),
             ),
           ),
@@ -899,6 +901,7 @@ class _SetRow extends StatelessWidget {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: decimalInputFormatters,
               decoration: InputDecoration(
                 labelText: unit == WeightUnit.lbs ? 'Weight (lbs)' : 'Weight (kg)',
               ),
@@ -912,6 +915,7 @@ class _SetRow extends StatelessWidget {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: decimalInputFormatters,
               decoration: const InputDecoration(labelText: 'RPE'),
             ),
           ),

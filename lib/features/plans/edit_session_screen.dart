@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../shared/numeric_input_formatters.dart';
 import 'plan_providers.dart';
 
 final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
@@ -282,6 +283,7 @@ class _EditExerciseDialogState extends State<_EditExerciseDialog> {
                   child: TextField(
                     controller: _setsController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: integerInputFormatters,
                     decoration: const InputDecoration(labelText: 'Sets'),
                   ),
                 ),
@@ -310,6 +312,7 @@ class _EditExerciseDialogState extends State<_EditExerciseDialog> {
                   child: TextField(
                     controller: _restController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: integerInputFormatters,
                     decoration: const InputDecoration(labelText: 'Rest (sec)'),
                   ),
                 ),

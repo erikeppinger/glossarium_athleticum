@@ -16,6 +16,7 @@ import '../../logic/units.dart';
 import '../execution/start_session_helper.dart';
 import '../history/workout_history_screen.dart';
 import '../settings/app_preferences.dart';
+import '../shared/numeric_input_formatters.dart';
 
 final scheduledSessionsProvider = FutureProvider<List<ScheduledSession>>((
   ref,
@@ -510,6 +511,7 @@ class _LogActivityDialogState extends State<_LogActivityDialog> {
                   child: TextField(
                     controller: _durationController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: integerInputFormatters,
                     decoration: const InputDecoration(
                       labelText: 'Duration (min)',
                     ),
@@ -522,6 +524,7 @@ class _LogActivityDialogState extends State<_LogActivityDialog> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                    inputFormatters: decimalInputFormatters,
                     decoration: const InputDecoration(labelText: 'Distance (km)'),
                   ),
                 ),
