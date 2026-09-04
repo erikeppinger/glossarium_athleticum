@@ -18,10 +18,6 @@ final _progressionHistoryProvider =
       return db.sessionLogDao.getProgressionHistory(exerciseId);
     });
 
-/// Currently fixed at intermediate - Phase 6 (onboarding) will feed the
-/// user's actual experience level in here instead.
-const _defaultLevel = ExperienceLevel.intermediate;
-
 class HistoryScreen extends ConsumerWidget {
   final String exerciseId;
   final String exerciseName;
@@ -35,7 +31,8 @@ class HistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final historyAsync = ref.watch(_progressionHistoryProvider(exerciseId));
-    final unit = ref.watch(appPreferencesProvider).weightUnit;
+    final prefs = ref.watch(appPreferencesProvider);
+    final unit = prefs.weightUnit;
 
     return Scaffold(
       appBar: AppBar(title: Text(exerciseName)),
@@ -49,7 +46,7 @@ class HistoryScreen extends ConsumerWidget {
           final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
           final suggestion = suggestNextSet(
             history: sorted,
-            level: _defaultLevel,
+            level: prefs.experienceLevel,
             unit: unit,
           );
           final maxWeight = sorted

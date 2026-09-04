@@ -3,6 +3,62 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../settings/app_preferences.dart';
 
+/// The one interactive step in an otherwise static tour - lets the app feed
+/// a real experience level into `suggestNextSet` (see
+/// `history_screen.dart`) instead of assuming everyone is intermediate.
+/// Selecting a level applies it immediately, so skipping the tour via the
+/// top-right "Skip" button still leaves the sensible default in place
+/// rather than an unset/invalid state.
+class _ExperienceLevelPage extends ConsumerWidget {
+  const _ExperienceLevelPage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(appPreferencesProvider).experienceLevel;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.trending_up,
+            size: 88,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'How experienced are you?',
+            style: Theme.of(context).textTheme.headlineSmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'This tunes how quickly weight suggestions increase as you log '
+            'sets - you can change it later in Settings.',
+            style: Theme.of(context).textTheme.bodyLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Wrap(
+            spacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final level in ExperienceLevel.values)
+                ChoiceChip(
+                  label: Text(level.label),
+                  selected: level == current,
+                  onSelected: (_) => ref
+                      .read(appPreferencesProvider.notifier)
+                      .setExperienceLevel(level),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TourPage {
   final IconData icon;
   final String title;
@@ -82,9 +138,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  // The interactive experience-level step comes after the static tour pages.
+  static final int _totalPages = _pages.length + 1;
+
   @override
   Widget build(BuildContext context) {
-    final isLast = _page == _pages.length - 1;
+    final isLast = _page == _totalPages - 1;
 
     return Scaffold(
       body: SafeArea(
@@ -100,17 +159,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             Expanded(
               child: PageView.builder(
                 controller: _controller,
-                itemCount: _pages.length,
+                itemCount: _totalPages,
                 onPageChanged: (page) => setState(() => _page = page),
-                itemBuilder: (context, index) => _TourPageView(
-                  page: _pages[index],
-                ),
+                itemBuilder: (context, index) => index < _pages.length
+                    ? _TourPageView(page: _pages[index])
+                    : const _ExperienceLevelPage(),
               ),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                for (var i = 0; i < _pages.length; i++)
+                for (var i = 0; i < _totalPages; i++)
                   Container(
                     width: 8,
                     height: 8,

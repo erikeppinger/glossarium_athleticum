@@ -83,6 +83,23 @@ void main() {
     });
   });
 
+  group('experience level', () {
+    test('defaults to intermediate, matching the old hardcoded behavior', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.experienceLevel, ExperienceLevel.intermediate);
+    });
+
+    test('setExperienceLevel updates state and persists', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setExperienceLevel(ExperienceLevel.advanced);
+      expect(notifier.state.experienceLevel, ExperienceLevel.advanced);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.experienceLevel, ExperienceLevel.advanced);
+    });
+  });
+
   test('setThemeMode updates state and persists', () async {
     final notifier = AppPreferencesNotifier();
     expect(notifier.state.themeMode, ThemeMode.system);

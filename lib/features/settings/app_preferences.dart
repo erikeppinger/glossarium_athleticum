@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../logic/muscle_group_colors.dart' show AppColorPalette;
+import '../../logic/progression.dart' show ExperienceLevel;
 import '../../logic/summary_period.dart' show WeekStart, SummaryPeriod;
 import '../../logic/units.dart';
 
+export '../../logic/progression.dart' show ExperienceLevel;
 export '../../logic/summary_period.dart' show WeekStart, SummaryPeriod;
 
 const _weightUnitKey = 'weight_unit';
@@ -22,6 +24,7 @@ const _colorPaletteKey = 'color_palette';
 const _bodyTrackingKey = 'body_tracking';
 const _reportDetailKey = 'report_detail';
 const _clockFormatKey = 'clock_format';
+const _experienceLevelKey = 'experience_level';
 
 /// How times of day (currently just the reminder-time setting) are
 /// displayed and entered. [system] follows the device's own 24-hour setting
@@ -57,6 +60,17 @@ extension ReportDetailLabel on ReportDetail {
     ReportDetail.detailed =>
       'Everything in Brief, plus the current top set for every exercise - '
           'closer to what you\'d hand a trainer.',
+  };
+}
+
+/// UI label for `ExperienceLevel` (defined in `lib/logic/progression.dart`,
+/// kept free of UI strings per this project's DB/Flutter-free `lib/logic/`
+/// convention) - lives here alongside `ReportDetailLabel`/etc. instead.
+extension ExperienceLevelLabel on ExperienceLevel {
+  String get label => switch (this) {
+    ExperienceLevel.beginner => 'Beginner',
+    ExperienceLevel.intermediate => 'Intermediate',
+    ExperienceLevel.advanced => 'Advanced',
   };
 }
 
@@ -107,6 +121,12 @@ class AppPreferences {
   /// How to display/enter times of day - see [ClockFormat].
   final ClockFormat clockFormat;
 
+  /// Feeds `suggestNextSet`'s per-level progression increment (see
+  /// `lib/logic/progression.dart`) - defaults to `intermediate` so an
+  /// existing user who never sets this sees the exact same suggestions as
+  /// before this preference existed.
+  final ExperienceLevel experienceLevel;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -122,6 +142,7 @@ class AppPreferences {
     this.bodyTracking = BodyTracking.notAsked,
     this.reportDetail = ReportDetail.brief,
     this.clockFormat = ClockFormat.system,
+    this.experienceLevel = ExperienceLevel.intermediate,
   });
 
   /// Whether the body-measurement UI should be visible at all.
@@ -142,6 +163,7 @@ class AppPreferences {
     BodyTracking? bodyTracking,
     ReportDetail? reportDetail,
     ClockFormat? clockFormat,
+    ExperienceLevel? experienceLevel,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -158,6 +180,7 @@ class AppPreferences {
     bodyTracking: bodyTracking ?? this.bodyTracking,
     reportDetail: reportDetail ?? this.reportDetail,
     clockFormat: clockFormat ?? this.clockFormat,
+    experienceLevel: experienceLevel ?? this.experienceLevel,
   );
 }
 
@@ -205,6 +228,10 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       clockFormat: ClockFormat.values.firstWhere(
         (f) => f.name == prefs.getString(_clockFormatKey),
         orElse: () => ClockFormat.system,
+      ),
+      experienceLevel: ExperienceLevel.values.firstWhere(
+        (l) => l.name == prefs.getString(_experienceLevelKey),
+        orElse: () => ExperienceLevel.intermediate,
       ),
     );
   }
@@ -291,6 +318,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(clockFormat: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_clockFormatKey, value.name);
+  }
+
+  Future<void> setExperienceLevel(ExperienceLevel value) async {
+    state = state.copyWith(experienceLevel: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_experienceLevelKey, value.name);
   }
 }
 

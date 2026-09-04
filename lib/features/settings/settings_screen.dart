@@ -77,6 +77,16 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          ListTile(
+            leading: const Icon(Icons.trending_up),
+            title: const Text('Fitness level'),
+            subtitle: Text(
+              '${prefs.experienceLevel.label} - feeds auto-progression '
+              'suggestions in exercise history.',
+            ),
+            onTap: () =>
+                _pickExperienceLevel(context, ref, prefs.experienceLevel),
+          ),
             ],
           ),
 
@@ -384,6 +394,28 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (choice == null || choice == current) return;
     await ref.read(appPreferencesProvider.notifier).setReportDetail(choice);
+  }
+
+  Future<void> _pickExperienceLevel(
+    BuildContext context,
+    WidgetRef ref,
+    ExperienceLevel current,
+  ) async {
+    final choice = await showDialog<ExperienceLevel>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Fitness level'),
+        children: [
+          for (final level in ExperienceLevel.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(level),
+              child: Text(level.label),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setExperienceLevel(choice);
   }
 
   String _themeModeLabel(ThemeMode mode) => switch (mode) {
