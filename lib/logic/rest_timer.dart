@@ -15,6 +15,13 @@ Duration remainingRestTime({required DateTime endTime, required DateTime now}) {
 bool isRestTimerFinished({required DateTime endTime, required DateTime now}) =>
     !now.isBefore(endTime);
 
+/// Threshold for the "nearly up" pulsing-red visual treatment - short enough
+/// to read as "wrap it up," not so short it's easy to miss altogether.
+const restTimerNearEndThreshold = Duration(seconds: 10);
+
+bool isRestTimerNearEnd(Duration remaining) =>
+    remaining > Duration.zero && remaining <= restTimerNearEndThreshold;
+
 String formatRestTime(Duration duration) {
   final minutes = duration.inMinutes;
   final seconds = duration.inSeconds % 60;

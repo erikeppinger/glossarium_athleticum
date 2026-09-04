@@ -20,6 +20,15 @@ class FakeNotificationService extends NotificationService {
   Future<void> cancelRestTimerNotification() async {}
 
   @override
+  Future<void> scheduleRestCompleteAlert({
+    required int planSessionId,
+    required DateTime endTime,
+  }) async {}
+
+  @override
+  Future<void> cancelRestCompleteAlert() async {}
+
+  @override
   Future<void> cancelAll() async {}
 
   @override

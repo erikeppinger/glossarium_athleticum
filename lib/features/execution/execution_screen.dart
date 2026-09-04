@@ -11,9 +11,11 @@ import '../../logic/rest_timer.dart';
 import '../../logic/muscle_group_colors.dart';
 import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart';
+import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
 import '../shared/muscle_area_stripe.dart';
 import '../shared/numeric_input_formatters.dart';
+import '../shared/pulsing_highlight.dart';
 import 'rest_timer_controller.dart';
 
 /// Every top set ever logged for one exercise, most recent first - backs the
@@ -151,6 +153,19 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   _InProgressSession get _session =>
       ref.read(_inProgressSessionProvider(widget.planSessionId));
 
+  @override
+  void initState() {
+    super.initState();
+    // Deferred to after the first frame - same reasoning as home_screen.dart's
+    // own post-frame provider writes, since mutating a provider synchronously
+    // during initState can race the widget tree still being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(activeInProgressSessionIdProvider.notifier).state =
+          widget.planSessionId;
+    });
+  }
+
   List<PlanExercise> _allExercises(PlanSessionDetails details) => [
     ...details.exercises,
     ..._session.adHocExercises,
@@ -258,7 +273,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
           }
           return Column(
             children: [
-              if (restTimer.isRunning) _RestTimerBanner(state: restTimer),
+              if (restTimer.isVisible) _RestTimerBanner(state: restTimer),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.all(16),
@@ -396,6 +411,13 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     if (choice == _LeaveChoice.discard) {
       _session.disposeAll();
       ref.invalidate(_inProgressSessionProvider(widget.planSessionId));
+      // Guarded the same way the rest timer's own skip() is: a *different*
+      // session could legitimately have been started elsewhere (via its own
+      // "Leave") while this one sat unfinished, so only clear the marker if
+      // it's still pointing at the session actually being discarded here.
+      if (ref.read(activeInProgressSessionIdProvider) == widget.planSessionId) {
+        ref.read(activeInProgressSessionIdProvider.notifier).state = null;
+      }
     }
     if ((choice == _LeaveChoice.discard || choice == _LeaveChoice.leave) &&
         mounted) {
@@ -550,8 +572,9 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         entries: entries,
         notes: note,
       );
-      // One-shot FutureProvider - won't notice this write on its own.
+      // One-shot FutureProviders - won't notice this write on their own.
       ref.invalidate(loggedPlanSessionIdsProvider);
+      invalidateProgressProviders(ref);
     }
 
     // The rest timer is meant to survive leaving this screen unfinished
@@ -572,6 +595,11 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     // one's leftover (now-persisted) state.
     _session.disposeAll();
     ref.invalidate(_inProgressSessionProvider(widget.planSessionId));
+    // Same guard as the rest-timer skip() just above - only clear the "in
+    // progress" marker if it's still this session's.
+    if (ref.read(activeInProgressSessionIdProvider) == widget.planSessionId) {
+      ref.read(activeInProgressSessionIdProvider.notifier).state = null;
+    }
 
     if (mounted) Navigator.of(context).pop();
   }
@@ -721,27 +749,35 @@ class _RestTimerBanner extends ConsumerWidget {
     final progress = state.total.inMilliseconds == 0
         ? 0.0
         : 1 - (remaining.inMilliseconds / state.total.inMilliseconds);
-    return Material(
-      color: Theme.of(context).colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Text(
-              'Rest: ${formatRestTime(remaining)}',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: LinearProgressIndicator(value: progress.clamp(0, 1)),
-            ),
-            const SizedBox(width: 12),
-            TextButton(
-              onPressed: () =>
-                  ref.read(restTimerControllerProvider.notifier).skip(),
-              child: const Text('Skip'),
-            ),
-          ],
+    final alarming = state.overdue || isRestTimerNearEnd(remaining);
+    return PulsingHighlight(
+      active: alarming,
+      child: Material(
+        color: alarming
+            ? Theme.of(context).colorScheme.errorContainer
+            : Theme.of(context).colorScheme.primaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Text(
+                state.overdue
+                    ? 'Rest over - back to it'
+                    : 'Rest: ${formatRestTime(remaining)}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: LinearProgressIndicator(value: progress.clamp(0, 1)),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: () =>
+                    ref.read(restTimerControllerProvider.notifier).skip(),
+                child: const Text('Skip'),
+              ),
+            ],
+          ),
         ),
       ),
     );

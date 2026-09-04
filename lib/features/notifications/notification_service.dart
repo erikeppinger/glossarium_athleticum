@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -16,7 +17,13 @@ const _channelDescription =
 // countdown shown for the duration of a single rest period, not a scheduled
 // one-off - conflating the two would mean muting reminders also muted this,
 // or vice versa, when someone might reasonably want only one of the two.
-const _restTimerChannelId = 'rest_timer';
+// "_v2": renaming the channel id forces Android to create a fresh channel
+// with these settings - an existing channel's importance/vibration can't be
+// changed by shipping new code once a device has already seen the old id,
+// only by the user manually editing it in system settings or the app using
+// a new id, which is what actually fixed nothing showing/vibrating on a
+// real device that had already seen an earlier build of this channel.
+const _restTimerChannelId = 'rest_timer_v2';
 const _restTimerChannelName = 'Rest timer';
 const _restTimerChannelDescription =
     'A live countdown while resting between sets - taps through back to the '
@@ -24,6 +31,27 @@ const _restTimerChannelDescription =
     'closed or backgrounded.';
 const _restTimerNotificationId = 2;
 const restTimerSkipActionId = 'skip_rest';
+
+// Deliberately a separate channel/notification from the ongoing countdown
+// above: that one is meant to stay quiet (Importance.low - no sound, ticking
+// silently) so every single rest period doesn't pop up a heads-up alert.
+// This one is the opposite - a single, momentary, attention-getting ping
+// exactly when rest ends, which is the actual moment someone wants to be
+// alerted. Scheduled up front (like a workout reminder) rather than only
+// fired from the in-app timer tick, so it still fires - vibration included -
+// even if the app is backgrounded or fully killed mid-rest; skip()/finish
+// cancel it so an early-ended rest doesn't ring later at its original time.
+const _restCompleteChannelId = 'rest_timer_complete';
+const _restCompleteChannelName = 'Rest complete';
+const _restCompleteChannelDescription =
+    'A one-time alert the moment a rest period ends.';
+const _restCompleteNotificationId = 3;
+final _restCompleteVibrationPattern = Int64List.fromList([
+  0,
+  400,
+  200,
+  400,
+]);
 
 /// Thin wrapper over flutter_local_notifications. Deliberately kept free of
 /// any app logic - what to schedule and when is decided by the pure functions
@@ -189,5 +217,44 @@ class NotificationService {
   Future<void> cancelRestTimerNotification() async {
     await init();
     await _plugin.cancel(id: _restTimerNotificationId);
+  }
+
+  /// Schedules the one-time "rest's over" alert for [endTime] - see the
+  /// channel doc comment above for why this is a separate, higher-importance
+  /// notification from the quiet ongoing countdown. Scheduled exactly like a
+  /// workout reminder (`schedule` above) so it fires - sound, vibration, and
+  /// all - even if the app is backgrounded or killed before the rest period
+  /// ends; call [cancelRestCompleteAlert] whenever the rest ends early
+  /// (Skip, or the session finishes) so a skipped rest doesn't ring late.
+  Future<void> scheduleRestCompleteAlert({
+    required int planSessionId,
+    required DateTime endTime,
+  }) async {
+    await init();
+    if (!endTime.isAfter(DateTime.now())) return;
+    await _plugin.zonedSchedule(
+      id: _restCompleteNotificationId,
+      title: 'Rest complete',
+      body: 'Back to it - tap to return to your workout.',
+      scheduledDate: tz.TZDateTime.from(endTime, tz.local),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      payload: buildWorkoutReminderPayload(planSessionId),
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _restCompleteChannelId,
+          _restCompleteChannelName,
+          channelDescription: _restCompleteChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          enableVibration: true,
+          vibrationPattern: _restCompleteVibrationPattern,
+        ),
+      ),
+    );
+  }
+
+  Future<void> cancelRestCompleteAlert() async {
+    await init();
+    await _plugin.cancel(id: _restCompleteNotificationId);
   }
 }

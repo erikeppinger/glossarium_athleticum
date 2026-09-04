@@ -12,13 +12,25 @@ class RestTimerState {
   final Duration total;
   final int? planSessionId;
 
+  /// True for one display cycle after the countdown reaches zero, until
+  /// skip() or a new start() dismisses it. Without this the banner/overlay
+  /// chip just vanished the instant the countdown hit zero - no "time's up"
+  /// state was ever actually visible, which made it easy to miss finishing
+  /// a rest while looking at another tab.
+  final bool overdue;
+
   const RestTimerState({
     required this.remaining,
     required this.total,
     this.planSessionId,
+    this.overdue = false,
   });
 
   bool get isRunning => remaining != null && remaining! > Duration.zero;
+
+  /// Whether the banner/overlay chip should be shown at all - counting
+  /// down, or finished and not yet dismissed.
+  bool get isVisible => isRunning || overdue;
 
   static const idle = RestTimerState(remaining: null, total: Duration.zero);
 }
@@ -57,6 +69,15 @@ class RestTimerController extends StateNotifier<RestTimerState> {
         endTime: endTime,
       ),
     );
+    // Scheduled up front (not just fired from _tick() below) so the "rest's
+    // over" alert - sound and vibration included - still arrives even if the
+    // app is backgrounded or killed before the rest period ends.
+    unawaited(
+      _notificationService.scheduleRestCompleteAlert(
+        planSessionId: planSessionId,
+        endTime: endTime,
+      ),
+    );
   }
 
   void skip() {
@@ -64,6 +85,7 @@ class RestTimerController extends StateNotifier<RestTimerState> {
     _endTime = null;
     state = RestTimerState.idle;
     unawaited(_notificationService.cancelRestTimerNotification());
+    unawaited(_notificationService.cancelRestCompleteAlert());
   }
 
   void _tick() {
@@ -71,12 +93,14 @@ class RestTimerController extends StateNotifier<RestTimerState> {
     if (end == null) return;
     final now = DateTime.now();
     final remaining = remainingRestTime(endTime: end, now: now);
+    final justFinished = isRestTimerFinished(endTime: end, now: now);
     state = RestTimerState(
       remaining: remaining,
       total: state.total,
       planSessionId: state.planSessionId,
+      overdue: justFinished,
     );
-    if (isRestTimerFinished(endTime: end, now: now)) {
+    if (justFinished) {
       _ticker?.cancel();
       _endTime = null;
       // A one-time cue that rest is over - important now that the timer can
@@ -102,3 +126,15 @@ final restTimerControllerProvider =
     StateNotifierProvider<RestTimerController, RestTimerState>(
       (ref) => RestTimerController(ref.read(notificationServiceProvider)),
     );
+
+/// The most recently opened execution session that hasn't been finished or
+/// discarded yet - null once there is none. Set on entering `ExecutionScreen`
+/// and cleared on Discard/Finish, but deliberately left set when choosing
+/// "Leave" (see execution_screen.dart's `_confirmDiscard`), so
+/// `RestTimerOverlay` can still show a "resume your session" chip on other
+/// tabs even when no rest timer happens to be running - previously the only
+/// way back to a left-but-unfinished session was a running rest timer, so
+/// leaving between sets (nothing resting) made it easy to lose track of it
+/// entirely. Not autoDispose, matching `restTimerControllerProvider`, for
+/// the same reason: it needs to survive `ExecutionScreen` being popped.
+final activeInProgressSessionIdProvider = StateProvider<int?>((ref) => null);
