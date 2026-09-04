@@ -250,6 +250,23 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     )..where((l) => l.planSessionId.isNull())).get();
   }
 
+  /// Every distinct calendar day anything has ever been logged on - a
+  /// scheduled session or an ad-hoc activity both count. Backs the Progress
+  /// tab's streak card (`lib/logic/streaks.dart`), which looks at contiguous
+  /// history rather than one period in isolation, unlike [getPeriodSummary]'s
+  /// range-scoped queries.
+  Future<List<DateTime>> getAllLoggedDays() async {
+    final rows =
+        await (selectOnly(sessionLogs)..addColumns([sessionLogs.loggedAt]))
+            .get();
+    final days = <DateTime>{};
+    for (final row in rows) {
+      final loggedAt = row.read(sessionLogs.loggedAt)!;
+      days.add(DateTime(loggedAt.year, loggedAt.month, loggedAt.day));
+    }
+    return days.toList();
+  }
+
   /// Adherence/volume/PR counts for the half-open range [start, end) - the
   /// data behind the Progress tab's week/month overview summary.
   ///

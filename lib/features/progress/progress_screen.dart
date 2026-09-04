@@ -50,6 +50,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     final summaryAsync = ref.watch(periodSummaryProvider(range));
     final dashboardAsync = ref.watch(exerciseProgressDashboardProvider);
     final exerciseNamesAsync = ref.watch(allExercisesForMatchingProvider);
+    final currentStreak = ref.watch(currentStreakProvider).valueOrNull ?? 0;
     // Hidden entirely unless body tracking is on, same gate as the app-bar
     // icon into BodyMeasurementsScreen - watching the provider at all when
     // it's off would be a pointless DB read for a feature that's off.
@@ -87,6 +88,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     dashboardAsync.valueOrNull,
                     exerciseNamesAsync.valueOrNull,
                     weightChange,
+                    currentStreak,
                   );
                 case _ShareAction.pdfShare:
                 case _ShareAction.pdfSave:
@@ -151,6 +153,11 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Period-independent (a streak isn't scoped to the selected
+          // week/month) - shown above the period controls rather than
+          // inside _SummaryCards, which only ever renders period-scoped data.
+          const _StreakCard(),
+          const SizedBox(height: 16),
           SegmentedButton<SummaryPeriod>(
             segments: const [
               ButtonSegment(value: SummaryPeriod.week, label: Text('Week')),
@@ -284,11 +291,21 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     List<ExerciseProgressSummary>? dashboard,
     List<Exercise>? exercises,
     BodyWeightChange? weightChange,
+    int currentStreak,
   ) async {
     final unit = ref.read(appPreferencesProvider).weightUnit;
     final buffer = StringBuffer()
       ..writeln('Training progress - ${_formatRange(range, period)}')
-      ..writeln()
+      ..writeln();
+    // Period-independent, so it's stated up front rather than folded into
+    // the period-scoped lines below - same "hide a meaningless stat" gate
+    // as the in-app streak card.
+    if (currentStreak > 0) {
+      buffer.writeln(
+        '$currentStreak day${currentStreak == 1 ? '' : 's'} streak',
+      );
+    }
+    buffer
       ..writeln(
         // "Scheduled", not "Sessions completed" - this is completed-of-
         // scheduled (adherence), not a total workout count. A session
@@ -510,6 +527,37 @@ class _SummaryCards extends StatelessWidget {
     );
   }
 
+}
+
+/// Consecutive days with any logged activity (see `lib/logic/streaks.dart`)
+/// - hidden entirely at zero, same "don't show a meaningless stat" shape as
+/// the other opt-in-feeling cards on this screen, since a 0-day streak reads
+/// as discouraging rather than informative on a first visit.
+class _StreakCard extends ConsumerWidget {
+  const _StreakCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final streakAsync = ref.watch(currentStreakProvider);
+    final streak = streakAsync.valueOrNull ?? 0;
+    if (streak == 0) return const SizedBox.shrink();
+    return Card(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.local_fire_department, color: Colors.deepOrange),
+            const SizedBox(width: 12),
+            Text(
+              '$streak day${streak == 1 ? '' : 's'} streak',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SummaryCard extends StatelessWidget {

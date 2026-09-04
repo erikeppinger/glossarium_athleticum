@@ -460,6 +460,51 @@ void main() {
     });
   });
 
+  group('getAllLoggedDays', () {
+    test('returns no days for an empty log', () async {
+      expect(await db.sessionLogDao.getAllLoggedDays(), isEmpty);
+    });
+
+    test('includes both scheduled-session and ad-hoc-activity days', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 21),
+        activityName: 'Walk',
+      );
+
+      expect(
+        await db.sessionLogDao.getAllLoggedDays(),
+        unorderedEquals([DateTime(2026, 8, 20), DateTime(2026, 8, 21)]),
+      );
+    });
+
+    test('logging twice on the same day only counts as one day', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20, 9),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20, 18),
+        activityName: 'Walk',
+      );
+
+      expect(await db.sessionLogDao.getAllLoggedDays(), [DateTime(2026, 8, 20)]);
+    });
+  });
+
   group('ad-hoc activities', () {
     test('createAdHocActivity round-trips through getAdHocActivities', () async {
       await db.sessionLogDao.createAdHocActivity(
