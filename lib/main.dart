@@ -26,12 +26,16 @@ class TrainingApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Training App',
       // Only the Settings > Units & display section is actually migrated to
-      // AppLocalizations so far (see CLAUDE.md) - this wires up the
-      // pipeline and locale so that section, and anything migrated later,
-      // works correctly; every other screen's plain English literals are
-      // unaffected by the device locale until migrated too.
+      // AppLocalizations so far (see CLAUDE.md) - the pipeline stays wired
+      // up so that section (and anything migrated later) still works, but
+      // the app is pinned to English regardless of device locale for now:
+      // with most of the app still unmigrated and the German strings not
+      // yet reviewed for quality, a device set to German saw a jarring mix
+      // of a few (imperfect) German strings and everything else in English.
+      // Remove this once translations are actually ready to ship.
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

@@ -11,7 +11,9 @@ import '../settings/app_preferences.dart';
 /// top-right "Skip" button still leaves the sensible default in place
 /// rather than an unset/invalid state.
 class _ExperienceLevelPage extends ConsumerWidget {
-  const _ExperienceLevelPage();
+  final VoidCallback onSkipStep;
+
+  const _ExperienceLevelPage({required this.onSkipStep});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,6 +56,11 @@ class _ExperienceLevelPage extends ConsumerWidget {
                 ),
             ],
           ),
+          const SizedBox(height: 12),
+          // Distinct from the top-right "Skip" (which exits onboarding
+          // entirely) - this just moves on to the next step, keeping
+          // whatever level is already selected (Intermediate by default).
+          TextButton(onPressed: onSkipStep, child: const Text('Skip this step')),
         ],
       ),
     );
@@ -93,8 +100,8 @@ class _EquipmentPage extends ConsumerWidget {
           const SizedBox(height: 16),
           Text(
             'Select what you have access to - the Exercise Library can then '
-            'filter to what you can actually do. Leave blank for bodyweight '
-            'only; change this anytime in Settings.',
+            'filter to what you can actually do. Leave blank if you train '
+            'without equipment; change this anytime in Settings.',
             style: Theme.of(context).textTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
@@ -234,7 +241,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: _finish,
-                child: const Text('Skip'),
+                // "tour" to disambiguate from the experience-level page's own
+                // "Skip this step" - the two used to share the word "Skip"
+                // with very different scope (this one exits onboarding
+                // entirely), which read as if skipping a step also skipped
+                // the whole thing.
+                child: const Text('Skip tour'),
               ),
             ),
             Expanded(
@@ -247,7 +259,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     return _TourPageView(page: _pages[index]);
                   }
                   return index == _pages.length
-                      ? const _ExperienceLevelPage()
+                      ? _ExperienceLevelPage(
+                          onSkipStep: () => _controller.nextPage(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                          ),
+                        )
                       : const _EquipmentPage();
                 },
               ),
