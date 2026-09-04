@@ -29,7 +29,9 @@ class LoggedSetInput {
   });
 }
 
-@DriftAccessor(tables: [SessionLogs, LoggedSets, PlanSessions])
+@DriftAccessor(
+  tables: [SessionLogs, LoggedSets, PlanSessions, PlanSessionDates],
+)
 class SessionLogDao extends DatabaseAccessor<AppDatabase>
     with _$SessionLogDaoMixin {
   SessionLogDao(super.db);
@@ -250,19 +252,28 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
 
   /// Adherence/volume/PR counts for the half-open range [start, end) - the
   /// data behind the Progress tab's week/month overview summary.
+  ///
+  /// "Scheduled" counts (session, date) *occurrences* in range, not distinct
+  /// sessions - a session scheduled on 3 dates this week contributes 3, not
+  /// 1, matching how the calendar's own completion tracking already counts
+  /// per-occurrence rather than per-session (see `getLoggedPlanSessionCounts`
+  /// below). "Completed" counts how many of those specific occurrences were
+  /// actually logged on their own scheduled day - not just "was this session
+  /// logged at all somewhere in range" - for the same reason moving an
+  /// already-completed session's date mustn't carry its old completion
+  /// forward: a log only counts against the occurrence it was actually
+  /// trained on.
   Future<PeriodSummary> getPeriodSummary({
     required DateTime start,
     required DateTime end,
   }) async {
-    final scheduledQuery = selectOnly(planSessions)
-      ..addColumns([planSessions.id])
+    final scheduledQuery = select(planSessionDates)
       ..where(
-        planSessions.assignedDate.isBiggerOrEqualValue(start) &
-            planSessions.assignedDate.isSmallerThanValue(end),
+        (d) =>
+            d.date.isBiggerOrEqualValue(start) &
+            d.date.isSmallerThanValue(end),
       );
-    final scheduledIds = (await scheduledQuery.get())
-        .map((r) => r.read(planSessions.id)!)
-        .toSet();
+    final occurrences = await scheduledQuery.get();
 
     final logsQuery = select(sessionLogs)
       ..where(
@@ -271,10 +282,21 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
             l.loggedAt.isSmallerThanValue(end),
       );
     final logsInPeriod = await logsQuery.get();
-    final completedSessionIds = logsInPeriod
-        .map((l) => l.planSessionId)
-        .whereType<int>()
-        .toSet();
+    final loggedDaysBySession = <int, Set<DateTime>>{};
+    for (final log in logsInPeriod) {
+      final sessionId = log.planSessionId;
+      if (sessionId == null) continue;
+      final day = DateTime(
+        log.loggedAt.year,
+        log.loggedAt.month,
+        log.loggedAt.day,
+      );
+      loggedDaysBySession.putIfAbsent(sessionId, () => {}).add(day);
+    }
+    final completedOccurrences = occurrences.where((o) {
+      final day = DateTime(o.date.year, o.date.month, o.date.day);
+      return loggedDaysBySession[o.sessionId]?.contains(day) ?? false;
+    }).length;
 
     var totalVolume = 0.0;
     var prCount = 0;
@@ -307,11 +329,11 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     );
 
     return PeriodSummary(
-      sessionsScheduled: scheduledIds.length,
+      sessionsScheduled: occurrences.length,
       adHocActivityCount: adHocActivities.length,
       adHocDurationSec: adHocDurationSec,
       adHocDistanceMeters: adHocDistanceMeters,
-      sessionsCompleted: completedSessionIds.intersection(scheduledIds).length,
+      sessionsCompleted: completedOccurrences,
       totalVolume: totalVolume,
       prCount: prCount,
     );

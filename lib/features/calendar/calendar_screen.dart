@@ -111,11 +111,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       ),
       body: Builder(
         builder: (_) {
+          // Each ScheduledSession is already one (session, date) occurrence
+          // (see PlanDao.getAllScheduledSessions) - a session scheduled on
+          // several dates just appears here once per date, no null-check
+          // needed since the DAO's join only ever returns dated rows.
           final byDay = <DateTime, List<ScheduledSession>>{};
           for (final s in sessions) {
-            final date = s.session.assignedDate;
-            if (date == null) continue;
-            byDay.putIfAbsent(_dayKey(date), () => []).add(s);
+            byDay.putIfAbsent(_dayKey(s.date), () => []).add(s);
           }
           final selected = _selectedDay;
           final selectedSessions = byDay[_dayKey(selected)] ?? const [];
@@ -272,12 +274,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     ScheduledSession s,
     Map<int, Map<DateTime, int>> loggedCounts,
   ) {
-    // `s.session.assignedDate` is non-null here - this tile only ever comes
-    // from `byDay`, which is built by grouping sessions on that same field.
-    // Counting only logs on that specific day (not "ever, on any day") is
-    // what stops a session from reading as done right after being moved to
-    // a fresh, untrained date.
-    final day = _dayKey(s.session.assignedDate!);
+    // Counting only logs on this specific occurrence's day (not "ever, on
+    // any day") is what stops a session from reading as done right after
+    // being moved to a fresh, untrained date.
+    final day = _dayKey(s.date);
     final count = loggedCounts[s.session.id]?[day] ?? 0;
     final done = count > 0;
     return ListTile(
@@ -299,7 +299,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       trailing: Icon(done ? Icons.chevron_right : Icons.play_arrow),
       onTap: () => done
           ? _openLoggedWorkout(context, ref, s.session.id)
-          : startSessionWithMoveToTodayPrompt(context, ref, s.session),
+          : startSessionWithMoveToTodayPrompt(context, ref, s.session, s.date),
     );
   }
 

@@ -55,13 +55,12 @@ Future<void> resyncReminders(WidgetRef ref) async {
     final reminders = buildWorkoutReminders(
       sessions: [
         for (final s in scheduled)
-          if (s.session.assignedDate != null)
-            ReminderSession(
-              planSessionId: s.session.id,
-              sessionName: s.session.sessionName,
-              planName: s.planName,
-              date: s.session.assignedDate!,
-            ),
+          ReminderSession(
+            planSessionId: s.session.id,
+            sessionName: s.session.sessionName,
+            planName: s.planName,
+            date: s.date,
+          ),
       ],
       reminderTimeOfDayMinutes: prefs.reminderTimeMinutes,
       now: now,
@@ -79,9 +78,7 @@ Future<void> resyncReminders(WidgetRef ref) async {
       now: now,
     );
     final plannedThisWeek = scheduled.where((s) {
-      final date = s.session.assignedDate;
-      if (date == null) return false;
-      return !date.isBefore(week.start) && date.isBefore(week.end);
+      return !s.date.isBefore(week.start) && s.date.isBefore(week.end);
     }).length;
 
     await service.schedule(

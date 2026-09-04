@@ -38,8 +38,30 @@ void main() {
         now: DateTime(2026, 8, 28, 12),
       );
 
-      expect(reminders.map((r) => r.id), [workoutReminderIdFor(3)]);
+      expect(reminders.map((r) => r.id), [
+        workoutReminderIdFor(3, DateTime(2026, 8, 29)),
+      ]);
     });
+
+    // Regression: a session scheduled on several dates used to collide on
+    // one shared id (a pure function of planSessionId alone), silently
+    // overwriting one date's pending reminder with the other's.
+    test(
+      'the same session scheduled on two different dates gets two distinct ids',
+      () {
+        final reminders = buildWorkoutReminders(
+          sessions: [
+            session(5, DateTime(2026, 8, 29)),
+            session(5, DateTime(2026, 9, 5)),
+          ],
+          reminderTimeOfDayMinutes: 8 * 60,
+          now: DateTime(2026, 8, 28, 12),
+        );
+
+        expect(reminders, hasLength(2));
+        expect(reminders[0].id, isNot(reminders[1].id));
+      },
+    );
 
     test('keeps a same-day session whose reminder time is still ahead', () {
       final reminders = buildWorkoutReminders(

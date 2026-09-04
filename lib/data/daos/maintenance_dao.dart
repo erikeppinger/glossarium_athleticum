@@ -15,6 +15,7 @@ part 'maintenance_dao.g.dart';
     Exercises,
     Plans,
     PlanSessions,
+    PlanSessionDates,
     PlanExercises,
     SessionLogs,
     LoggedSets,
@@ -34,6 +35,7 @@ class MaintenanceDao extends DatabaseAccessor<AppDatabase>
       await delete(loggedSets).go();
       await delete(sessionLogs).go();
       await delete(planExercises).go();
+      await delete(planSessionDates).go();
       await delete(planSessions).go();
       await delete(plans).go();
       await delete(exercises).go();

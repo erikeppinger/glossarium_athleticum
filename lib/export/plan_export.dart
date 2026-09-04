@@ -24,7 +24,11 @@ Map<String, dynamic> planToJson(PlanDetails details) {
   final sortedWeekNumbers = weeks.keys.toList()..sort();
 
   return {
-    'schema_version': 1,
+    // Bumped 1 -> 2: 'assigned_date' (one nullable date) became
+    // 'assigned_dates' (an array) so a session can be scheduled on several
+    // dates - see plan_json_import.dart's importPlanJson for the
+    // backward-compatible reader that still accepts the old singular field.
+    'schema_version': 2,
     'id': details.plan.id,
     'name': details.plan.name,
     'created_at': details.plan.createdAt.toIso8601String(),
@@ -39,10 +43,10 @@ Map<String, dynamic> planToJson(PlanDetails details) {
               {
                 'day': session.session.day,
                 'session_name': session.session.sessionName,
-                'assigned_date': session.session.assignedDate
-                    ?.toIso8601String()
-                    .split('T')
-                    .first,
+                'assigned_dates': [
+                  for (final date in session.dates)
+                    date.toIso8601String().split('T').first,
+                ],
                 'exercises': [
                   for (final exercise in session.exercises)
                     {

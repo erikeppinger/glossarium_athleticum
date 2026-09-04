@@ -219,20 +219,59 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      // One chip per scheduled date, each independently
+                      // startable/movable/removable - a session can now sit
+                      // on several dates at once rather than just one.
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (session.dates.isEmpty)
+                              Text(
+                                'Not scheduled',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: Colors.grey.shade600),
+                              ),
+                            for (final date in session.dates)
+                              InputChip(
+                                avatar: const Icon(
+                                  Icons.play_arrow,
+                                  size: 18,
+                                ),
+                                label: Text(dateFormat.format(date)),
+                                onPressed: () =>
+                                    startSessionWithMoveToTodayPrompt(
+                                      context,
+                                      ref,
+                                      session.session,
+                                      date,
+                                    ),
+                                deleteIcon: const Icon(
+                                  Icons.more_vert,
+                                  size: 18,
+                                ),
+                                onDeleted: () => _showDateActions(
+                                  context,
+                                  ref,
+                                  session.session,
+                                  date,
+                                ),
+                              ),
+                            ActionChip(
+                              avatar: const Icon(Icons.add, size: 18),
+                              label: const Text('Add date'),
+                              onPressed: () =>
+                                  _addDate(context, ref, session.session),
+                            ),
+                          ],
+                        ),
+                      ),
                       OverflowBar(
                         alignment: MainAxisAlignment.end,
                         children: [
-                          TextButton(
-                            onPressed: () =>
-                                _pickDate(context, ref, session.session),
-                            child: Text(
-                              session.session.assignedDate == null
-                                  ? 'Assign date'
-                                  : dateFormat.format(
-                                      session.session.assignedDate!,
-                                    ),
-                            ),
-                          ),
                           IconButton(
                             icon: const Icon(Icons.edit),
                             tooltip: 'Edit session',
@@ -244,15 +283,6 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                                 ),
                               ),
                             ),
-                          ),
-                          FilledButton.icon(
-                            onPressed: () => startSessionWithMoveToTodayPrompt(
-                              context,
-                              ref,
-                              session.session,
-                            ),
-                            icon: const Icon(Icons.play_arrow),
-                            label: const Text('Start'),
                           ),
                           const SizedBox(width: 8),
                         ],
@@ -269,7 +299,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     );
   }
 
-  Future<void> _pickDate(
+  Future<void> _addDate(
     BuildContext context,
     WidgetRef ref,
     PlanSession session,
@@ -277,17 +307,111 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: session.assignedDate ?? now,
+      initialDate: now,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 2),
     );
     if (picked == null) return;
     final db = ref.read(appDatabaseProvider);
-    await db.planDao.assignSessionDate(session.id, picked);
+    await db.planDao.addSessionDate(session.id, picked);
+    if (!context.mounted) return;
     ref.invalidate(planDetailsProvider(planId));
     ref.invalidate(scheduledSessionsProvider);
     // What's scheduled changed, so any pending workout reminders are stale.
     await resyncReminders(ref);
+  }
+
+  Future<void> _moveDate(
+    BuildContext context,
+    WidgetRef ref,
+    PlanSession session,
+    DateTime from,
+  ) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: from,
+      firstDate: DateTime(from.year - 1),
+      lastDate: DateTime(from.year + 2),
+    );
+    if (picked == null) return;
+    final db = ref.read(appDatabaseProvider);
+    await db.planDao.moveSessionDate(session.id, from: from, to: picked);
+    if (!context.mounted) return;
+    ref.invalidate(planDetailsProvider(planId));
+    ref.invalidate(scheduledSessionsProvider);
+    await resyncReminders(ref);
+  }
+
+  Future<void> _removeDate(
+    BuildContext context,
+    WidgetRef ref,
+    PlanSession session,
+    DateTime date,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove this date?'),
+        content: Text(
+          '${session.sessionName} will no longer be scheduled for '
+          '${DateFormat.yMMMd().format(date)}. Anything already logged on '
+          'that date is unaffected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+    final db = ref.read(appDatabaseProvider);
+    await db.planDao.removeSessionDate(session.id, date);
+    if (!context.mounted) return;
+    ref.invalidate(planDetailsProvider(planId));
+    ref.invalidate(scheduledSessionsProvider);
+    await resyncReminders(ref);
+  }
+
+  Future<void> _showDateActions(
+    BuildContext context,
+    WidgetRef ref,
+    PlanSession session,
+    DateTime date,
+  ) async {
+    final choice = await showModalBottomSheet<_DateAction>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_calendar_outlined),
+              title: const Text('Move to a different date'),
+              onTap: () => Navigator.of(context).pop(_DateAction.move),
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_circle_outline),
+              title: const Text('Remove this date'),
+              onTap: () => Navigator.of(context).pop(_DateAction.remove),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || choice == null) return;
+    switch (choice) {
+      case _DateAction.move:
+        await _moveDate(context, ref, session, date);
+      case _DateAction.remove:
+        await _removeDate(context, ref, session, date);
+    }
   }
 
   Future<void> _handleExportAction(
@@ -399,6 +523,8 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     );
   }
 }
+
+enum _DateAction { move, remove }
 
 enum _ExportFormat { csv, json, jsonEncrypted }
 

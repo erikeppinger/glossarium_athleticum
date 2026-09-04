@@ -40,17 +40,19 @@ class PlanSessionInput {
   final String sessionName;
   final List<PlanExerciseInput> exercises;
 
-  /// Only meaningful for JSON plan/backup import (Phase 3), which round-trips
-  /// calendar placement; the spreadsheet importer (Phase 1) never sets this
-  /// since a spreadsheet row has no assigned-date column.
-  final DateTime? assignedDate;
+  /// Only meaningful for JSON plan/backup import (Phase 3+), which
+  /// round-trips calendar placement; the spreadsheet importer (Phase 1)
+  /// never sets this since a spreadsheet row has no assigned-date column. A
+  /// session can now be scheduled on several dates at once, so this is a
+  /// list rather than one nullable value - see `PlanSessionDates`.
+  final List<DateTime> assignedDates;
 
   const PlanSessionInput({
     required this.weekNumber,
     required this.day,
     required this.sessionName,
     required this.exercises,
-    this.assignedDate,
+    this.assignedDates = const [],
   });
 }
 
@@ -67,16 +69,33 @@ class PlanSessionDetails {
   final PlanSession session;
   final List<PlanExercise> exercises;
 
-  const PlanSessionDetails({required this.session, required this.exercises});
+  /// Every date this session is currently scheduled on, ascending - empty
+  /// for a still-template-only session. See `PlanSessionDates`.
+  final List<DateTime> dates;
+
+  const PlanSessionDetails({
+    required this.session,
+    required this.exercises,
+    this.dates = const [],
+  });
 }
 
-/// A session placed on the calendar, with its parent plan's name attached
-/// so the calendar view doesn't need a second lookup per entry.
+/// One (session, date) occurrence placed on the calendar, with its parent
+/// plan's name attached so the calendar view doesn't need a second lookup
+/// per entry. A session scheduled on N dates produces N of these - unlike
+/// `PlanSessionDetails.dates` (every date for one session, for the plan-detail
+/// chip row), this is already fanned out to one row per occurrence, which is
+/// what the calendar/notifications actually iterate over.
 class ScheduledSession {
   final PlanSession session;
   final String planName;
+  final DateTime date;
 
-  const ScheduledSession({required this.session, required this.planName});
+  const ScheduledSession({
+    required this.session,
+    required this.planName,
+    required this.date,
+  });
 }
 
 /// What deleting a plan would actually destroy, in the units a user thinks
@@ -107,7 +126,7 @@ class PlanDeletionImpact {
   bool get losesHistory => loggedWorkouts > 0;
 }
 
-@DriftAccessor(tables: [Plans, PlanSessions, PlanExercises])
+@DriftAccessor(tables: [Plans, PlanSessions, PlanSessionDates, PlanExercises])
 class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
   PlanDao(super.db);
 
@@ -151,9 +170,13 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
             weekNumber: s.weekNumber,
             day: s.day,
             sessionName: s.sessionName,
-            assignedDate: Value(s.assignedDate),
           ),
         );
+        for (final date in s.assignedDates) {
+          await into(planSessionDates).insert(
+            PlanSessionDatesCompanion.insert(sessionId: sessionId, date: date),
+          );
+        }
         for (final e in s.exercises) {
           await into(planExercises).insert(
             PlanExercisesCompanion.insert(
@@ -307,53 +330,105 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
               ..where((e) => e.sessionId.equals(session.id))
               ..orderBy([(e) => OrderingTerm.asc(e.order)]))
             .get();
-    return PlanSessionDetails(session: session, exercises: exerciseRows);
+    final dates = await getDatesForSession(session.id);
+    return PlanSessionDetails(
+      session: session,
+      exercises: exerciseRows,
+      dates: dates,
+    );
   }
 
-  /// All sessions that have been placed on the calendar, with their plan's
-  /// name attached, for the calendar view.
+  /// Every date [sessionId] is currently scheduled on, ascending - empty if
+  /// it's still template-only. Backs the plan-detail chip row.
+  Future<List<DateTime>> getDatesForSession(int sessionId) {
+    return (select(planSessionDates)
+          ..where((d) => d.sessionId.equals(sessionId))
+          ..orderBy([(d) => OrderingTerm.asc(d.date)]))
+        .map((d) => d.date)
+        .get();
+  }
+
+  /// One row per (session, date) occurrence that's been placed on the
+  /// calendar, with its parent plan's name attached, for the calendar view
+  /// and notification scheduling - a session scheduled on N dates produces N
+  /// rows here, not one.
   Future<List<ScheduledSession>> getAllScheduledSessions() async {
-    final query = select(planSessions).join([
+    final query = select(planSessionDates).join([
+      innerJoin(
+        planSessions,
+        planSessions.id.equalsExp(planSessionDates.sessionId),
+      ),
       innerJoin(plans, plans.id.equalsExp(planSessions.planId)),
-    ])
-      ..where(planSessions.assignedDate.isNotNull());
+    ]);
     final rows = await query.get();
     return rows
         .map(
           (row) => ScheduledSession(
             session: row.readTable(planSessions),
             planName: row.readTable(plans).name,
+            date: row.readTable(planSessionDates).date,
           ),
         )
         .toList();
   }
 
-  /// Bumps the parent plan's `updated_at` too - see [addSession] for why a
-  /// direct mutation to a plan's contents always needs to do this.
-  Future<void> assignSessionDate(int sessionId, DateTime? date) {
+  /// Schedules [sessionId] on [date] - a no-op if it's already scheduled on
+  /// that exact date, so a caller doesn't need to check first. Bumps the
+  /// parent plan's `updated_at` too - see [addSession] for why a direct
+  /// mutation to a plan's contents always needs to do this.
+  Future<void> addSessionDate(int sessionId, DateTime date) {
     return transaction(() async {
       final session =
           await (select(planSessions)..where((s) => s.id.equals(sessionId)))
               .getSingle();
-      await (update(
-        planSessions,
-      )..where((s) => s.id.equals(sessionId))).write(
-        PlanSessionsCompanion(assignedDate: Value(date)),
+      final existing =
+          await (select(planSessionDates)..where(
+                (d) => d.sessionId.equals(sessionId) & d.date.equals(date),
+              ))
+              .getSingleOrNull();
+      if (existing != null) return;
+      await into(planSessionDates).insert(
+        PlanSessionDatesCompanion.insert(sessionId: sessionId, date: date),
       );
       await _touchUpdatedAt(session.planId);
     });
   }
 
-  /// Sessions whose assignedDate falls within [start, end] (inclusive),
-  /// for the calendar view.
-  Future<List<PlanSession>> getSessionsInRange(DateTime start, DateTime end) {
-    return (select(planSessions)..where(
-          (s) =>
-              s.assignedDate.isNotNull() &
-              s.assignedDate.isBiggerOrEqualValue(start) &
-              s.assignedDate.isSmallerOrEqualValue(end),
-        ))
-        .get();
+  /// Unschedules [sessionId] from [date] - only ever removes the scheduling
+  /// row, never touches `SessionLogs`/`LoggedSets`: what was actually
+  /// trained on that date is independent of whether it's still "upcoming" on
+  /// the calendar. See the deletion-philosophy convention in CLAUDE.md.
+  Future<void> removeSessionDate(int sessionId, DateTime date) {
+    return transaction(() async {
+      final session =
+          await (select(planSessions)..where((s) => s.id.equals(sessionId)))
+              .getSingle();
+      await (delete(planSessionDates)..where(
+            (d) => d.sessionId.equals(sessionId) & d.date.equals(date),
+          ))
+          .go();
+      await _touchUpdatedAt(session.planId);
+    });
+  }
+
+  /// Moves one scheduled occurrence of [sessionId] from [from] to [to] -
+  /// e.g. the calendar's "move to today?" prompt, or editing one date from
+  /// the plan-detail chip row. Bumps the parent plan's `updated_at`.
+  Future<void> moveSessionDate(
+    int sessionId, {
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return transaction(() async {
+      final session =
+          await (select(planSessions)..where((s) => s.id.equals(sessionId)))
+              .getSingle();
+      await (update(planSessionDates)..where(
+            (d) => d.sessionId.equals(sessionId) & d.date.equals(from),
+          ))
+          .write(PlanSessionDatesCompanion(date: Value(to)));
+      await _touchUpdatedAt(session.planId);
+    });
   }
 
   /// Edits one exercise-in-session row in place. Only the prescription
@@ -599,6 +674,16 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
         )..where((e) => e.sessionId.isIn(sessionIds))).go();
       }
 
+      // A kept, tombstoned session shouldn't still show as scheduled -
+      // delete its dates (children before parent, same reasoning as
+      // everywhere else in this DAO) rather than leave them pointing at a
+      // session whose plan no longer exists.
+      if (sessionIds.isNotEmpty) {
+        await (delete(
+          planSessionDates,
+        )..where((d) => d.sessionId.isIn(sessionIds))).go();
+      }
+
       // Keep only the sessions that something was logged against; detach
       // them from the plan being deleted.
       final unloggedIds = sessionIds
@@ -606,11 +691,6 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           .toList();
       if (unloggedIds.isNotEmpty) {
         await (delete(planSessions)..where((s) => s.id.isIn(unloggedIds))).go();
-      }
-      if (loggedSessionIds.isNotEmpty) {
-        await (update(planSessions)
-              ..where((s) => s.id.isIn(loggedSessionIds.toList())))
-            .write(const PlanSessionsCompanion(assignedDate: Value(null)));
       }
 
       await (delete(plans)..where((p) => p.id.equals(planId))).go();
@@ -640,6 +720,9 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
         await (delete(
           planExercises,
         )..where((e) => e.sessionId.isIn(sessionIds))).go();
+        await (delete(
+          planSessionDates,
+        )..where((d) => d.sessionId.isIn(sessionIds))).go();
         await (delete(planSessions)..where((s) => s.id.isIn(sessionIds))).go();
       }
       await (delete(plans)..where((p) => p.id.equals(planId))).go();
@@ -660,6 +743,9 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       await (delete(
         planExercises,
       )..where((e) => e.sessionId.isIn(sessionIds))).go();
+      await (delete(
+        planSessionDates,
+      )..where((d) => d.sessionId.isIn(sessionIds))).go();
       await (delete(planSessions)..where((s) => s.planId.equals(id))).go();
       await (delete(plans)..where((p) => p.id.equals(id))).go();
     });

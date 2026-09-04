@@ -60,8 +60,18 @@ const weeklyDigestNotificationId = 1;
 const _workoutReminderIdBase = 1000;
 const _planReportIdBase = 100000;
 
-int workoutReminderIdFor(int planSessionId) =>
-    _workoutReminderIdBase + planSessionId;
+/// A session can now be scheduled on several dates at once, so the id can't
+/// be a pure function of [planSessionId] alone any more - two dates for the
+/// same session would collide and silently overwrite each other's pending
+/// reminder. Folds the date in via the same bounded-hash technique
+/// [planReportReminderIdFor] already uses below, kept inside a narrower
+/// range (90000, not 900000) so it can't reach into that function's own
+/// [_planReportIdBase]-offset range.
+int workoutReminderIdFor(int planSessionId, DateTime date) =>
+    _workoutReminderIdBase +
+    (Object.hash(planSessionId, date.year, date.month, date.day) &
+            0x7FFFFFFF) %
+        90000;
 
 /// Plans have a String (UUID) id, not the small int a `PlanSessions` row
 /// gets, so there's no natural small offset the way [workoutReminderIdFor]
@@ -90,7 +100,7 @@ List<ScheduledReminder> buildWorkoutReminders({
     if (!when.isAfter(now)) continue;
     reminders.add(
       ScheduledReminder(
-        id: workoutReminderIdFor(session.planSessionId),
+        id: workoutReminderIdFor(session.planSessionId, session.date),
         title: 'Workout today: ${session.sessionName}',
         body: session.planName,
         when: when,

@@ -20,7 +20,10 @@ class PlanJsonFormatException implements Exception {
   String toString() => message;
 }
 
-const _supportedSchemaVersion = 1;
+// 1: a session had one nullable 'assigned_date'. 2: replaced that with the
+// 'assigned_dates' array (a session can be scheduled on several dates) - see
+// the backward-compatible read of both fields below.
+const _supportedSchemaVersions = {1, 2};
 
 /// Imports a single-plan JSON export (schema/plan.schema.json, produced by
 /// [planToJson]) into the database, returning the new plan's id. [planId]
@@ -42,7 +45,7 @@ Future<String> importPlanJson(
   String? planId,
   Directory? attachmentsDirectory,
 }) async {
-  if (json['schema_version'] != _supportedSchemaVersion) {
+  if (!_supportedSchemaVersions.contains(json['schema_version'])) {
     throw PlanJsonFormatException(
       'Unsupported plan file version: ${json['schema_version']}.',
     );
@@ -123,16 +126,24 @@ Future<String> importPlanJson(
           ),
         );
       }
-      final assignedDateStr = sessionJson['assigned_date'] as String?;
+      // schema_version 2 writes 'assigned_dates' (an array); a file exported
+      // before that bump only ever has the old singular 'assigned_date'
+      // (nullable) - read whichever is present so older exported plans and
+      // shared files still import correctly.
+      final assignedDatesJson = sessionJson['assigned_dates'] as List?;
+      final legacyAssignedDateStr = sessionJson['assigned_date'] as String?;
+      final assignedDates = assignedDatesJson != null
+          ? [for (final d in assignedDatesJson) DateTime.parse(d as String)]
+          : legacyAssignedDateStr == null
+          ? const <DateTime>[]
+          : [DateTime.parse(legacyAssignedDateStr)];
       sessions.add(
         PlanSessionInput(
           weekNumber: weekNumber,
           day: sessionJson['day'] as String,
           sessionName: sessionJson['session_name'] as String,
           exercises: exerciseInputs,
-          assignedDate: assignedDateStr == null
-              ? null
-              : DateTime.parse(assignedDateStr),
+          assignedDates: assignedDates,
         ),
       );
     }

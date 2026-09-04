@@ -181,15 +181,16 @@ void main() {
     });
 
     test('clears the calendar date so a deleted plan stops showing up', () async {
-      await db.planDao.assignSessionDate(sessionId, DateTime(2026, 9, 1));
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
       await logAWorkout();
 
       await db.planDao.deletePlanKeepingHistory('plan-1');
 
-      final kept = await (db.select(
-        db.planSessions,
-      )..where((s) => s.id.equals(sessionId))).getSingle();
-      expect(kept.assignedDate, isNull);
+      expect(
+        await db.planDao.getDatesForSession(sessionId),
+        isEmpty,
+        reason: 'a kept, tombstoned session should not still show as scheduled',
+      );
     });
 
     test('an untrained plan leaves nothing behind at all', () async {

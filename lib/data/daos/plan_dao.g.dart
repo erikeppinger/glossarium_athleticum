@@ -6,6 +6,8 @@ part of 'plan_dao.dart';
 mixin _$PlanDaoMixin on DatabaseAccessor<AppDatabase> {
   $PlansTable get plans => attachedDatabase.plans;
   $PlanSessionsTable get planSessions => attachedDatabase.planSessions;
+  $PlanSessionDatesTable get planSessionDates =>
+      attachedDatabase.planSessionDates;
   $ExercisesTable get exercises => attachedDatabase.exercises;
   $PlanExercisesTable get planExercises => attachedDatabase.planExercises;
   PlanDaoManager get managers => PlanDaoManager(this);
@@ -18,6 +20,11 @@ class PlanDaoManager {
       $$PlansTableTableManager(_db.attachedDatabase, _db.plans);
   $$PlanSessionsTableTableManager get planSessions =>
       $$PlanSessionsTableTableManager(_db.attachedDatabase, _db.planSessions);
+  $$PlanSessionDatesTableTableManager get planSessionDates =>
+      $$PlanSessionDatesTableTableManager(
+        _db.attachedDatabase,
+        _db.planSessionDates,
+      );
   $$ExercisesTableTableManager get exercises =>
       $$ExercisesTableTableManager(_db.attachedDatabase, _db.exercises);
   $$PlanExercisesTableTableManager get planExercises =>

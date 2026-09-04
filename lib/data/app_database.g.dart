@@ -1564,17 +1564,6 @@ class $PlanSessionsTable extends PlanSessions
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _assignedDateMeta = const VerificationMeta(
-    'assignedDate',
-  );
-  @override
-  late final GeneratedColumn<DateTime> assignedDate = GeneratedColumn<DateTime>(
-    'assigned_date',
-    aliasedName,
-    true,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1582,7 +1571,6 @@ class $PlanSessionsTable extends PlanSessions
     weekNumber,
     day,
     sessionName,
-    assignedDate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1634,15 +1622,6 @@ class $PlanSessionsTable extends PlanSessions
     } else if (isInserting) {
       context.missing(_sessionNameMeta);
     }
-    if (data.containsKey('assigned_date')) {
-      context.handle(
-        _assignedDateMeta,
-        assignedDate.isAcceptableOrUnknown(
-          data['assigned_date']!,
-          _assignedDateMeta,
-        ),
-      );
-    }
     return context;
   }
 
@@ -1672,10 +1651,6 @@ class $PlanSessionsTable extends PlanSessions
         DriftSqlType.string,
         data['${effectivePrefix}session_name'],
       )!,
-      assignedDate: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}assigned_date'],
-      ),
     );
   }
 
@@ -1691,16 +1666,12 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
   final int weekNumber;
   final String day;
   final String sessionName;
-
-  /// Null while still template-only; set once placed on the calendar.
-  final DateTime? assignedDate;
   const PlanSession({
     required this.id,
     required this.planId,
     required this.weekNumber,
     required this.day,
     required this.sessionName,
-    this.assignedDate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1710,9 +1681,6 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
     map['week_number'] = Variable<int>(weekNumber);
     map['day'] = Variable<String>(day);
     map['session_name'] = Variable<String>(sessionName);
-    if (!nullToAbsent || assignedDate != null) {
-      map['assigned_date'] = Variable<DateTime>(assignedDate);
-    }
     return map;
   }
 
@@ -1723,9 +1691,6 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
       weekNumber: Value(weekNumber),
       day: Value(day),
       sessionName: Value(sessionName),
-      assignedDate: assignedDate == null && nullToAbsent
-          ? const Value.absent()
-          : Value(assignedDate),
     );
   }
 
@@ -1740,7 +1705,6 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
       weekNumber: serializer.fromJson<int>(json['weekNumber']),
       day: serializer.fromJson<String>(json['day']),
       sessionName: serializer.fromJson<String>(json['sessionName']),
-      assignedDate: serializer.fromJson<DateTime?>(json['assignedDate']),
     );
   }
   @override
@@ -1752,7 +1716,6 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
       'weekNumber': serializer.toJson<int>(weekNumber),
       'day': serializer.toJson<String>(day),
       'sessionName': serializer.toJson<String>(sessionName),
-      'assignedDate': serializer.toJson<DateTime?>(assignedDate),
     };
   }
 
@@ -1762,14 +1725,12 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
     int? weekNumber,
     String? day,
     String? sessionName,
-    Value<DateTime?> assignedDate = const Value.absent(),
   }) => PlanSession(
     id: id ?? this.id,
     planId: planId ?? this.planId,
     weekNumber: weekNumber ?? this.weekNumber,
     day: day ?? this.day,
     sessionName: sessionName ?? this.sessionName,
-    assignedDate: assignedDate.present ? assignedDate.value : this.assignedDate,
   );
   PlanSession copyWithCompanion(PlanSessionsCompanion data) {
     return PlanSession(
@@ -1782,9 +1743,6 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
       sessionName: data.sessionName.present
           ? data.sessionName.value
           : this.sessionName,
-      assignedDate: data.assignedDate.present
-          ? data.assignedDate.value
-          : this.assignedDate,
     );
   }
 
@@ -1795,15 +1753,13 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
           ..write('planId: $planId, ')
           ..write('weekNumber: $weekNumber, ')
           ..write('day: $day, ')
-          ..write('sessionName: $sessionName, ')
-          ..write('assignedDate: $assignedDate')
+          ..write('sessionName: $sessionName')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, planId, weekNumber, day, sessionName, assignedDate);
+  int get hashCode => Object.hash(id, planId, weekNumber, day, sessionName);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1812,8 +1768,7 @@ class PlanSession extends DataClass implements Insertable<PlanSession> {
           other.planId == this.planId &&
           other.weekNumber == this.weekNumber &&
           other.day == this.day &&
-          other.sessionName == this.sessionName &&
-          other.assignedDate == this.assignedDate);
+          other.sessionName == this.sessionName);
 }
 
 class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
@@ -1822,14 +1777,12 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
   final Value<int> weekNumber;
   final Value<String> day;
   final Value<String> sessionName;
-  final Value<DateTime?> assignedDate;
   const PlanSessionsCompanion({
     this.id = const Value.absent(),
     this.planId = const Value.absent(),
     this.weekNumber = const Value.absent(),
     this.day = const Value.absent(),
     this.sessionName = const Value.absent(),
-    this.assignedDate = const Value.absent(),
   });
   PlanSessionsCompanion.insert({
     this.id = const Value.absent(),
@@ -1837,7 +1790,6 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
     required int weekNumber,
     required String day,
     required String sessionName,
-    this.assignedDate = const Value.absent(),
   }) : planId = Value(planId),
        weekNumber = Value(weekNumber),
        day = Value(day),
@@ -1848,7 +1800,6 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
     Expression<int>? weekNumber,
     Expression<String>? day,
     Expression<String>? sessionName,
-    Expression<DateTime>? assignedDate,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1856,7 +1807,6 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
       if (weekNumber != null) 'week_number': weekNumber,
       if (day != null) 'day': day,
       if (sessionName != null) 'session_name': sessionName,
-      if (assignedDate != null) 'assigned_date': assignedDate,
     });
   }
 
@@ -1866,7 +1816,6 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
     Value<int>? weekNumber,
     Value<String>? day,
     Value<String>? sessionName,
-    Value<DateTime?>? assignedDate,
   }) {
     return PlanSessionsCompanion(
       id: id ?? this.id,
@@ -1874,7 +1823,6 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
       weekNumber: weekNumber ?? this.weekNumber,
       day: day ?? this.day,
       sessionName: sessionName ?? this.sessionName,
-      assignedDate: assignedDate ?? this.assignedDate,
     );
   }
 
@@ -1896,9 +1844,6 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
     if (sessionName.present) {
       map['session_name'] = Variable<String>(sessionName.value);
     }
-    if (assignedDate.present) {
-      map['assigned_date'] = Variable<DateTime>(assignedDate.value);
-    }
     return map;
   }
 
@@ -1909,8 +1854,259 @@ class PlanSessionsCompanion extends UpdateCompanion<PlanSession> {
           ..write('planId: $planId, ')
           ..write('weekNumber: $weekNumber, ')
           ..write('day: $day, ')
-          ..write('sessionName: $sessionName, ')
-          ..write('assignedDate: $assignedDate')
+          ..write('sessionName: $sessionName')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PlanSessionDatesTable extends PlanSessionDates
+    with TableInfo<$PlanSessionDatesTable, PlanSessionDate> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlanSessionDatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<int> sessionId = GeneratedColumn<int>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES plan_sessions (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, sessionId, date];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'plan_session_dates';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlanSessionDate> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PlanSessionDate map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlanSessionDate(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}session_id'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+    );
+  }
+
+  @override
+  $PlanSessionDatesTable createAlias(String alias) {
+    return $PlanSessionDatesTable(attachedDatabase, alias);
+  }
+}
+
+class PlanSessionDate extends DataClass implements Insertable<PlanSessionDate> {
+  final int id;
+  final int sessionId;
+  final DateTime date;
+  const PlanSessionDate({
+    required this.id,
+    required this.sessionId,
+    required this.date,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['session_id'] = Variable<int>(sessionId);
+    map['date'] = Variable<DateTime>(date);
+    return map;
+  }
+
+  PlanSessionDatesCompanion toCompanion(bool nullToAbsent) {
+    return PlanSessionDatesCompanion(
+      id: Value(id),
+      sessionId: Value(sessionId),
+      date: Value(date),
+    );
+  }
+
+  factory PlanSessionDate.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlanSessionDate(
+      id: serializer.fromJson<int>(json['id']),
+      sessionId: serializer.fromJson<int>(json['sessionId']),
+      date: serializer.fromJson<DateTime>(json['date']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'sessionId': serializer.toJson<int>(sessionId),
+      'date': serializer.toJson<DateTime>(date),
+    };
+  }
+
+  PlanSessionDate copyWith({int? id, int? sessionId, DateTime? date}) =>
+      PlanSessionDate(
+        id: id ?? this.id,
+        sessionId: sessionId ?? this.sessionId,
+        date: date ?? this.date,
+      );
+  PlanSessionDate copyWithCompanion(PlanSessionDatesCompanion data) {
+    return PlanSessionDate(
+      id: data.id.present ? data.id.value : this.id,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      date: data.date.present ? data.date.value : this.date,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlanSessionDate(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('date: $date')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, sessionId, date);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlanSessionDate &&
+          other.id == this.id &&
+          other.sessionId == this.sessionId &&
+          other.date == this.date);
+}
+
+class PlanSessionDatesCompanion extends UpdateCompanion<PlanSessionDate> {
+  final Value<int> id;
+  final Value<int> sessionId;
+  final Value<DateTime> date;
+  const PlanSessionDatesCompanion({
+    this.id = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.date = const Value.absent(),
+  });
+  PlanSessionDatesCompanion.insert({
+    this.id = const Value.absent(),
+    required int sessionId,
+    required DateTime date,
+  }) : sessionId = Value(sessionId),
+       date = Value(date);
+  static Insertable<PlanSessionDate> custom({
+    Expression<int>? id,
+    Expression<int>? sessionId,
+    Expression<DateTime>? date,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionId != null) 'session_id': sessionId,
+      if (date != null) 'date': date,
+    });
+  }
+
+  PlanSessionDatesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? sessionId,
+    Value<DateTime>? date,
+  }) {
+    return PlanSessionDatesCompanion(
+      id: id ?? this.id,
+      sessionId: sessionId ?? this.sessionId,
+      date: date ?? this.date,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<int>(sessionId.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlanSessionDatesCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('date: $date')
           ..write(')'))
         .toString();
   }
@@ -4303,6 +4499,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ExercisesTable exercises = $ExercisesTable(this);
   late final $PlansTable plans = $PlansTable(this);
   late final $PlanSessionsTable planSessions = $PlanSessionsTable(this);
+  late final $PlanSessionDatesTable planSessionDates = $PlanSessionDatesTable(
+    this,
+  );
   late final $PlanExercisesTable planExercises = $PlanExercisesTable(this);
   late final $SessionLogsTable sessionLogs = $SessionLogsTable(this);
   late final $LoggedSetsTable loggedSets = $LoggedSetsTable(this);
@@ -4326,6 +4525,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     exercises,
     plans,
     planSessions,
+    planSessionDates,
     planExercises,
     sessionLogs,
     loggedSets,
@@ -4339,6 +4539,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('plan_sessions', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'plan_sessions',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('plan_session_dates', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -5346,7 +5553,6 @@ typedef $$PlanSessionsTableCreateCompanionBuilder =
       required int weekNumber,
       required String day,
       required String sessionName,
-      Value<DateTime?> assignedDate,
     });
 typedef $$PlanSessionsTableUpdateCompanionBuilder =
     PlanSessionsCompanion Function({
@@ -5355,7 +5561,6 @@ typedef $$PlanSessionsTableUpdateCompanionBuilder =
       Value<int> weekNumber,
       Value<String> day,
       Value<String> sessionName,
-      Value<DateTime?> assignedDate,
     });
 
 final class $$PlanSessionsTableReferences
@@ -5376,6 +5581,26 @@ final class $$PlanSessionsTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$PlanSessionDatesTable, List<PlanSessionDate>>
+  _planSessionDatesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.planSessionDates,
+    aliasName: 'plan_sessions__id__plan_session_dates__session_id',
+  );
+
+  $$PlanSessionDatesTableProcessedTableManager get planSessionDatesRefs {
+    final manager = $$PlanSessionDatesTableTableManager(
+      $_db,
+      $_db.planSessionDates,
+    ).filter((f) => f.sessionId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _planSessionDatesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 
@@ -5445,11 +5670,6 @@ class $$PlanSessionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<DateTime> get assignedDate => $composableBuilder(
-    column: $table.assignedDate,
-    builder: (column) => ColumnFilters(column),
-  );
-
   $$PlansTableFilterComposer get planId {
     final $$PlansTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -5471,6 +5691,31 @@ class $$PlanSessionsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> planSessionDatesRefs(
+    Expression<bool> Function($$PlanSessionDatesTableFilterComposer f) f,
+  ) {
+    final $$PlanSessionDatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.planSessionDates,
+      getReferencedColumn: (t) => t.sessionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlanSessionDatesTableFilterComposer(
+            $db: $db,
+            $table: $db.planSessionDates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> planExercisesRefs(
@@ -5553,11 +5798,6 @@ class $$PlanSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<DateTime> get assignedDate => $composableBuilder(
-    column: $table.assignedDate,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   $$PlansTableOrderingComposer get planId {
     final $$PlansTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -5607,11 +5847,6 @@ class $$PlanSessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<DateTime> get assignedDate => $composableBuilder(
-    column: $table.assignedDate,
-    builder: (column) => column,
-  );
-
   $$PlansTableAnnotationComposer get planId {
     final $$PlansTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -5633,6 +5868,31 @@ class $$PlanSessionsTableAnnotationComposer
           ),
     );
     return composer;
+  }
+
+  Expression<T> planSessionDatesRefs<T extends Object>(
+    Expression<T> Function($$PlanSessionDatesTableAnnotationComposer a) f,
+  ) {
+    final $$PlanSessionDatesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.planSessionDates,
+      getReferencedColumn: (t) => t.sessionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlanSessionDatesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.planSessionDates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<T> planExercisesRefs<T extends Object>(
@@ -5701,6 +5961,7 @@ class $$PlanSessionsTableTableManager
           PlanSession,
           PrefetchHooks Function({
             bool planId,
+            bool planSessionDatesRefs,
             bool planExercisesRefs,
             bool sessionLogsRefs,
           })
@@ -5723,14 +5984,12 @@ class $$PlanSessionsTableTableManager
                 Value<int> weekNumber = const Value.absent(),
                 Value<String> day = const Value.absent(),
                 Value<String> sessionName = const Value.absent(),
-                Value<DateTime?> assignedDate = const Value.absent(),
               }) => PlanSessionsCompanion(
                 id: id,
                 planId: planId,
                 weekNumber: weekNumber,
                 day: day,
                 sessionName: sessionName,
-                assignedDate: assignedDate,
               ),
           createCompanionCallback:
               ({
@@ -5739,14 +5998,12 @@ class $$PlanSessionsTableTableManager
                 required int weekNumber,
                 required String day,
                 required String sessionName,
-                Value<DateTime?> assignedDate = const Value.absent(),
               }) => PlanSessionsCompanion.insert(
                 id: id,
                 planId: planId,
                 weekNumber: weekNumber,
                 day: day,
                 sessionName: sessionName,
-                assignedDate: assignedDate,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -5759,12 +6016,14 @@ class $$PlanSessionsTableTableManager
           prefetchHooksCallback:
               ({
                 planId = false,
+                planSessionDatesRefs = false,
                 planExercisesRefs = false,
                 sessionLogsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
+                    if (planSessionDatesRefs) db.planSessionDates,
                     if (planExercisesRefs) db.planExercises,
                     if (sessionLogsRefs) db.sessionLogs,
                   ],
@@ -5800,6 +6059,27 @@ class $$PlanSessionsTableTableManager
                       },
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (planSessionDatesRefs)
+                        await $_getPrefetchedData<
+                          PlanSession,
+                          $PlanSessionsTable,
+                          PlanSessionDate
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PlanSessionsTableReferences
+                              ._planSessionDatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PlanSessionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).planSessionDatesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sessionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (planExercisesRefs)
                         await $_getPrefetchedData<
                           PlanSession,
@@ -5864,9 +6144,288 @@ typedef $$PlanSessionsTableProcessedTableManager =
       PlanSession,
       PrefetchHooks Function({
         bool planId,
+        bool planSessionDatesRefs,
         bool planExercisesRefs,
         bool sessionLogsRefs,
       })
+    >;
+typedef $$PlanSessionDatesTableCreateCompanionBuilder =
+    PlanSessionDatesCompanion Function({
+      Value<int> id,
+      required int sessionId,
+      required DateTime date,
+    });
+typedef $$PlanSessionDatesTableUpdateCompanionBuilder =
+    PlanSessionDatesCompanion Function({
+      Value<int> id,
+      Value<int> sessionId,
+      Value<DateTime> date,
+    });
+
+final class $$PlanSessionDatesTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $PlanSessionDatesTable, PlanSessionDate> {
+  $$PlanSessionDatesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PlanSessionsTable _sessionIdTable(_$AppDatabase db) => db.planSessions
+      .createAlias('plan_session_dates__session_id__plan_sessions__id');
+
+  $$PlanSessionsTableProcessedTableManager get sessionId {
+    final $_column = $_itemColumn<int>('session_id')!;
+
+    final manager = $$PlanSessionsTableTableManager(
+      $_db,
+      $_db.planSessions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sessionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PlanSessionDatesTableFilterComposer
+    extends Composer<_$AppDatabase, $PlanSessionDatesTable> {
+  $$PlanSessionDatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PlanSessionsTableFilterComposer get sessionId {
+    final $$PlanSessionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.planSessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlanSessionsTableFilterComposer(
+            $db: $db,
+            $table: $db.planSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlanSessionDatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $PlanSessionDatesTable> {
+  $$PlanSessionDatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PlanSessionsTableOrderingComposer get sessionId {
+    final $$PlanSessionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.planSessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlanSessionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.planSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlanSessionDatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PlanSessionDatesTable> {
+  $$PlanSessionDatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  $$PlanSessionsTableAnnotationComposer get sessionId {
+    final $$PlanSessionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.planSessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlanSessionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.planSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlanSessionDatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PlanSessionDatesTable,
+          PlanSessionDate,
+          $$PlanSessionDatesTableFilterComposer,
+          $$PlanSessionDatesTableOrderingComposer,
+          $$PlanSessionDatesTableAnnotationComposer,
+          $$PlanSessionDatesTableCreateCompanionBuilder,
+          $$PlanSessionDatesTableUpdateCompanionBuilder,
+          (PlanSessionDate, $$PlanSessionDatesTableReferences),
+          PlanSessionDate,
+          PrefetchHooks Function({bool sessionId})
+        > {
+  $$PlanSessionDatesTableTableManager(
+    _$AppDatabase db,
+    $PlanSessionDatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlanSessionDatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlanSessionDatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlanSessionDatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> sessionId = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+              }) => PlanSessionDatesCompanion(
+                id: id,
+                sessionId: sessionId,
+                date: date,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int sessionId,
+                required DateTime date,
+              }) => PlanSessionDatesCompanion.insert(
+                id: id,
+                sessionId: sessionId,
+                date: date,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PlanSessionDatesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sessionId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sessionId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.sessionId,
+                        referencedTable: $$PlanSessionDatesTableReferences
+                            ._sessionIdTable(db),
+                        referencedColumn: $$PlanSessionDatesTableReferences
+                            ._sessionIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PlanSessionDatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PlanSessionDatesTable,
+      PlanSessionDate,
+      $$PlanSessionDatesTableFilterComposer,
+      $$PlanSessionDatesTableOrderingComposer,
+      $$PlanSessionDatesTableAnnotationComposer,
+      $$PlanSessionDatesTableCreateCompanionBuilder,
+      $$PlanSessionDatesTableUpdateCompanionBuilder,
+      (PlanSessionDate, $$PlanSessionDatesTableReferences),
+      PlanSessionDate,
+      PrefetchHooks Function({bool sessionId})
     >;
 typedef $$PlanExercisesTableCreateCompanionBuilder =
     PlanExercisesCompanion Function({
@@ -7636,6 +8195,8 @@ class $AppDatabaseManager {
       $$PlansTableTableManager(_db, _db.plans);
   $$PlanSessionsTableTableManager get planSessions =>
       $$PlanSessionsTableTableManager(_db, _db.planSessions);
+  $$PlanSessionDatesTableTableManager get planSessionDates =>
+      $$PlanSessionDatesTableTableManager(_db, _db.planSessionDates);
   $$PlanExercisesTableTableManager get planExercises =>
       $$PlanExercisesTableTableManager(_db, _db.planExercises);
   $$SessionLogsTableTableManager get sessionLogs =>

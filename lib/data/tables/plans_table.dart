@@ -46,9 +46,21 @@ class PlanSessions extends Table {
   IntColumn get weekNumber => integer()();
   TextColumn get day => text()();
   TextColumn get sessionName => text()();
+}
 
-  /// Null while still template-only; set once placed on the calendar.
-  DateTimeColumn get assignedDate => dateTime().nullable()();
+/// One date a `PlanSessions` row is scheduled on - a session can have zero,
+/// one, or many of these (e.g. the same "Push Day" placed on several
+/// Mondays). Used to be a single nullable `assignedDate` column directly on
+/// `PlanSessions`; pulled into its own table so a session isn't limited to
+/// one scheduled occurrence at a time. Removing a row only ever unschedules
+/// that date - it never touches `SessionLogs`, since what was actually
+/// trained on a date is independent of whether that date is still "on the
+/// calendar" as upcoming.
+class PlanSessionDates extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get sessionId =>
+      integer().references(PlanSessions, #id, onDelete: KeyAction.cascade)();
+  DateTimeColumn get date => dateTime()();
 }
 
 /// One exercise-in-session row. Mirrors schema/plan.schema.json's

@@ -14,40 +14,30 @@ import 'execution_screen.dart';
 bool _isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
-/// Starts [session], prompting first if it's scheduled for a day other than
-/// today - e.g. tapping "Start" on tomorrow's session asks whether to move
-/// it to today rather than silently starting an out-of-schedule session (or
-/// silently leaving its calendar date stale once logged). A session with no
-/// assigned date at all is silently assigned today rather than left unset -
-/// the calendar only ever shows a session on its `assignedDate` (see
-/// `calendar_screen.dart`), so starting (and finishing) a never-scheduled
-/// session - the common case for a session started right after importing a
-/// plan - would otherwise complete successfully but never appear on the
-/// calendar at all, which reads as "my finished session didn't save." No
-/// prompt for this case, unlike the reschedule below: there's no existing
-/// date to ask about overwriting.
+/// Starts one specific scheduled occurrence of [session] - [date] is which
+/// of its (possibly several) dates is being started, always a real
+/// `PlanSessionDates` row, never a placeholder for "no date yet" (a session
+/// with zero dates has no Start affordance to tap in the first place - see
+/// `plan_detail_screen.dart`'s per-date chips). Prompts first if [date] isn't
+/// today - e.g. tapping "Start" on tomorrow's date asks whether to move it
+/// to today rather than silently starting an out-of-schedule session (or
+/// silently leaving its calendar date stale once logged).
 Future<void> startSessionWithMoveToTodayPrompt(
   BuildContext context,
   WidgetRef ref,
   PlanSession session,
+  DateTime date,
 ) async {
-  final assignedDate = session.assignedDate;
   final today = DateTime.now();
   final todayDateOnly = DateTime(today.year, today.month, today.day);
 
-  if (assignedDate == null) {
-    final db = ref.read(appDatabaseProvider);
-    await db.planDao.assignSessionDate(session.id, todayDateOnly);
-    ref.invalidate(scheduledSessionsProvider);
-    ref.invalidate(planDetailsProvider(session.planId));
-    await resyncReminders(ref);
-  } else if (!_isSameDay(assignedDate, today)) {
+  if (!_isSameDay(date, today)) {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Move to today?'),
         content: Text(
-          'This session is scheduled for ${DateFormat.yMMMd().format(assignedDate)}. '
+          'This session is scheduled for ${DateFormat.yMMMd().format(date)}. '
           'Move it to today and start now?',
         ),
         actions: [
@@ -66,7 +56,11 @@ Future<void> startSessionWithMoveToTodayPrompt(
 
     if (!context.mounted) return;
     final db = ref.read(appDatabaseProvider);
-    await db.planDao.assignSessionDate(session.id, todayDateOnly);
+    await db.planDao.moveSessionDate(
+      session.id,
+      from: date,
+      to: todayDateOnly,
+    );
     ref.invalidate(scheduledSessionsProvider);
     ref.invalidate(planDetailsProvider(session.planId));
     await resyncReminders(ref);

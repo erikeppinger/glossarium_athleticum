@@ -195,7 +195,7 @@ void main() {
 
   group('getPeriodSummary', () {
     test('counts scheduled/completed sessions, volume, and PRs within range', () async {
-      await db.planDao.assignSessionDate(sessionId, DateTime(2026, 8, 10));
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 8, 10));
       await db.sessionLogDao.createSessionLog(
         id: 'log-1',
         planSessionId: sessionId,

@@ -19,6 +19,7 @@ part 'app_database.g.dart';
     Exercises,
     Plans,
     PlanSessions,
+    PlanSessionDates,
     PlanExercises,
     SessionLogs,
     LoggedSets,
@@ -37,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -87,6 +88,22 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(plans, plans.reportPreference);
         await m.addColumn(plans, plans.reportFrequencyDays);
         await m.addColumn(plans, plans.reportOptInAt);
+      }
+      if (from < 10) {
+        // A session's single assignedDate column becomes a child table so a
+        // session can have several scheduled dates - carry every existing
+        // date forward as that session's first row, then drop the column.
+        // No newColumns needed on the TableMigration below: we're only
+        // dropping a column here, not adding one, so the "new columns must
+        // be listed or the COPY statement fails" gotcha (see the schema
+        // 7->8 migration above) doesn't apply.
+        await m.createTable(planSessionDates);
+        await customStatement(
+          'INSERT INTO plan_session_dates (session_id, date) '
+          'SELECT id, assigned_date FROM plan_sessions '
+          'WHERE assigned_date IS NOT NULL',
+        );
+        await m.alterTable(TableMigration(planSessions));
       }
     },
   );

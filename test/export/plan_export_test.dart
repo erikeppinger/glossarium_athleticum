@@ -9,6 +9,7 @@ PlanSessionDetails _fakeSession({
   required String day,
   required String sessionName,
   required List<PlanExercise> exercises,
+  List<DateTime> dates = const [],
 }) {
   return PlanSessionDetails(
     session: PlanSession(
@@ -17,9 +18,9 @@ PlanSessionDetails _fakeSession({
       weekNumber: weekNumber,
       day: day,
       sessionName: sessionName,
-      assignedDate: null,
     ),
     exercises: exercises,
+    dates: dates,
   );
 }
 
@@ -66,6 +67,7 @@ void main() {
           _fakeExercise(order: 1, exerciseId: 'EX001', exerciseName: 'Bench Press'),
           _fakeExercise(order: 2, exerciseName: 'Overhead Press', weightIntensity: '35kg'),
         ],
+        dates: [DateTime(2026, 9, 1), DateTime(2026, 9, 8)],
       ),
       _fakeSession(
         weekNumber: 1,
@@ -81,7 +83,7 @@ void main() {
   group('planToJson', () {
     test('matches schema/plan.schema.json shape', () {
       final json = planToJson(details);
-      expect(json['schema_version'], 1);
+      expect(json['schema_version'], 2);
       expect(json['id'], 'plan-1');
       expect(json['name'], 'My Plan');
 
@@ -94,6 +96,7 @@ void main() {
       expect(sessions, hasLength(2));
       final pushDay = sessions.first as Map;
       expect(pushDay['session_name'], 'Push Day');
+      expect(pushDay['assigned_dates'], ['2026-09-01', '2026-09-08']);
       final exercises = pushDay['exercises'] as List;
       expect(exercises, hasLength(2));
       expect((exercises.first as Map)['exercise_id'], 'EX001');

@@ -77,34 +77,125 @@ void main() {
     );
   });
 
-  test('assignSessionDate then getSessionsInRange finds it', () async {
-    await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
-    final details = await db.planDao.getPlanDetails('plan-1');
-    final sessionId = details!.sessions.single.session.id;
+  // A session used to be limited to one assignedDate column; it can now be
+  // scheduled on several dates at once via PlanSessionDates rows.
+  group('multi-date scheduling', () {
+    test('addSessionDate then getDatesForSession returns it, ascending', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
 
-    final date = DateTime(2026, 9, 1);
-    await db.planDao.assignSessionDate(sessionId, date);
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 8));
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
 
-    final inRange = await db.planDao.getSessionsInRange(
-      DateTime(2026, 8, 25),
-      DateTime(2026, 9, 7),
+      expect(await db.planDao.getDatesForSession(sessionId), [
+        DateTime(2026, 9, 1),
+        DateTime(2026, 9, 8),
+      ]);
+    });
+
+    test('addSessionDate is a no-op for a date already scheduled', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
+
+      expect(await db.planDao.getDatesForSession(sessionId), [
+        DateTime(2026, 9, 1),
+      ]);
+    });
+
+    test('removeSessionDate removes only that one date', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 8));
+
+      await db.planDao.removeSessionDate(sessionId, DateTime(2026, 9, 1));
+
+      expect(await db.planDao.getDatesForSession(sessionId), [
+        DateTime(2026, 9, 8),
+      ]);
+    });
+
+    test(
+      'removeSessionDate never touches an existing SessionLog for that session',
+      () async {
+        await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+        final sessionId =
+            (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+        await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 9, 1),
+          entries: const [],
+        );
+
+        await db.planDao.removeSessionDate(sessionId, DateTime(2026, 9, 1));
+
+        expect(
+          await db.sessionLogDao.getLogsForPlanSession(sessionId),
+          hasLength(1),
+          reason: 'unscheduling a date must not delete what was logged on it',
+        );
+      },
     );
-    expect(inRange.map((s) => s.id), [sessionId]);
 
-    final outOfRange = await db.planDao.getSessionsInRange(
-      DateTime(2026, 9, 2),
-      DateTime(2026, 9, 7),
-    );
-    expect(outOfRange, isEmpty);
-  });
+    test('moveSessionDate updates one occurrence in place', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
+      await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 8));
 
-  test('sessions with no assignedDate are excluded from range queries', () async {
-    await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
-    final inRange = await db.planDao.getSessionsInRange(
-      DateTime(2020, 1, 1),
-      DateTime(2030, 1, 1),
+      await db.planDao.moveSessionDate(
+        sessionId,
+        from: DateTime(2026, 9, 1),
+        to: DateTime(2026, 9, 4),
+      );
+
+      expect(await db.planDao.getDatesForSession(sessionId), [
+        DateTime(2026, 9, 4),
+        DateTime(2026, 9, 8),
+      ]);
+    });
+
+    test(
+      'getAllScheduledSessions returns one row per (session, date) occurrence',
+      () async {
+        await db.planDao.createPlan(
+          id: 'plan-1',
+          name: 'Plan A',
+          sessions: [
+            PlanSessionInput(
+              weekNumber: pushDay.weekNumber,
+              day: pushDay.day,
+              sessionName: pushDay.sessionName,
+              exercises: pushDay.exercises,
+              assignedDates: [DateTime(2026, 9, 1), DateTime(2026, 9, 8)],
+            ),
+          ],
+        );
+
+        final scheduled = await db.planDao.getAllScheduledSessions();
+
+        expect(scheduled, hasLength(2));
+        // No ordering guarantee on this query - compare as a set.
+        expect(
+          scheduled.map((s) => s.date).toSet(),
+          {DateTime(2026, 9, 1), DateTime(2026, 9, 8)},
+        );
+      },
     );
-    expect(inRange, isEmpty);
+
+    test('a session with no dates is excluded from getAllScheduledSessions', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      expect(await db.planDao.getAllScheduledSessions(), isEmpty);
+    });
   });
 
   test('createEmptyPlan creates a plan with zero sessions', () async {
@@ -275,14 +366,14 @@ void main() {
     });
   });
 
-  test('assignSessionDate bumps the parent plan\'s updated_at', () async {
+  test('addSessionDate bumps the parent plan\'s updated_at', () async {
     await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
     final sessionId =
         (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
     final before = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
     await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
 
-    await db.planDao.assignSessionDate(sessionId, DateTime(2026, 9, 1));
+    await db.planDao.addSessionDate(sessionId, DateTime(2026, 9, 1));
 
     final after = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
     expect(after.isAfter(before), isTrue);

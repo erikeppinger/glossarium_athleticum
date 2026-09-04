@@ -29,7 +29,7 @@ void main() {
 
   test('round-trips a plan: export -> wipe -> import -> identical', () async {
     await seedLibrary();
-    final assignedDate = DateTime(2026, 9, 1);
+    final assignedDates = [DateTime(2026, 9, 1), DateTime(2026, 9, 8)];
     await db.planDao.createPlan(
       id: 'plan-1',
       name: 'My Plan',
@@ -39,7 +39,7 @@ void main() {
           weekNumber: 1,
           day: 'Mon',
           sessionName: 'Push Day',
-          assignedDate: assignedDate,
+          assignedDates: assignedDates,
           exercises: const [
             PlanExerciseInput(
               order: 1,
@@ -71,10 +71,53 @@ void main() {
     expect(imported.plan.notes, 'Some notes');
     expect(imported.plan.createdAt, original.plan.createdAt);
     expect(imported.sessions, hasLength(1));
-    expect(imported.sessions.single.session.assignedDate, assignedDate);
+    expect(imported.sessions.single.dates, assignedDates);
     expect(imported.sessions.single.exercises.single.exerciseId, 'EX_BP');
     expect(imported.sessions.single.exercises.single.weightIntensity, '60kg');
   });
+
+  // Regression: schema_version 2 replaced a session's singular
+  // 'assigned_date' field with an 'assigned_dates' array - a file exported
+  // before that bump (or shared from an older install) must still import
+  // correctly rather than silently losing its scheduled date.
+  test(
+    'imports a pre-schema_version-2 file using the old singular assigned_date field',
+    () async {
+      await seedLibrary();
+      final json = {
+        'schema_version': 1,
+        'id': 'plan-legacy',
+        'name': 'Legacy Plan',
+        'notes': '',
+        'weeks': [
+          {
+            'week_number': 1,
+            'sessions': [
+              {
+                'day': 'Mon',
+                'session_name': 'Push Day',
+                'assigned_date': '2026-09-01',
+                'exercises': [
+                  {
+                    'order': 1,
+                    'exercise_id': 'EX_BP',
+                    'exercise_name': 'Bench Press',
+                    'sets': 4,
+                    'reps': '8-10',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      final planId = await importPlanJson(json, db);
+      final imported = await db.planDao.getPlanDetails(planId);
+
+      expect(imported!.sessions.single.dates, [DateTime(2026, 9, 1)]);
+    },
+  );
 
   test(
     'a custom exercise\'s image travels through a single-plan export onto a fresh device',

@@ -8,8 +8,8 @@
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 1,
-      "description": "Bump on any breaking change to this shape; add a migration step in the importer for each bump."
+      "const": 2,
+      "description": "Bump on any breaking change to this shape; add a migration step in the importer for each bump. 1 -> 2: a session's single 'assigned_date' became the 'assigned_dates' array (a session can now be scheduled on several dates) - the importer still reads the old singular field from older files."
     },
     "id": { "type": "string", "description": "UUID." },
     "name": { "type": "string" },
@@ -43,10 +43,10 @@
           "description": "Free text, e.g. \"Mon\" or \"Day 1\" for non-date-bound programs."
         },
         "session_name": { "type": "string" },
-        "assigned_date": {
-          "type": ["string", "null"],
-          "format": "date",
-          "description": "Set when the session is placed on the calendar; null while still template-only."
+        "assigned_dates": {
+          "type": "array",
+          "items": { "type": "string", "format": "date" },
+          "description": "Every date this session is placed on the calendar; empty while still template-only. A session can be scheduled on several dates at once. Readers should also accept the older singular 'assigned_date' (a nullable date string) from files exported before schema_version 2, treating it as a one-element (or empty) array."
         },
         "exercises": {
           "type": "array",
