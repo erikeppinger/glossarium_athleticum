@@ -52,6 +52,39 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
     super.dispose();
   }
 
+  // Resolving unmatched exercises row-by-row (or renaming the plan) is real
+  // work with nowhere else to go if the screen is backed out of - without
+  // this, a single accidental back press silently threw all of it away.
+  bool get _hasUnsavedChanges =>
+      _resolvedByRowNumber.isNotEmpty ||
+      _nameController.text.trim() != widget.suggestedPlanName.trim();
+
+  Future<void> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard import?'),
+        content: const Text(
+          'This plan has not been imported yet, and any exercises you '
+          "matched or added won't be applied to it.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_formatError != null) {
@@ -69,9 +102,29 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
       );
     }
 
-    final result = _result!;
     final libraryAsync = ref.watch(allExercisesForMatchingProvider);
 
+    // canPop is read fresh on every pop attempt from whatever's last built,
+    // but the plain Plan-name TextField doesn't rebuild this widget on each
+    // keystroke - so without this listener, typing a new name wouldn't ever
+    // flip canPop to false.
+    return ListenableBuilder(
+      listenable: _nameController,
+      builder: (context, _) => PopScope(
+        canPop: _importing || !_hasUnsavedChanges,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _confirmDiscard();
+        },
+        child: _buildScaffold(context, libraryAsync),
+      ),
+    );
+  }
+
+  Widget _buildScaffold(
+    BuildContext context,
+    AsyncValue<List<Exercise>> libraryAsync,
+  ) {
+    final result = _result!;
     return Scaffold(
       appBar: AppBar(title: const Text('Import plan')),
       body: libraryAsync.when(
@@ -87,99 +140,137 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
               .toList();
           final unmatched =
               matched.where((r) => r.matchedExerciseId == null).toList();
+          final distinctUnmatched = _distinctByName(unmatched);
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
+          return Column(
             children: [
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Plan name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (result.errors.isNotEmpty) ...[
-                Card(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  child: ExpansionTile(
-                    title: Text(
-                      '${result.errors.length} row(s) skipped due to errors',
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    TextField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Plan name',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                    children: [
-                      for (final e in result.errors)
-                        ListTile(
-                          dense: true,
-                          title: Text('Row ${e.rowNumber}: ${e.message}'),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (unmatched.isNotEmpty) ...[
-                Text(
-                  'Unmatched exercises',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                for (final row in _distinctByName(unmatched))
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            row.exerciseName,
-                            style: Theme.of(context).textTheme.titleMedium,
+                    const SizedBox(height: 16),
+                    if (result.errors.isNotEmpty) ...[
+                      Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: ExpansionTile(
+                          title: Text(
+                            '${result.errors.length} row(s) skipped due to errors',
                           ),
-                          const Text('Not found in your library'),
-                          const SizedBox(height: 8),
-                          OverflowBar(
-                            alignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () =>
-                                    _pickExisting(context, row, library),
-                                child: const Text('Match existing'),
+                          children: [
+                            for (final e in result.errors)
+                              ListTile(
+                                dense: true,
+                                title: Text('Row ${e.rowNumber}: ${e.message}'),
                               ),
-                              FilledButton(
-                                onPressed: () => _createCustom(row),
-                                child: const Text('Add as custom'),
-                              ),
-                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (distinctUnmatched.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Unmatched exercises (${distinctUnmatched.length})',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          // A large plan can reference dozens of exercises
+                          // that don't exist in the library yet (a 71-row
+                          // import surfaced this) - resolving each one by
+                          // hand via "Match existing"/"Add as custom" isn't
+                          // reasonable at that scale, so this adds every
+                          // still-unresolved one as a plain custom exercise
+                          // in a single action. Anyone who wants to match a
+                          // few to existing library entries first still can -
+                          // this only ever touches what's still unmatched.
+                          TextButton(
+                            onPressed: () =>
+                                _resolveAllAsCustom(distinctUnmatched),
+                            child: const Text('Add all as custom'),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      for (final row in distinctUnmatched)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  row.exerciseName,
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const Text('Not found in your library'),
+                                const SizedBox(height: 8),
+                                OverflowBar(
+                                  alignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          _pickExisting(context, row, library),
+                                      child: const Text('Match existing'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => _createCustom(row),
+                                      child: const Text('Add as custom'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                    ],
+                    Text(
+                      'Sessions',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                  ),
-                const SizedBox(height: 16),
-              ],
-              Text(
-                'Sessions',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              for (final session in groupIntoSessions(matched))
-                Card(
-                  child: ListTile(
-                    title: Text(
-                      'Week ${session.weekNumber} • ${session.day} • ${session.sessionName}',
-                    ),
-                    subtitle: Text(
-                      session.rows.map((r) => r.exerciseName).join(', '),
-                    ),
-                  ),
+                    for (final session in groupIntoSessions(matched))
+                      Card(
+                        child: ListTile(
+                          title: Text(
+                            'Week ${session.weekNumber} • ${session.day} • ${session.sessionName}',
+                          ),
+                          subtitle: Text(
+                            session.rows.map((r) => r.exerciseName).join(', '),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: unmatched.isEmpty && !_importing
-                    ? () => _import(matched)
-                    : null,
-                child: Text(
-                  unmatched.isEmpty
-                      ? 'Import plan'
-                      : 'Resolve ${unmatched.length} exercise(s) to continue',
+              ),
+              // Pinned outside the scrollable list - with a long unmatched
+              // list (the 71-row import that surfaced this) this button was
+              // the only way to see the plan was blocked or ready, and it
+              // was easy to miss entirely at the very bottom of a long
+              // scroll.
+              SafeArea(
+                minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: FilledButton(
+                  onPressed: unmatched.isEmpty && !_importing
+                      ? () => _import(matched)
+                      : null,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  child: Text(
+                    unmatched.isEmpty
+                        ? 'Import plan'
+                        : 'Resolve ${unmatched.length} exercise(s) to continue',
+                  ),
                 ),
               ),
             ],
@@ -241,6 +332,57 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
     ref.invalidate(exerciseCategoriesProvider);
     ref.invalidate(creatorFilterOptionsProvider);
     _resolveAllWithName(row.exerciseName, id);
+  }
+
+  /// Same as [_createCustom], but for every still-unmatched name in one
+  /// action - one DB write per exercise, then a single invalidate/setState
+  /// pass at the end rather than one of each per row, so this stays
+  /// reasonable at the scale that motivated it (dozens of rows).
+  Future<void> _resolveAllAsCustom(List<PlanImportRow> rows) async {
+    final db = ref.read(appDatabaseProvider);
+    final planName = _nameController.text.trim();
+    final idsByName = <String, String>{};
+
+    for (final row in rows) {
+      final id = const Uuid().v4();
+      await db.exerciseDao.upsertExercise(
+        ExercisesCompanion.insert(
+          id: id,
+          name: row.exerciseName,
+          category: 'Custom',
+          movementPattern: '',
+          muscleGroups: '',
+          equipment: '',
+          difficulty: 'Beginner',
+          measurementType: 'Weight x Reps',
+          isCustom: const Value(true),
+          sourcePlanName: Value(planName),
+        ),
+      );
+      idsByName[row.exerciseName.toLowerCase()] = id;
+    }
+
+    ref.invalidate(allExercisesForMatchingProvider);
+    ref.invalidate(filteredExercisesProvider);
+    ref.invalidate(exerciseCategoriesProvider);
+    ref.invalidate(creatorFilterOptionsProvider);
+
+    setState(() {
+      final result = _result!;
+      for (final r in result.rows) {
+        final id = idsByName[r.exerciseName.toLowerCase()];
+        if (id != null) _resolvedByRowNumber[r.rowNumber] = id;
+      }
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${rows.length} exercise${rows.length == 1 ? '' : 's'} added to your library.',
+        ),
+      ),
+    );
   }
 
   void _resolveAllWithName(String exerciseName, String exerciseId) {

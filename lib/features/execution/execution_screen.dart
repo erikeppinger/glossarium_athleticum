@@ -15,6 +15,30 @@ import '../settings/app_preferences.dart';
 import '../shared/muscle_area_stripe.dart';
 import 'rest_timer_controller.dart';
 
+/// Every top set ever logged for one exercise, most recent first - backs the
+/// "Best: ..." half of the "Last: ... / Best: ..." line shown while logging
+/// that exercise, and reuses [SessionLogDao.getProgressionHistory] rather
+/// than a bespoke query since it's already exactly "one row per session,
+/// reduced to the top set".
+final _exerciseHistoryProvider =
+    FutureProvider.family<List<ProgressionHistoryEntry>, String>((
+      ref,
+      exerciseId,
+    ) {
+      final db = ref.watch(appDatabaseProvider);
+      return db.sessionLogDao.getProgressionHistory(exerciseId);
+    });
+
+/// The full "Last: ..." half - every set from only the most recent session,
+/// not reduced to one number the way [_exerciseHistoryProvider] is. Someone
+/// re-doing an exercise wants to see what they actually did last time
+/// (every set), not just its heaviest one.
+final _lastSessionSetsProvider =
+    FutureProvider.family<List<LoggedSet>, String>((ref, exerciseId) {
+      final db = ref.watch(appDatabaseProvider);
+      return db.sessionLogDao.getLastLoggedSets(exerciseId);
+    });
+
 final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
   (ref, sessionId) {
     final db = ref.watch(appDatabaseProvider);
@@ -50,6 +74,13 @@ class _LoggedSetForm {
   final TextEditingController rpe;
   bool logged = false;
   bool isPr = false;
+  // Set synchronously the instant "log" is tapped, before the async PR
+  // lookup resolves - closes a real race where a fast double-tap on the
+  // same row (still showing an enabled check button mid-await) fired two
+  // overlapping _logSet calls. Suspected but unconfirmed cause of a
+  // user-reported "checking exercises is still inconsistent" report that
+  // couldn't be reproduced on demand; hardening this is cheap regardless.
+  bool pending = false;
 
   _LoggedSetForm({String repsHint = '', String weightHint = ''})
     : reps = TextEditingController(text: repsHint),
@@ -66,7 +97,25 @@ class _LoggedSetForm {
 class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   final Map<int, List<_LoggedSetForm>> _formsByExerciseRowId = {};
   final Map<String, List<double>> _priorWeightsByExerciseId = {};
+  final Set<int> _skippedExerciseRowIds = {};
   bool _finishing = false;
+
+  // Exercises added via "Add exercise" mid-session, kept purely in memory -
+  // never written to plan_exercises. Adding one used to call
+  // PlanDao.addExerciseToSession directly, which permanently added it to the
+  // plan's *template*: every future time this session was started (or the
+  // plan was viewed), the one-off addition showed up as if it had always
+  // been prescribed. A change made while training should only ever apply to
+  // that one training, not silently rewrite the plan. Negative, decrementing
+  // ids keep these from ever colliding with a real (auto-increment, always
+  // positive) plan_exercises.id.
+  final List<PlanExercise> _adHocExercises = [];
+  int _nextAdHocExerciseId = -1;
+
+  List<PlanExercise> _allExercises(PlanSessionDetails details) => [
+    ...details.exercises,
+    ..._adHocExercises,
+  ];
 
   @override
   void dispose() {
@@ -92,6 +141,60 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         (_) => _LoggedSetForm(
           repsHint: repsHint,
           weightHint: weightHint,
+        ),
+      );
+    });
+  }
+
+  void _addSet(PlanExercise exercise, WeightUnit unit) {
+    final forms = _formsFor(exercise, unit);
+    setState(() => forms.add(_LoggedSetForm()));
+  }
+
+  /// Removes one not-yet-logged set. A logged set must be undone first (via
+  /// the existing undo icon) - this keeps "what does removing a set even
+  /// mean once it's saved" from being a question at all. Always leaves at
+  /// least one row; use "Skip" on the whole exercise for zero sets.
+  void _removeSet(PlanExercise exercise, WeightUnit unit, int index) {
+    final forms = _formsFor(exercise, unit);
+    if (forms.length <= 1 || forms[index].logged) return;
+    setState(() => forms.removeAt(index).dispose());
+  }
+
+  void _toggleSkip(int exerciseRowId) {
+    setState(() {
+      if (!_skippedExerciseRowIds.remove(exerciseRowId)) {
+        _skippedExerciseRowIds.add(exerciseRowId);
+      }
+    });
+  }
+
+  Future<void> _addExerciseMidSession(int sessionId) async {
+    final library = ref.read(exerciseLookupProvider).valueOrNull;
+    if (library == null || !mounted) return;
+
+    final chosen = await showDialog<Exercise>(
+      context: context,
+      builder: (context) => _ExercisePickerDialog(
+        library: library.values.toList()..sort((a, b) => a.name.compareTo(b.name)),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    setState(() {
+      _adHocExercises.add(
+        PlanExercise(
+          id: _nextAdHocExerciseId--,
+          sessionId: sessionId,
+          order: 0,
+          exerciseId: chosen.id,
+          exerciseName: chosen.name,
+          sets: 3,
+          reps: '8-10',
+          weightIntensity: '',
+          restSec: 90,
+          notes: '',
+          videoUrl: '',
         ),
       );
     });
@@ -130,7 +233,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
-                    for (final exercise in details.exercises)
+                    for (final exercise in _allExercises(details))
                       _ExerciseCard(
                         exercise: exercise,
                         forms: _formsFor(exercise, unit),
@@ -139,23 +242,41 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                         libraryExercise: ref
                             .watch(exerciseLookupProvider)
                             .valueOrNull?[exercise.exerciseId],
+                        skipped: _skippedExerciseRowIds.contains(exercise.id),
                         onSetLogged: (form) => _logSet(exercise, form, unit),
                         onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
+                        onAddSet: () => _addSet(exercise, unit),
+                        onRemoveSet: (index) =>
+                            _removeSet(exercise, unit, index),
+                        onToggleSkip: () => _toggleSkip(exercise.id),
                       ),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: FilledButton(
-                    onPressed: _finishing ? null : () => _finishSession(details, unit),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          _addExerciseMidSession(widget.planSessionId),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add exercise'),
                     ),
-                    child: const Text('Finish session'),
-                  ),
+                    const SizedBox(height: 24),
+                    // Part of the scrollable list, not a footer pinned
+                    // outside it - a footer gets pushed up by
+                    // resizeToAvoidBottomInset to sit right above the
+                    // on-screen keyboard while a weight/rep field is
+                    // focused, close enough to invite an accidental tap
+                    // that ends the whole session mid-entry.
+                    FilledButton(
+                      onPressed: _finishing
+                          ? null
+                          : () => _finishSession(details, unit),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
+                      child: const Text('Finish session'),
+                    ),
+                    SizedBox(
+                      height: MediaQuery.paddingOf(context).bottom + 16,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -169,23 +290,43 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   }
 
   /// Whether anything would be lost by leaving now. False once _finishing
-  /// starts, so the screen's own successful pop isn't intercepted.
+  /// starts, so the screen's own successful pop isn't intercepted. Counts
+  /// both logged sets and sets with typed-but-unconfirmed numbers - the
+  /// latter look just as "entered" to someone glancing at the screen, even
+  /// though "Finish session" would otherwise drop them silently (see
+  /// _unloggedFilledForms).
   bool get _hasUnsavedSets =>
       !_finishing &&
-      _formsByExerciseRowId.values.any((forms) => forms.any((f) => f.logged));
+      (_formsByExerciseRowId.values.any((forms) => forms.any((f) => f.logged)) ||
+          _unloggedFilledForms.isNotEmpty);
+
+  /// Sets where someone typed reps and/or weight but never tapped the
+  /// per-set "Log set" check - easy to do, since typing the numbers looks
+  /// and feels like the whole job. Without this check, "Finish session"
+  /// would silently drop that data with no warning at all.
+  List<_LoggedSetForm> get _unloggedFilledForms => _formsByExerciseRowId.values
+      .expand((forms) => forms)
+      .where(
+        (f) =>
+            !f.logged &&
+            (f.reps.text.trim().isNotEmpty || f.weight.text.trim().isNotEmpty),
+      )
+      .toList();
 
   Future<void> _confirmDiscard() async {
     final loggedCount = _formsByExerciseRowId.values
         .expand((forms) => forms)
         .where((f) => f.logged)
         .length;
+    final unloggedCount = _unloggedFilledForms.length;
+    final totalCount = loggedCount + unloggedCount;
 
     final discard = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Leave without finishing?'),
         content: Text(
-          "You've logged $loggedCount set${loggedCount == 1 ? '' : 's'} that "
+          "You've entered $totalCount set${totalCount == 1 ? '' : 's'} that "
           "haven't been saved yet. Leaving now discards them.\n\n"
           'Tip: the rest timer keeps running if you switch tabs, so you can '
           'come back to this session without losing anything.',
@@ -212,8 +353,16 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   Future<void> _logSet(
     PlanExercise exercise,
     _LoggedSetForm form,
-    WeightUnit unit,
-  ) async {
+    WeightUnit unit, {
+    bool startTimer = true,
+  }) async {
+    if (form.logged || form.pending) return;
+    // Flips synchronously, before the DB round-trip below - closes the
+    // window where a fast double-tap on the same row (still showing an
+    // enabled check button mid-await) could fire two overlapping _logSet
+    // calls for the same set.
+    setState(() => form.pending = true);
+
     final db = ref.read(appDatabaseProvider);
     final typedWeight = double.tryParse(form.weight.text);
     final weight = typedWeight == null ? null : displayToKg(typedWeight, unit);
@@ -231,8 +380,12 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       if (form.isPr) priorWeights.add(weight);
     }
 
-    setState(() => form.logged = true);
+    setState(() {
+      form.logged = true;
+      form.pending = false;
+    });
 
+    if (!startTimer) return;
     final restSec = exercise.restSec ?? 90;
     ref.read(restTimerControllerProvider.notifier).start(
       Duration(seconds: restSec),
@@ -264,11 +417,55 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     PlanSessionDetails details,
     WeightUnit unit,
   ) async {
+    // Typing reps/weight looks like the whole job, but a set only counts
+    // once its own check is tapped (see _unloggedFilledForms) - so anyone
+    // who filled numbers in and went straight to "Finish session" would
+    // otherwise have all of it silently dropped with no warning at all.
+    final unloggedPairs = <(PlanExercise, _LoggedSetForm)>[
+      for (final exercise in _allExercises(details))
+        if (exercise.exerciseId != null)
+          for (final form in _formsFor(exercise, unit))
+            if (!form.logged &&
+                (form.reps.text.trim().isNotEmpty ||
+                    form.weight.text.trim().isNotEmpty))
+              (exercise, form),
+    ];
+
+    if (unloggedPairs.isNotEmpty) {
+      final logThem = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unlogged sets'),
+          content: Text(
+            '${unloggedPairs.length} set${unloggedPairs.length == 1 ? '' : 's'} '
+            "have numbers typed in but weren't logged with the check button. "
+            'Log them now and finish, or go back and review them?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Review'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Log & finish'),
+            ),
+          ],
+        ),
+      );
+      if (logThem != true) return;
+      if (!mounted) return;
+      for (final (exercise, form) in unloggedPairs) {
+        await _logSet(exercise, form, unit, startTimer: false);
+      }
+      if (!mounted) return;
+    }
+
     setState(() => _finishing = true);
     final db = ref.read(appDatabaseProvider);
     final entries = <LoggedSetInput>[];
 
-    for (final exercise in details.exercises) {
+    for (final exercise in _allExercises(details)) {
       if (exercise.exerciseId == null) continue;
       final forms = _formsFor(exercise, unit);
       for (var i = 0; i < forms.length; i++) {
@@ -291,17 +488,165 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     }
 
     if (entries.isNotEmpty) {
+      final note = await _promptForNote();
+      if (!mounted) return;
       await db.sessionLogDao.createSessionLog(
         id: const Uuid().v4(),
         planSessionId: widget.planSessionId,
         loggedAt: DateTime.now(),
         entries: entries,
+        notes: note,
       );
       // One-shot FutureProvider - won't notice this write on its own.
       ref.invalidate(loggedPlanSessionIdsProvider);
     }
 
+    // The rest timer is meant to survive leaving this screen unfinished
+    // (see _confirmDiscard's own "come back to this session" tip) - but
+    // once the session is actually finished there's no next set left to
+    // rest before, so a timer left running would just float in the overlay
+    // for no reason until it happens to time out on its own. Only stops
+    // this session's own timer - if it's since been overwritten by a
+    // different session started elsewhere, that one is left alone.
+    final restTimer = ref.read(restTimerControllerProvider);
+    if (restTimer.planSessionId == widget.planSessionId) {
+      ref.read(restTimerControllerProvider.notifier).skip();
+    }
+
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Asks for an optional free-text note once there's actually a workout to
+  /// attach it to. Barrier-dismissal is disabled so this can't be left
+  /// half-answered - "Skip" is the explicit way to decline.
+  Future<String?> _promptForNote() async {
+    final note = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _NotePromptDialog(),
+    );
+    return (note == null || note.isEmpty) ? null : note;
+  }
+}
+
+class _NotePromptDialog extends StatefulWidget {
+  const _NotePromptDialog();
+
+  @override
+  State<_NotePromptDialog> createState() => _NotePromptDialogState();
+}
+
+class _NotePromptDialogState extends State<_NotePromptDialog> {
+  // Owned by this State (not created-and-disposed inline in the caller) so
+  // dispose() only runs once the dialog route is actually removed from the
+  // tree - disposing it right after showDialog's Future resolves raced the
+  // dialog's own exit transition, which keeps rebuilding the same TextField
+  // for a few frames while it animates out.
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add a note?'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: 3,
+        decoration: const InputDecoration(
+          hintText: 'How did it go? (optional)',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Skip'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExercisePickerDialog extends StatefulWidget {
+  final List<Exercise> library;
+
+  const _ExercisePickerDialog({required this.library});
+
+  @override
+  State<_ExercisePickerDialog> createState() => _ExercisePickerDialogState();
+}
+
+class _ExercisePickerDialogState extends State<_ExercisePickerDialog> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _query.isEmpty
+        ? widget.library
+        : widget.library
+              .where((e) => e.name.toLowerCase().contains(_query))
+              .toList();
+
+    return AlertDialog(
+      title: const Text('Add exercise'),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Search',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) =>
+                  setState(() => _query = value.trim().toLowerCase()),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: matches.isEmpty
+                  ? const Center(child: Text('No matches.'))
+                  : ListView.builder(
+                      itemCount: matches.length,
+                      itemBuilder: (context, index) {
+                        final e = matches[index];
+                        return ListTile(
+                          title: Text(e.name),
+                          subtitle: Text(e.category),
+                          onTap: () => Navigator.of(context).pop(e),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
   }
 }
 
@@ -343,14 +688,18 @@ class _RestTimerBanner extends ConsumerWidget {
   }
 }
 
-class _ExerciseCard extends StatelessWidget {
+class _ExerciseCard extends ConsumerWidget {
   final PlanExercise exercise;
   final List<_LoggedSetForm> forms;
   final WeightUnit unit;
   final AppColorPalette palette;
   final Exercise? libraryExercise;
+  final bool skipped;
   final void Function(_LoggedSetForm form) onSetLogged;
   final void Function(_LoggedSetForm form) onSetUnlogged;
+  final VoidCallback onAddSet;
+  final void Function(int index) onRemoveSet;
+  final VoidCallback onToggleSkip;
 
   const _ExerciseCard({
     required this.exercise,
@@ -358,12 +707,16 @@ class _ExerciseCard extends StatelessWidget {
     required this.unit,
     required this.palette,
     required this.libraryExercise,
+    required this.skipped,
     required this.onSetLogged,
     required this.onSetUnlogged,
+    required this.onAddSet,
+    required this.onRemoveSet,
+    required this.onToggleSkip,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final area = areaForExercise(
       muscleGroups: libraryExercise?.muscleGroups ?? '',
       category: libraryExercise?.category ?? '',
@@ -384,7 +737,20 @@ class _ExerciseCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     exercise.exerciseName,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      decoration: skipped ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onToggleSkip,
+                  tooltip: skipped
+                      ? 'Include this exercise again'
+                      : 'Skip this exercise',
+                  icon: Icon(
+                    skipped
+                        ? Icons.replay
+                        : Icons.remove_circle_outline,
                   ),
                 ),
               ],
@@ -394,17 +760,98 @@ class _ExerciseCard extends StatelessWidget {
               '${exercise.weightIntensity.isEmpty ? '' : ' @ ${exercise.weightIntensity}'}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-            const SizedBox(height: 12),
-            for (var i = 0; i < forms.length; i++)
-              _SetRow(
-                setNumber: i + 1,
-                form: forms[i],
-                unit: unit,
-                onLog: () => onSetLogged(forms[i]),
-                onUnlog: () => onSetUnlogged(forms[i]),
+            // A negative id marks an exercise added via "Add exercise"
+            // mid-session (see _ExecutionScreenState._adHocExercises) -
+            // never written to the plan, so this makes that explicit rather
+            // than letting it look identical to a normally-prescribed row.
+            if (exercise.id < 0)
+              Text(
+                'Added for this session only - not saved to the plan.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontStyle: FontStyle.italic,
+                ),
               ),
+            if (exercise.exerciseId != null)
+              _LastAndBestLine(exerciseId: exercise.exerciseId!, unit: unit),
+            if (skipped)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Skipped for this session.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              )
+            else ...[
+              const SizedBox(height: 12),
+              for (var i = 0; i < forms.length; i++)
+                _SetRow(
+                  setNumber: i + 1,
+                  form: forms[i],
+                  unit: unit,
+                  canRemove: forms.length > 1,
+                  onLog: () => onSetLogged(forms[i]),
+                  onUnlog: () => onSetUnlogged(forms[i]),
+                  onRemove: () => onRemoveSet(i),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: onAddSet,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add set'),
+                ),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Last: 8×60kg, 7×60kg, 6×55kg · Best: 65kg" - every set from the last
+/// time this exercise was actually logged (not reduced to one number - a
+/// single "Last: 8 reps @ 60kg" line hid whether that was set 1 of 1 or set
+/// 1 of 4), plus the heaviest it's ever been, as a reference point without
+/// leaving this screen for the history tab.
+class _LastAndBestLine extends ConsumerWidget {
+  final String exerciseId;
+  final WeightUnit unit;
+
+  const _LastAndBestLine({required this.exerciseId, required this.unit});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lastSets = ref.watch(_lastSessionSetsProvider(exerciseId)).valueOrNull;
+    final history = ref.watch(_exerciseHistoryProvider(exerciseId)).valueOrNull;
+
+    final weightedLastSets =
+        lastSets?.where((s) => s.weight != null && s.reps != null).toList() ??
+        const [];
+    if (weightedLastSets.isEmpty && (history == null || history.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    final lastText = weightedLastSets.isEmpty
+        ? null
+        : 'Last: ${weightedLastSets.map((s) => '${s.reps}×${formatWeightInUnit(s.weight!, unit)}').join(', ')}';
+
+    final best = (history == null || history.isEmpty)
+        ? null
+        : history.reduce((a, b) => a.weight >= b.weight ? a : b);
+    final bestText = best == null
+        ? null
+        : 'Best: ${formatWeightInUnit(best.weight, unit)}';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        [?lastText, ?bestText].join('  •  '),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
       ),
     );
   }
@@ -414,15 +861,19 @@ class _SetRow extends StatelessWidget {
   final int setNumber;
   final _LoggedSetForm form;
   final WeightUnit unit;
+  final bool canRemove;
   final VoidCallback onLog;
   final VoidCallback onUnlog;
+  final VoidCallback onRemove;
 
   const _SetRow({
     required this.setNumber,
     required this.form,
     required this.unit,
+    required this.canRemove,
     required this.onLog,
     required this.onUnlog,
+    required this.onRemove,
   });
 
   @override
@@ -474,6 +925,18 @@ class _SetRow extends StatelessWidget {
                 color: form.isPr ? Colors.amber.shade700 : Colors.green,
               ),
             )
+          else if (form.pending)
+            const SizedBox(
+              width: 40,
+              height: 40,
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
           else
             IconButton.filled(
               // onLog (-> _logSet) calls its own setState once form.logged
@@ -483,6 +946,13 @@ class _SetRow extends StatelessWidget {
               onPressed: onLog,
               icon: const Icon(Icons.check),
               tooltip: 'Log set',
+            ),
+          if (canRemove && !form.logged && !form.pending)
+            IconButton(
+              onPressed: onRemove,
+              tooltip: 'Remove this set',
+              icon: const Icon(Icons.close, size: 18),
+              visualDensity: VisualDensity.compact,
             ),
         ],
       ),

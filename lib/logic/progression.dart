@@ -148,5 +148,20 @@ String formatWeight(double weightKg, [WeightUnit unit = WeightUnit.kg]) =>
 /// "lower is better" flag in the data model yet to do better than this.
 bool isPersonalRecord(num newValue, Iterable<num> priorValues) {
   if (priorValues.isEmpty) return true;
-  return newValue > priorValues.reduce((a, b) => a > b ? a : b);
+  // Not `priorValues.reduce((a, b) => a > b ? a : b)`: when the caller's
+  // Iterable is reified as something narrower than num (a real List<double>
+  // of logged weights, say), the closure inferred here from the *static*
+  // `Iterable<num>` parameter type is `num Function(num, num)` - but
+  // `reduce` dispatches against the list's *actual* runtime type parameter,
+  // which requires `double Function(double, double)`. That mismatch throws
+  // a TypeError at runtime (caught live: logging a second set threw this
+  // from inside execution_screen.dart's `_logSet`, leaving it permanently
+  // stuck on "pending" since the exception fired before `form.logged` was
+  // ever set). A manual loop sidesteps the generic-callback dispatch
+  // entirely - `>` on two `num`s doesn't care what the iterable reifies to.
+  var best = priorValues.first;
+  for (final value in priorValues.skip(1)) {
+    if (value > best) best = value;
+  }
+  return newValue > best;
 }

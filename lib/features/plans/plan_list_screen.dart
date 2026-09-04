@@ -4,7 +4,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../export/plan_export.dart' show encryptedPlanFileExtension;
 import '../../home_screen.dart' show settingsAppBarAction;
+import '../../security/backup_encryption.dart';
+import '../settings/backup_dialogs.dart';
+import '../settings/templates_screen.dart';
 import 'plan_actions.dart';
 import 'plan_detail_screen.dart';
 import 'plan_import_screen.dart';
@@ -44,7 +48,11 @@ class PlanListScreen extends ConsumerWidget {
               for (final plan in plans)
                 ListTile(
                   title: Text(plan.name),
-                  subtitle: plan.notes.isEmpty ? null : Text(plan.notes),
+                  // Notes aren't shown here at all, even as a preview - the
+                  // plan list is a flat scan-down list of names, not a place
+                  // to read free text, and a per-plan note (however short)
+                  // read as visual noise between rows. The full text has its
+                  // own dedicated, readable home on the plan detail screen.
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => PlanDetailScreen(planId: plan.id),
@@ -118,6 +126,20 @@ class PlanListScreen extends ConsumerWidget {
               subtitle: const Text("Exported from this app's Plan screen"),
               onTap: () => Navigator.of(context).pop(_ImportSource.json),
             ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('From encrypted plan file (.tplan)'),
+              subtitle: const Text("A plan shared with its own passphrase"),
+              onTap: () =>
+                  Navigator.of(context).pop(_ImportSource.encryptedJson),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('Need a blank template first?'),
+              subtitle: const Text('Get the spreadsheet/text template to fill in'),
+              onTap: () => Navigator.of(context).pop(_ImportSource.template),
+            ),
           ],
         ),
       ),
@@ -125,10 +147,16 @@ class PlanListScreen extends ConsumerWidget {
 
     if (!context.mounted || choice == null) return;
     switch (choice) {
+      case _ImportSource.template:
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const TemplatesScreen()),
+        );
       case _ImportSource.spreadsheet:
         await _importFromSpreadsheet(context);
       case _ImportSource.json:
         await _importFromJson(context, ref);
+      case _ImportSource.encryptedJson:
+        await _importFromEncryptedJson(context, ref);
     }
   }
 
@@ -167,6 +195,39 @@ class PlanListScreen extends ConsumerWidget {
     if (!context.mounted) return;
     await importOrSyncPlanJson(context, ref, json);
   }
+
+  Future<void> _importFromEncryptedJson(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: [encryptedPlanFileExtension],
+    );
+    if (file == null) return;
+
+    if (!context.mounted) return;
+    final passphrase = await promptPassphrase(
+      context,
+      title: 'Enter the plan file\'s passphrase',
+    );
+    if (passphrase == null || passphrase.isEmpty) return;
+
+    final envelope = utf8.decode(await file.readAsBytes());
+    if (!context.mounted) return;
+
+    try {
+      final decrypted = await decryptBackup(envelope, passphrase);
+      final json = jsonDecode(decrypted) as Map<String, dynamic>;
+      if (!context.mounted) return;
+      await importOrSyncPlanJson(context, ref, json);
+    } on BackupDecryptionException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 }
 
-enum _ImportSource { spreadsheet, json }
+enum _ImportSource { spreadsheet, json, encryptedJson, template }

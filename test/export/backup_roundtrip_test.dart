@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -218,6 +219,38 @@ void main() {
     expect(measurements.single.measuredAt, DateTime(2026, 8, 20));
   });
 
+  test('an ad-hoc activity survives an export/restore round-trip', () async {
+    await seedFullState();
+    await db.sessionLogDao.createAdHocActivity(
+      id: 'activity-1',
+      loggedAt: DateTime(2026, 8, 22),
+      activityName: 'Walk',
+      durationSec: 1800,
+      distance: 3.2,
+      notes: 'Around the block',
+    );
+
+    final backup = await buildBackupJson(db);
+    final activityJson = (backup['session_logs'] as List).firstWhere(
+      (e) => (e as Map)['activity_name'] == 'Walk',
+    );
+    expect(
+      activityJson['plan_id'],
+      isNull,
+      reason: 'an ad-hoc activity has no plan session to key back onto',
+    );
+
+    await importBackupJson(backup, db);
+
+    final activities = await db.sessionLogDao.getAdHocActivities();
+    expect(activities, hasLength(1));
+    expect(activities.single.activityName, 'Walk');
+    expect(activities.single.durationSec, 1800);
+    expect(activities.single.distance, 3.2);
+    expect(activities.single.notes, 'Around the block');
+    expect(activities.single.loggedAt, DateTime(2026, 8, 22));
+  });
+
   test('a backup with no body_measurements key still restores', () async {
     // Backups taken before body measurements existed omit the key entirely;
     // that's "none recorded", not a malformed file.
@@ -234,6 +267,17 @@ void main() {
   test('custom exercise attribution and image survive a round-trip', () async {
     // Regression: author/sourcePlanName/imagePath were silently dropped by
     // export, so a restored library lost creator attribution entirely.
+    // Extended when image *bytes* started travelling with the backup too -
+    // restoring onto a fresh attachments directory (simulating a different
+    // device) should recreate the actual file, not just the filename.
+    final tempRoot = await Directory.systemTemp.createTemp(
+      'backup_image_test',
+    );
+    final sourceDir = Directory('${tempRoot.path}/source');
+    final restoredDir = Directory('${tempRoot.path}/restored');
+    await sourceDir.create(recursive: true);
+    await File('${sourceDir.path}/12345.jpg').writeAsBytes([1, 2, 3, 4, 5]);
+
     await db.exerciseDao.upsertExercise(
       ExercisesCompanion.insert(
         id: 'EX_CUSTOM',
@@ -251,19 +295,32 @@ void main() {
       ),
     );
 
-    final backup = await buildBackupJson(db);
-    await importBackupJson(backup, db);
+    final backup = await buildBackupJson(db, attachmentsDirectory: sourceDir);
+    expect(
+      (backup['exercises'] as List).single['image_data_base64'],
+      isNotNull,
+      reason: 'the image bytes should be embedded in the backup itself',
+    );
+
+    await importBackupJson(
+      backup,
+      db,
+      attachmentsDirectory: restoredDir,
+    );
 
     final restored = await db.exerciseDao.getExerciseById('EX_CUSTOM');
     expect(restored, isNotNull);
     expect(restored!.author, 'Coach Erik');
     expect(restored.sourcePlanName, 'Nine-Block Strength Program');
+    expect(restored.imagePath, '12345.jpg');
     expect(
-      restored.imagePath,
-      '12345.jpg',
-      reason: 'the filename round-trips even though the image file itself '
-          'is not part of the JSON envelope',
+      await File('${restoredDir.path}/12345.jpg').readAsBytes(),
+      [1, 2, 3, 4, 5],
+      reason: 'the actual image file should be recreated on restore, not '
+          'just the filename reference',
     );
+
+    await tempRoot.delete(recursive: true);
   });
 
   test('importBackupJson throws for an unsupported schema version', () async {

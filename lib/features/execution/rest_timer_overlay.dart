@@ -54,12 +54,19 @@ class RestTimerOverlay extends ConsumerWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        value: progress.clamp(0, 1),
-                        strokeWidth: 3,
+                    ExcludeSemantics(
+                      // Purely decorative alongside the "Rest: MM:SS" text
+                      // right next to it - without this a screen reader
+                      // announces a redundant, constantly-updating "26%"
+                      // progress value on top of the time that already says
+                      // the same thing in a more useful form.
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          value: progress.clamp(0, 1),
+                          strokeWidth: 3,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),

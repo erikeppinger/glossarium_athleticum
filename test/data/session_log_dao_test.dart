@@ -114,8 +114,8 @@ void main() {
     expect(await db.sessionLogDao.getPriorWeights('EX_BP'), isEmpty);
   });
 
-  test('getLoggedPlanSessionIds returns only sessions with a logged workout', () async {
-    expect(await db.sessionLogDao.getLoggedPlanSessionIds(), isEmpty);
+  test('getLoggedPlanSessionCounts returns only sessions with a logged workout', () async {
+    expect(await db.sessionLogDao.getLoggedPlanSessionCounts(), isEmpty);
 
     await db.sessionLogDao.createSessionLog(
       id: 'log-1',
@@ -126,8 +126,72 @@ void main() {
       ],
     );
 
-    expect(await db.sessionLogDao.getLoggedPlanSessionIds(), {sessionId});
+    expect(await db.sessionLogDao.getLoggedPlanSessionCounts(), {
+      sessionId: {DateTime(2026, 8, 20): 1},
+    });
   });
+
+  // Regression test: the calendar used to collapse "logged" down to a plain
+  // Set<int>, so training the same scheduled session twice in a day showed
+  // as identically "completed" as training it once - the count itself was
+  // silently thrown away even though both workouts were correctly saved and
+  // both showed up in Progress. See calendar_screen.dart's
+  // `_scheduledSessionTile`, which now reads this count to say "Completed
+  // 2x" instead of just "Completed".
+  test(
+    'getLoggedPlanSessionCounts counts multiple logs against the same session',
+    () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20, 9),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-2',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20, 18),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 65),
+        ],
+      );
+
+      expect(await db.sessionLogDao.getLoggedPlanSessionCounts(), {
+        sessionId: {DateTime(2026, 8, 20): 2},
+      });
+    },
+  );
+
+  // Regression test: reassigning an already-completed session to a new,
+  // untrained date used to still read as "done" on the calendar - and, worse,
+  // block starting it from there - because completion was tracked purely by
+  // plan_session_id with no correlation to *which* date had actually been
+  // trained. `getLoggedPlanSessionCounts` now buckets by day, so the count
+  // for the old date is unaffected by the move, and the new date (never
+  // logged) legitimately has none - it's `calendar_screen.dart`'s job to look
+  // the day up, but the DAO returning day-separated counts at all is what
+  // makes that possible.
+  test(
+    'getLoggedPlanSessionCounts keeps counts separated by the day they were logged on',
+    () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      final counts = await db.sessionLogDao.getLoggedPlanSessionCounts();
+      expect(counts[sessionId], {DateTime(2026, 8, 20): 1});
+      // The session is later moved to a fresh date with no log of its own -
+      // that date must not inherit the old date's completion.
+      expect(counts[sessionId]?[DateTime(2026, 9, 15)], isNull);
+    },
+  );
 
   group('getPeriodSummary', () {
     test('counts scheduled/completed sessions, volume, and PRs within range', () async {
@@ -180,6 +244,40 @@ void main() {
       expect(summary.sessionsScheduled, 0);
       expect(summary.sessionsCompleted, 0);
       expect(summary.totalVolume, 8 * 60.0);
+    });
+
+    test('includes ad-hoc activities logged within range', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 10),
+        activityName: 'Walk',
+        durationSec: 1800,
+        distance: 3000,
+      );
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-2',
+        loggedAt: DateTime(2026, 8, 15),
+        activityName: 'Run',
+        durationSec: 1200,
+        distance: 5000,
+      );
+      // Outside the range - shouldn't count.
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-3',
+        loggedAt: DateTime(2026, 9, 5),
+        activityName: 'Bike',
+        durationSec: 3600,
+        distance: 20000,
+      );
+
+      final summary = await db.sessionLogDao.getPeriodSummary(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+
+      expect(summary.adHocActivityCount, 2);
+      expect(summary.adHocDurationSec, 3000);
+      expect(summary.adHocDistanceMeters, 8000);
     });
   });
 
@@ -359,6 +457,129 @@ void main() {
         ],
       );
       expect(await db.sessionLogDao.getProgressionHistory('EX_BP'), isEmpty);
+    });
+  });
+
+  group('ad-hoc activities', () {
+    test('createAdHocActivity round-trips through getAdHocActivities', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Walk',
+        durationSec: 1800,
+        distance: 3.2,
+        notes: 'Around the block',
+      );
+
+      final activities = await db.sessionLogDao.getAdHocActivities();
+      expect(activities, hasLength(1));
+      expect(activities.single.planSessionId, isNull);
+      expect(activities.single.activityName, 'Walk');
+      expect(activities.single.durationSec, 1800);
+      expect(activities.single.distance, 3.2);
+      expect(activities.single.notes, 'Around the block');
+    });
+
+    test('does not show up in getLoggedPlanSessionIds', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Run',
+      );
+      expect(await db.sessionLogDao.getLoggedPlanSessionCounts(), isEmpty);
+    });
+
+    test('appears in getWorkoutHistory using its activity name', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Yoga',
+      );
+
+      final history = await db.sessionLogDao.getWorkoutHistory();
+      expect(history, hasLength(1));
+      expect(history.single.sessionName, 'Yoga');
+      expect(history.single.setCount, 0);
+    });
+
+    test('getCompletedWorkout returns it with no plan session and no sets', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Cycling',
+        durationSec: 2400,
+      );
+
+      final workout = await db.sessionLogDao.getCompletedWorkout('activity-1');
+      expect(workout, isNotNull);
+      expect(workout!.sessionName, 'Cycling');
+      expect(workout.exercises, isEmpty);
+      expect(workout.log.durationSec, 2400);
+    });
+
+    test('a normal plan-session workout is unaffected by ad-hoc activities existing', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Walk',
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 21),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      expect(await db.sessionLogDao.getLoggedPlanSessionCounts(), {
+        sessionId: {DateTime(2026, 8, 21): 1},
+      });
+      final history = await db.sessionLogDao.getWorkoutHistory();
+      expect(history, hasLength(2));
+    });
+
+    test('deleteSessionLog removes an ad-hoc activity like any other log', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Walk',
+      );
+      await db.sessionLogDao.deleteSessionLog('activity-1');
+      expect(await db.sessionLogDao.getAdHocActivities(), isEmpty);
+    });
+  });
+
+  group('getLastLoggedSets', () {
+    test('returns every set from only the most recent session, in order', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-older',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 5, weight: 50),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-newer',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 7, weight: 60),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 3, reps: 6, weight: 55),
+        ],
+      );
+
+      final sets = await db.sessionLogDao.getLastLoggedSets('EX_BP');
+      expect(sets, hasLength(3));
+      expect(sets.map((s) => s.setNumber), [1, 2, 3]);
+      expect(sets.map((s) => s.weight), [60.0, 60.0, 55.0]);
+      expect(sets.map((s) => s.reps), [8, 7, 6]);
+    });
+
+    test('is empty when the exercise has never been logged', () async {
+      expect(await db.sessionLogDao.getLastLoggedSets('EX_BP'), isEmpty);
     });
   });
 }

@@ -11,9 +11,10 @@ final notificationServiceProvider = Provider<NotificationService>(
 );
 
 /// Re-derives every pending reminder from current settings + scheduled
-/// sessions and hands them to the OS. Called after anything that could change
-/// what should fire: toggling a reminder setting, changing the reminder time,
-/// or assigning/moving a session's date.
+/// sessions + per-plan report opt-ins and hands them to the OS. Called after
+/// anything that could change what should fire: toggling a reminder setting,
+/// changing the reminder time, assigning/moving a session's date, or changing
+/// a plan's report opt-in (see plan_report_prompt.dart).
 ///
 /// Always cancels everything first rather than diffing - the set of pending
 /// reminders is small (one per dated session), and a full rebuild can't leave
@@ -23,11 +24,32 @@ Future<void> resyncReminders(WidgetRef ref) async {
   final prefs = ref.read(appPreferencesProvider);
 
   await service.cancelAll();
-  if (!prefs.workoutRemindersEnabled && !prefs.weeklyDigestEnabled) return;
 
   final db = ref.read(appDatabaseProvider);
-  final scheduled = await db.planDao.getAllScheduledSessions();
   final now = DateTime.now();
+
+  final reportPlans = (await db.planDao.getAllPlans()).where(
+    (p) => p.archivedAt == null && p.reportPreference == 'enabled',
+  );
+  for (final plan in reportPlans) {
+    if (plan.reportOptInAt == null || plan.reportFrequencyDays == null) {
+      continue;
+    }
+    await service.schedule(
+      buildPlanReportReminder(
+        planId: plan.id,
+        planName: plan.name,
+        anchor: plan.reportOptInAt!,
+        frequencyDays: plan.reportFrequencyDays!,
+        reminderTimeOfDayMinutes: prefs.reminderTimeMinutes,
+        now: now,
+      ),
+    );
+  }
+
+  if (!prefs.workoutRemindersEnabled && !prefs.weeklyDigestEnabled) return;
+
+  final scheduled = await db.planDao.getAllScheduledSessions();
 
   if (prefs.workoutRemindersEnabled) {
     final reminders = buildWorkoutReminders(

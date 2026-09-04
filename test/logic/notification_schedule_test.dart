@@ -120,4 +120,79 @@ void main() {
       );
     });
   });
+
+  group('buildPlanReportReminder', () {
+    test('fires exactly frequencyDays after the anchor, same time of day', () {
+      final reminder = buildPlanReportReminder(
+        planId: 'plan-1',
+        planName: 'My Plan',
+        anchor: DateTime(2026, 8, 1, 14, 30),
+        frequencyDays: 7,
+        reminderTimeOfDayMinutes: 9 * 60,
+        now: DateTime(2026, 8, 1, 15),
+      );
+      expect(reminder.when, DateTime(2026, 8, 8, 9));
+    });
+
+    test('steps forward by whole cycles when the anchor is long past', () {
+      // Anchor was 20 days ago on a 7-day cadence - the next occurrence
+      // should be the first one still in the future, not day 7 or day 14
+      // (both already passed).
+      final reminder = buildPlanReportReminder(
+        planId: 'plan-1',
+        planName: 'My Plan',
+        anchor: DateTime(2026, 8, 1, 9),
+        frequencyDays: 7,
+        reminderTimeOfDayMinutes: 9 * 60,
+        now: DateTime(2026, 8, 21, 12),
+      );
+      expect(reminder.when.isAfter(DateTime(2026, 8, 21, 12)), isTrue);
+      expect(reminder.when, DateTime(2026, 8, 22, 9));
+    });
+
+    test(
+      'opting in earlier the same day than the reminder time fires that '
+      'same day, not a full cycle later',
+      () {
+        // Opted in at 07:00 for an 08:00 reminder - the first occurrence
+        // should be 08:00 *today*, an hour away, not next week's 08:00.
+        final reminder = buildPlanReportReminder(
+          planId: 'plan-1',
+          planName: 'My Plan',
+          anchor: DateTime(2026, 8, 1, 7),
+          frequencyDays: 7,
+          reminderTimeOfDayMinutes: 8 * 60,
+          now: DateTime(2026, 8, 1, 7),
+        );
+        expect(reminder.when, DateTime(2026, 8, 1, 8));
+      },
+    );
+
+    test('different plan ids get different notification ids', () {
+      final a = buildPlanReportReminder(
+        planId: 'plan-a',
+        planName: 'A',
+        anchor: DateTime(2026, 8, 1),
+        frequencyDays: 7,
+        reminderTimeOfDayMinutes: 0,
+        now: DateTime(2026, 8, 1),
+      );
+      final b = buildPlanReportReminder(
+        planId: 'plan-b',
+        planName: 'B',
+        anchor: DateTime(2026, 8, 1),
+        frequencyDays: 7,
+        reminderTimeOfDayMinutes: 0,
+        now: DateTime(2026, 8, 1),
+      );
+      expect(a.id, isNot(b.id));
+    });
+
+    test('the same plan id always gets the same notification id', () {
+      expect(
+        planReportReminderIdFor('plan-1'),
+        planReportReminderIdFor('plan-1'),
+      );
+    });
+  });
 }

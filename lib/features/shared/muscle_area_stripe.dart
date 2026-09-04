@@ -37,6 +37,37 @@ class MuscleAreaStripe extends StatelessWidget {
   }
 }
 
+/// A second, independent colour bar naming who an exercise came from -
+/// library / own / imported-from-a-plan / credited-to-an-author. Meant to
+/// sit right next to [MuscleAreaStripe]: the two answer different questions
+/// (what does this train vs who made it) and shouldn't be conflated into one
+/// bar's colour.
+class ProvenanceStripe extends StatelessWidget {
+  final ExerciseProvenance provenance;
+  final double height;
+
+  const ProvenanceStripe({
+    super.key,
+    required this.provenance,
+    this.height = 40,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: provenance.label,
+      child: Container(
+        width: 6,
+        height: height,
+        decoration: BoxDecoration(
+          color: colorForProvenance(provenance),
+          borderRadius: BorderRadius.circular(3),
+        ),
+      ),
+    );
+  }
+}
+
 /// A small filled chip naming the muscle area, for places with room for a
 /// label - the colour is redundant with the text, never a substitute.
 class MuscleAreaChip extends StatelessWidget {

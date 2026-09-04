@@ -1,5 +1,28 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:training_app/data/app_database.dart';
 import 'package:training_app/logic/muscle_group_colors.dart';
+
+Exercise _exercise({
+  bool isCustom = false,
+  String? sourcePlanName,
+  String? author,
+}) => Exercise(
+  id: 'x',
+  name: 'Test Exercise',
+  category: 'Custom',
+  movementPattern: '',
+  muscleGroups: '',
+  equipment: '',
+  difficulty: 'Beginner',
+  measurementType: 'Weight x Reps',
+  description: '',
+  safetyNotes: '',
+  videoReference: '',
+  isCustom: isCustom,
+  sourcePlanName: sourcePlanName,
+  author: author,
+  imagePath: null,
+);
 
 void main() {
   group('areaForExercise', () {
@@ -97,6 +120,101 @@ void main() {
         expect(palette.label, isNotEmpty);
         expect(palette.description, isNotEmpty);
       }
+    });
+  });
+
+  group('provenanceForExercise', () {
+    test('a seed-library exercise is always "library", regardless of fields', () {
+      expect(
+        provenanceForExercise(_exercise(isCustom: false)),
+        ExerciseProvenance.library,
+      );
+    });
+
+    test('a custom exercise with no plan/author is "own"', () {
+      expect(
+        provenanceForExercise(_exercise(isCustom: true)),
+        ExerciseProvenance.own,
+      );
+    });
+
+    test('a custom exercise created during a plan import is "fromPlan"', () {
+      expect(
+        provenanceForExercise(
+          _exercise(isCustom: true, sourcePlanName: 'Some Plan'),
+        ),
+        ExerciseProvenance.fromPlan,
+      );
+    });
+
+    test('a custom exercise with an author but no plan is "byAuthor"', () {
+      expect(
+        provenanceForExercise(_exercise(isCustom: true, author: 'Coach Erik')),
+        ExerciseProvenance.byAuthor,
+      );
+    });
+
+    test('sourcePlanName wins over author when both are set', () {
+      // Both are set for exercises created during a plan import if the
+      // template also carries an author column - the plan is the more
+      // specific/traceable provenance of the two.
+      expect(
+        provenanceForExercise(
+          _exercise(
+            isCustom: true,
+            sourcePlanName: 'Some Plan',
+            author: 'Coach Erik',
+          ),
+        ),
+        ExerciseProvenance.fromPlan,
+      );
+    });
+  });
+
+  group('colorForProvenance', () {
+    test('every provenance has a distinct colour', () {
+      final colors = [
+        for (final p in ExerciseProvenance.values) colorForProvenance(p),
+      ];
+      expect(colors.toSet(), hasLength(colors.length));
+    });
+  });
+
+  group('colorForCreatorValue', () {
+    test('the same value always gets the same colour', () {
+      expect(
+        colorForCreatorValue('plan:Nine-Block Strength'),
+        colorForCreatorValue('plan:Nine-Block Strength'),
+      );
+    });
+
+    test('different plans get different colours, not one shared colour', () {
+      // The bug this guards against: every "Plan: ..." filter chip rendered
+      // identically regardless of which plan it was, because they all went
+      // through colorForProvenance's single fixed "fromPlan" colour instead
+      // of something keyed by the plan itself.
+      final colors = {
+        for (final name in [
+          'plan:Nine-Block Strength',
+          'plan:QA_Audit_Strength_Plan',
+          'plan:bulk_unmatched_plan',
+          'plan:5/3/1 for Beginners',
+          'plan:Couch to 5K',
+        ])
+          name: colorForCreatorValue(name),
+      };
+      expect(
+        colors.values.toSet().length,
+        greaterThan(1),
+        reason: 'a handful of differently-named plans all hashed to the same colour',
+      );
+    });
+
+    test('is case-insensitive, so the same name is stable regardless of case', () {
+      expect(
+        colorForCreatorValue('plan:Push Pull Legs'),
+        colorForCreatorValue('plan:push pull legs'),
+      );
     });
   });
 }

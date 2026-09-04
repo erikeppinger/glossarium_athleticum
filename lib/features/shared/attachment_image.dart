@@ -20,6 +20,7 @@ class AttachmentImage extends StatelessWidget {
   final double? height;
   final BoxFit fit;
   final Widget? fallback;
+  final String? semanticLabel;
 
   const AttachmentImage({
     super.key,
@@ -28,6 +29,7 @@ class AttachmentImage extends StatelessWidget {
     this.height,
     this.fit = BoxFit.cover,
     this.fallback,
+    this.semanticLabel,
   });
 
   @override
@@ -46,6 +48,7 @@ class AttachmentImage extends StatelessWidget {
           width: width,
           height: height,
           fit: fit,
+          semanticLabel: semanticLabel,
           errorBuilder: (context, _, _) => _fallbackWidget(context),
         );
       },

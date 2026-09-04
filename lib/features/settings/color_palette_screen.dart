@@ -18,7 +18,18 @@ class ColorPaletteScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Colour palette')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        // The last palette card was getting covered by the Android system
+        // navigation bar (gesture bar / 3-button nav) - a plain fixed bottom
+        // padding doesn't account for that inset, since Scaffold draws
+        // content edge-to-edge behind system bars by default. Add the
+        // bar's actual height on top of the usual padding instead of
+        // guessing a fixed extra amount.
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          16 + MediaQuery.paddingOf(context).bottom,
+        ),
         children: [
           Text(
             'Muscle areas are colour-coded across the exercise library, plans, '

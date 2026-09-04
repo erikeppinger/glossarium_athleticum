@@ -55,6 +55,7 @@ void main() {
       notes: '',
       createdAt: DateTime(2026, 8, 1),
       updatedAt: DateTime(2026, 8, 2),
+      reportPreference: 'notAsked',
     ),
     sessions: [
       _fakeSession(

@@ -59,6 +59,19 @@ class _AddExerciseToPlanScreenState
     _restController,
     _notesController,
   ];
+  late final _initialControllerTexts = _allControllers
+      .map((c) => c.text)
+      .toList(growable: false);
+
+  bool get _hasUnsavedChanges {
+    if (_selectedPlanId != null) return true;
+    if (_selectedSessionId != null) return true;
+    if (_newSessionDay != null) return true;
+    for (var i = 0; i < _allControllers.length; i++) {
+      if (_allControllers[i].text != _initialControllerTexts[i]) return true;
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -72,6 +85,51 @@ class _AddExerciseToPlanScreenState
   Widget build(BuildContext context) {
     final plansAsync = ref.watch(plansListProvider);
 
+    // canPop is read fresh on every pop attempt from whatever's last built,
+    // but plain TextFields don't rebuild their parent on each keystroke - so
+    // without this listener, typing wouldn't ever flip canPop to false.
+    return ListenableBuilder(
+      listenable: Listenable.merge(_allControllers),
+      builder: (context, _) => PopScope(
+        canPop: _submitting || !_hasUnsavedChanges,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _confirmDiscard();
+        },
+        child: _buildScaffold(context, plansAsync),
+      ),
+    );
+  }
+
+  Future<void> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text(
+          'The plan/session choice and set details entered here have not '
+          'been saved yet.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Widget _buildScaffold(
+    BuildContext context,
+    AsyncValue<List<Plan>> plansAsync,
+  ) {
     return Scaffold(
       appBar: AppBar(title: Text('Add "${widget.exerciseName}" to plan')),
       body: _submitting

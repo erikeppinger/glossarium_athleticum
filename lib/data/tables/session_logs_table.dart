@@ -9,11 +9,32 @@ import 'plans_table.dart';
 /// specific [PlanSessions] row (`planSessionId`) rather than duplicating
 /// `plan_id` + `session_name` as flat fields - the JSON export (Phase 3)
 /// derives those via a join instead of storing them redundantly here.
+///
+/// [planSessionId] is nullable so this table can also hold an **ad-hoc
+/// activity** - a walk, run, or anything else logged directly against a
+/// date rather than against a scheduled plan session. An ad-hoc row has no
+/// [LoggedSets] children at all (there's no exercise to log sets against);
+/// its own [activityName]/[durationSec]/[distance] describe what was done
+/// instead. `planSessionId == null` is exactly what distinguishes the two
+/// kinds everywhere they're read back (calendar, workout history, backup).
 class SessionLogs extends Table {
   TextColumn get id => text()();
-  IntColumn get planSessionId =>
-      integer().references(PlanSessions, #id, onDelete: KeyAction.cascade)();
+  IntColumn get planSessionId => integer().nullable().references(
+    PlanSessions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
   DateTimeColumn get loggedAt => dateTime()();
+  /// Optional free-text note taken right after finishing, e.g. "felt heavy
+  /// today" - surfaced on the workout's own detail screen.
+  TextColumn get notes => text().nullable()();
+
+  /// Non-null only for an ad-hoc activity (e.g. "Walk", "Run", "Yoga") -
+  /// null for a normal plan-session log, which gets its name from the plan
+  /// session it belongs to instead.
+  TextColumn get activityName => text().nullable()();
+  RealColumn get durationSec => real().nullable()();
+  RealColumn get distance => real().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

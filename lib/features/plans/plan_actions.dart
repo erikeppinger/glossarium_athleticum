@@ -9,6 +9,7 @@ import '../calendar/calendar_screen.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../progress/progress_providers.dart';
 import 'plan_providers.dart';
+import 'plan_report_prompt.dart';
 
 /// Rename / archive / delete for one plan.
 ///
@@ -42,6 +43,20 @@ Future<void> showPlanActions(
             leading: const Icon(Icons.drive_file_rename_outline),
             title: const Text('Rename'),
             onTap: () => Navigator.of(context).pop(_PlanAction.rename),
+          ),
+          ListTile(
+            leading: const Icon(Icons.notes_outlined),
+            title: const Text('Notes'),
+            subtitle: plan.notes.isEmpty
+                ? null
+                : Text(plan.notes, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.of(context).pop(_PlanAction.notes),
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications_active_outlined),
+            title: const Text('Progress reminders'),
+            subtitle: Text(_reportPreferenceSubtitle(plan)),
+            onTap: () => Navigator.of(context).pop(_PlanAction.reportPreference),
           ),
           if (plan.archivedAt == null)
             ListTile(
@@ -81,25 +96,135 @@ Future<void> showPlanActions(
   switch (action) {
     case _PlanAction.rename:
       await _rename(context, ref, plan);
+    case _PlanAction.notes:
+      await _editNotes(context, ref, plan);
     case _PlanAction.archive:
       await _archive(context, ref, plan);
     case _PlanAction.unarchive:
       await ref.read(appDatabaseProvider).planDao.unarchivePlan(plan.id);
     case _PlanAction.delete:
       await _delete(context, ref, plan);
+    case _PlanAction.reportPreference:
+      await _changeReportPreference(context, ref, plan);
   }
 }
 
-enum _PlanAction { rename, archive, unarchive, delete }
+enum _PlanAction { rename, notes, archive, unarchive, delete, reportPreference }
+
+String _reportPreferenceSubtitle(Plan plan) {
+  if (plan.reportPreference != 'enabled') return 'Off';
+  switch (plan.reportFrequencyDays) {
+    case 7:
+      return 'Weekly';
+    case 14:
+      return 'Every 2 weeks';
+    case 30:
+      return 'Monthly';
+    default:
+      return 'On';
+  }
+}
+
+/// Lets the opt-in choice from `plan_report_prompt.dart`'s first-session
+/// prompt be revisited later - turned on, off, or re-cadenced - since that
+/// prompt only ever shows once per plan.
+Future<void> _changeReportPreference(
+  BuildContext context,
+  WidgetRef ref,
+  Plan plan,
+) async {
+  final isEnabled = plan.reportPreference == 'enabled';
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: const Text('Progress reminders'),
+      children: [
+        if (isEnabled)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('change'),
+            child: const Text('Change frequency'),
+          ),
+        if (isEnabled)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('off'),
+            child: const Text('Turn off'),
+          )
+        else
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('on'),
+            child: const Text('Turn on'),
+          ),
+      ],
+    ),
+  );
+  if (choice == null) return;
+
+  final db = ref.read(appDatabaseProvider);
+  if (choice == 'off') {
+    await db.planDao.setReportPreference(
+      planId: plan.id,
+      preference: 'declined',
+    );
+    ref.invalidate(planDetailsProvider(plan.id));
+    await resyncReminders(ref);
+    return;
+  }
+
+  if (!context.mounted) return;
+  final frequencyDays = await askReportFrequency(context);
+  if (frequencyDays == null) return;
+
+  await db.planDao.setReportPreference(
+    planId: plan.id,
+    preference: 'enabled',
+    frequencyDays: frequencyDays,
+  );
+  ref.invalidate(planDetailsProvider(plan.id));
+  await resyncReminders(ref);
+}
 
 Future<void> _rename(BuildContext context, WidgetRef ref, Plan plan) async {
-  final controller = TextEditingController(text: plan.name);
   final newName = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => _RenamePlanDialog(initialName: plan.name),
+  );
+  if (newName == null) return;
+
+  await ref.read(appDatabaseProvider).planDao.renamePlan(plan.id, newName);
+  ref.invalidate(planDetailsProvider(plan.id));
+}
+
+class _RenamePlanDialog extends StatefulWidget {
+  final String initialName;
+
+  const _RenamePlanDialog({required this.initialName});
+
+  @override
+  State<_RenamePlanDialog> createState() => _RenamePlanDialogState();
+}
+
+class _RenamePlanDialogState extends State<_RenamePlanDialog> {
+  // Owned by this State (not created-and-disposed inline in the caller) so
+  // dispose() only runs once the dialog route is actually removed from the
+  // tree - disposing it right after showDialog's Future resolves races the
+  // dialog's own exit transition (see execution_screen.dart's
+  // _NotePromptDialog for the same fix, applied here and to
+  // _EditNotesDialog below after both crashed with "'_dependents.isEmpty':
+  // is not true" from exactly this race).
+  late final _controller = TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
       title: const Text('Rename plan'),
       content: TextField(
-        controller: controller,
+        controller: _controller,
         autofocus: true,
         decoration: const InputDecoration(labelText: 'Plan name'),
       ),
@@ -109,22 +234,79 @@ Future<void> _rename(BuildContext context, WidgetRef ref, Plan plan) async {
           child: const Text('Cancel'),
         ),
         ListenableBuilder(
-          listenable: controller,
+          listenable: _controller,
           builder: (context, _) => FilledButton(
-            onPressed: controller.text.trim().isEmpty
+            onPressed: _controller.text.trim().isEmpty
                 ? null
-                : () => Navigator.of(context).pop(controller.text.trim()),
+                : () => Navigator.of(context).pop(_controller.text.trim()),
             child: const Text('Rename'),
           ),
         ),
       ],
-    ),
-  );
-  controller.dispose();
-  if (newName == null) return;
+    );
+  }
+}
 
-  await ref.read(appDatabaseProvider).planDao.renamePlan(plan.id, newName);
+/// A free-text scratchpad on the plan itself - e.g. "swap deadlifts for RDLs
+/// next block" - distinct from a plan exercise's own notes (edited per-row
+/// via `edit_session_screen.dart`). See `PlanDao.updatePlanNotes`. Unlike
+/// [_rename], an empty result is a valid save (clearing the notes), not a
+/// disabled button - there's nothing wrong with a plan having no notes.
+Future<void> _editNotes(BuildContext context, WidgetRef ref, Plan plan) async {
+  final newNotes = await showDialog<String>(
+    context: context,
+    builder: (context) => _EditNotesDialog(initialNotes: plan.notes),
+  );
+  if (newNotes == null) return;
+
+  await ref.read(appDatabaseProvider).planDao.updatePlanNotes(plan.id, newNotes);
   ref.invalidate(planDetailsProvider(plan.id));
+}
+
+class _EditNotesDialog extends StatefulWidget {
+  final String initialNotes;
+
+  const _EditNotesDialog({required this.initialNotes});
+
+  @override
+  State<_EditNotesDialog> createState() => _EditNotesDialogState();
+}
+
+class _EditNotesDialogState extends State<_EditNotesDialog> {
+  late final _controller = TextEditingController(text: widget.initialNotes);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Plan notes'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: 5,
+        decoration: const InputDecoration(
+          labelText: 'Notes',
+          hintText: 'e.g. "Swap deadlifts for RDLs next block"',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 /// Archiving is fully reversible, so it gets an undo rather than a

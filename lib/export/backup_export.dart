@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import '../data/app_database.dart';
 import '../data/daos/session_log_dao.dart';
+import 'exercise_json.dart';
 import 'plan_export.dart';
+
+export 'exercise_json.dart';
 
 const backupSchemaVersion = 1;
 
@@ -9,38 +14,6 @@ const backupSchemaVersion = 1;
 /// restore and Phase 4's incoming-share handler need to agree on it - the
 /// latter uses it to tell an encrypted backup apart from a plain plan file.
 const backupFileExtension = 'tabackup';
-
-/// Custom (non-seed) exercise, in schema/exercise.schema.json shape.
-Map<String, dynamic> exerciseToJson(Exercise exercise) {
-  return {
-    'id': exercise.id,
-    'name': exercise.name,
-    'category': exercise.category,
-    'movement_pattern': exercise.movementPattern,
-    'muscle_groups': exercise.muscleGroups
-        .split(',')
-        .map((g) => g.trim())
-        .where((g) => g.isNotEmpty)
-        .toList(),
-    'equipment': exercise.equipment,
-    'difficulty': exercise.difficulty,
-    'measurement_type': exercise.measurementType,
-    'description': exercise.description,
-    'safety_notes': exercise.safetyNotes,
-    'video_reference': exercise.videoReference,
-    'is_custom': exercise.isCustom,
-    // Attribution was previously dropped by backup/restore, so a restored
-    // library lost track of which plan an exercise came from and who wrote it.
-    if (exercise.sourcePlanName != null)
-      'source_plan_name': exercise.sourcePlanName,
-    if (exercise.author != null) 'author': exercise.author,
-    // The filename only - the image file itself is not part of the JSON
-    // envelope. Restoring onto a different device leaves the reference
-    // dangling, which AttachmentImage renders as a placeholder rather than
-    // failing.
-    if (exercise.imagePath != null) 'image_path': exercise.imagePath,
-  };
-}
 
 /// One session log, in schema/backup.schema.json's "sessionLog" shape.
 /// [planId]/[weekNumber]/[day]/[sessionName] are looked up separately since
@@ -63,6 +36,7 @@ Map<String, dynamic> sessionLogToJson(
     'day': day,
     'session_name': sessionName,
     'logged_at': logWithSets.log.loggedAt.toIso8601String(),
+    if (logWithSets.log.notes != null) 'notes': logWithSets.log.notes,
     'entries': [
       for (final set in logWithSets.sets)
         {
@@ -79,6 +53,23 @@ Map<String, dynamic> sessionLogToJson(
   };
 }
 
+/// An ad-hoc activity (see `lib/data/tables/session_logs_table.dart`), in
+/// schema/backup.schema.json's "activityLog" shape - deliberately a
+/// different, flatter shape than [sessionLogToJson]'s: there's no plan
+/// session to key back onto, so `plan_id`/`week_number`/`day`/`session_name`
+/// are simply absent rather than null-filled. The importer tells the two
+/// apart by whether `activity_name` is present.
+Map<String, dynamic> activityLogToJson(SessionLog log) {
+  return {
+    'id': log.id,
+    'activity_name': log.activityName,
+    'logged_at': log.loggedAt.toIso8601String(),
+    if (log.durationSec != null) 'duration_sec': log.durationSec,
+    if (log.distance != null) 'distance': log.distance,
+    if (log.notes != null) 'notes': log.notes,
+  };
+}
+
 /// Builds a full-app backup (schema/backup.schema.json) from the current
 /// database state - every plan, every custom exercise, and all execution
 /// history. Callers are expected to encrypt the resulting JSON (see
@@ -86,6 +77,7 @@ Map<String, dynamic> sessionLogToJson(
 Future<Map<String, dynamic>> buildBackupJson(
   AppDatabase db, {
   String appVersion = '',
+  Directory? attachmentsDirectory,
 }) async {
   final customExercises = await db.exerciseDao.getCustomExercises();
 
@@ -99,9 +91,12 @@ Future<Map<String, dynamic>> buildBackupJson(
   final logs = await db.sessionLogDao.getAllSessionLogsWithSets();
   final logJsonList = <Map<String, dynamic>>[];
   for (final logWithSets in logs) {
-    final sessionDetails = await db.planDao.getSessionDetails(
-      logWithSets.log.planSessionId,
-    );
+    final planSessionId = logWithSets.log.planSessionId;
+    if (planSessionId == null) {
+      logJsonList.add(activityLogToJson(logWithSets.log));
+      continue;
+    }
+    final sessionDetails = await db.planDao.getSessionDetails(planSessionId);
     if (sessionDetails == null) {
       continue; // the parent session was deleted; nothing to attach this log to
     }
@@ -118,11 +113,18 @@ Future<Map<String, dynamic>> buildBackupJson(
 
   final measurements = await db.bodyMeasurementDao.getAll();
 
+  final exerciseJsonList = <Map<String, dynamic>>[];
+  for (final e in customExercises) {
+    exerciseJsonList.add(
+      await exerciseToJsonWithImage(e, directory: attachmentsDirectory),
+    );
+  }
+
   return {
     'schema_version': backupSchemaVersion,
     'exported_at': DateTime.now().toIso8601String(),
     'app_version': appVersion,
-    'exercises': [for (final e in customExercises) exerciseToJson(e)],
+    'exercises': exerciseJsonList,
     'plans': planJsonList,
     'session_logs': logJsonList,
     'body_measurements': [

@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:training_app/features/execution/rest_timer_controller.dart';
 import 'package:training_app/features/execution/rest_timer_overlay.dart';
+import 'package:training_app/features/notifications/reminder_coordinator.dart';
+
+import 'fake_notification_service.dart';
 
 // Mirrors home_screen.dart's structure (a Navigator stacked with
 // RestTimerOverlay as a sibling) without dragging in the full HomeScreen/DB
@@ -71,8 +74,13 @@ void main() {
     'rest timer overlay stays visible and counting after its screen is popped',
     (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(home: _FakeHome()),
+        ProviderScope(
+          overrides: [
+            notificationServiceProvider.overrideWithValue(
+              FakeNotificationService(),
+            ),
+          ],
+          child: const MaterialApp(home: _FakeHome()),
         ),
       );
 

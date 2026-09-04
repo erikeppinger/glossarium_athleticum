@@ -2,10 +2,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../logic/muscle_group_colors.dart';
 
 final exerciseSearchQueryProvider = StateProvider<String>((ref) => '');
 final exerciseCategoryFilterProvider = StateProvider<String?>((ref) => null);
 final exerciseCreatorFilterProvider = StateProvider<String?>((ref) => null);
+
+/// Filters by the same [MuscleArea] the library list's own colour stripe
+/// already derives per exercise (`areaForExercise`) - not a stored column,
+/// so this is applied as a plain Dart filter after the DB query rather than
+/// a WHERE clause, matching how [MuscleAreaStripe] itself gets its value.
+final exerciseAreaFilterProvider = StateProvider<MuscleArea?>((ref) => null);
 
 final exerciseCategoriesProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(appDatabaseProvider);
@@ -26,5 +33,22 @@ final filteredExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
   final query = ref.watch(exerciseSearchQueryProvider);
   final category = ref.watch(exerciseCategoryFilterProvider);
   final creator = ref.watch(exerciseCreatorFilterProvider);
-  return db.exerciseDao.search(query: query, category: category, creator: creator);
+  final area = ref.watch(exerciseAreaFilterProvider);
+  final results = await db.exerciseDao.search(
+    query: query,
+    category: category,
+    creator: creator,
+  );
+  if (area == null) return results;
+  return results
+      .where(
+        (e) =>
+            areaForExercise(
+              muscleGroups: e.muscleGroups,
+              category: e.category,
+              movementPattern: e.movementPattern,
+            ) ==
+            area,
+      )
+      .toList();
 });

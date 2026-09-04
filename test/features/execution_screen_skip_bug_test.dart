@@ -6,6 +6,9 @@ import 'package:training_app/data/app_database.dart';
 import 'package:training_app/data/app_database_provider.dart';
 import 'package:training_app/data/daos/plan_dao.dart';
 import 'package:training_app/features/execution/execution_screen.dart';
+import 'package:training_app/features/notifications/reminder_coordinator.dart';
+
+import 'fake_notification_service.dart';
 
 // Reproduces a user-reported bug: after logging a set (starting the rest
 // timer) and tapping "Skip", checking a set on a *different* exercise in
@@ -75,7 +78,12 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [appDatabaseProvider.overrideWithValue(db)],
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            notificationServiceProvider.overrideWithValue(
+              FakeNotificationService(),
+            ),
+          ],
           child: MaterialApp(home: ExecutionScreen(planSessionId: sessionId)),
         ),
       );

@@ -55,13 +55,23 @@ class WorkoutHistoryScreen extends ConsumerWidget {
             itemCount: workouts.length,
             itemBuilder: (context, index) {
               final w = workouts[index];
+              final detail = w.isAdHocActivity
+                  ? [
+                      if (w.durationSec != null)
+                        formatDurationSec(w.durationSec!),
+                      if (w.distance != null) formatDistanceMeters(w.distance!),
+                    ].join(' • ')
+                  : '${w.setCount} set${w.setCount == 1 ? '' : 's'} • '
+                        '${formatWeightInUnit(w.volume, unit)}'
+                        '${w.prCount > 0 ? ' • ${w.prCount} PR${w.prCount == 1 ? '' : 's'}' : ''}';
               return ListTile(
+                leading: w.isAdHocActivity
+                    ? const Icon(Icons.directions_walk)
+                    : null,
                 title: Text(w.sessionName),
                 subtitle: Text(
-                  '${DateFormat.yMMMEd().format(w.loggedAt)}\n'
-                  '${w.setCount} set${w.setCount == 1 ? '' : 's'} • '
-                  '${formatWeightInUnit(w.volume, unit)}'
-                  '${w.prCount > 0 ? ' • ${w.prCount} PR${w.prCount == 1 ? '' : 's'}' : ''}',
+                  '${DateFormat.yMMMEd().format(w.loggedAt)}'
+                  '${detail.isEmpty ? '' : '\n$detail'}',
                 ),
                 isThreeLine: true,
                 trailing: w.prCount > 0
@@ -123,6 +133,35 @@ class CompletedWorkoutScreen extends ConsumerWidget {
                 DateFormat.yMMMMEEEEd().add_jm().format(workout.log.loggedAt),
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              if (workout.log.planSessionId == null) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 16,
+                  children: [
+                    if (workout.log.durationSec != null)
+                      _StatChip(
+                        icon: Icons.timer_outlined,
+                        label: formatDurationSec(workout.log.durationSec!),
+                      ),
+                    if (workout.log.distance != null)
+                      _StatChip(
+                        icon: Icons.straighten,
+                        label: formatDistanceMeters(workout.log.distance!),
+                      ),
+                  ],
+                ),
+              ],
+              if (workout.log.notes != null &&
+                  workout.log.notes!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(workout.log.notes!),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               for (final exercise in workout.exercises)
                 Card(
@@ -230,6 +269,22 @@ class _SetRow extends StatelessWidget {
             Icon(Icons.emoji_events, size: 18, color: Colors.amber.shade700),
         ],
       ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _StatChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Icon(icon, size: 18),
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

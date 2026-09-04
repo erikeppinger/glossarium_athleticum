@@ -73,6 +73,7 @@ class ExerciseDetailScreen extends ConsumerWidget {
                 fileName: exercise.imagePath!,
                 width: double.infinity,
                 height: 200,
+                semanticLabel: 'Photo of ${exercise.name}',
               ),
             ),
             const SizedBox(height: 16),
@@ -81,12 +82,22 @@ class ExerciseDetailScreen extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              Chip(label: Text(exercise.category)),
+              // Every field here is optional on a custom exercise (only the
+              // name is required by create_exercise_screen.dart's form), so
+              // each chip needs its own empty-string guard - movementPattern
+              // was the only one that had it, so a custom exercise with,
+              // say, no equipment filled in rendered a visibly empty chip
+              // right after Category.
+              if (exercise.category.isNotEmpty)
+                Chip(label: Text(exercise.category)),
               if (exercise.movementPattern.isNotEmpty)
                 Chip(label: Text(exercise.movementPattern)),
-              Chip(label: Text(exercise.equipment)),
-              Chip(label: Text(exercise.difficulty)),
-              Chip(label: Text(exercise.measurementType)),
+              if (exercise.equipment.isNotEmpty)
+                Chip(label: Text(exercise.equipment)),
+              if (exercise.difficulty.isNotEmpty)
+                Chip(label: Text(exercise.difficulty)),
+              if (exercise.measurementType.isNotEmpty)
+                Chip(label: Text(exercise.measurementType)),
             ],
           ),
           if (muscleGroups.isNotEmpty) ...[

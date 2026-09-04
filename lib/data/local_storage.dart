@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:path_provider/path_provider.dart';
+
+final _random = Random();
 
 /// Subdirectory (under the app's documents directory) where in-app media
 /// attachments will live once Phase 4+ implements them. Kept as a single
@@ -47,9 +50,14 @@ Future<String> saveAttachment(
   final extension = sourcePath.contains('.')
       ? sourcePath.substring(sourcePath.lastIndexOf('.'))
       : '';
+  // The microsecond timestamp alone isn't actually collision-proof - on a
+  // coarser system clock (observed under Windows when many tests save an
+  // attachment in quick succession), two calls in the same tick produce the
+  // same name. A random suffix closes that gap without needing a real UUID
+  // dependency just for this.
   final name =
       fileName ??
-      '${DateTime.now().microsecondsSinceEpoch}$extension';
+      '${DateTime.now().microsecondsSinceEpoch}_${_random.nextInt(1 << 32)}$extension';
 
   await File(sourcePath).copy('${dir.path}/$name');
   return name;
@@ -73,4 +81,33 @@ Future<void> deleteAttachment(
   final dir = directory ?? await getAttachmentsDirectory();
   final file = File('${dir.path}/$fileName');
   if (await file.exists()) await file.delete();
+}
+
+/// Reads an attachment's raw bytes back, for embedding into a plan/backup
+/// export - null (not a thrown error) when the file is missing, same
+/// "missing is not exceptional" philosophy as [AttachmentImage]'s fallback.
+Future<List<int>?> readAttachmentBytes(
+  String fileName, {
+  Directory? directory,
+}) async {
+  final dir = directory ?? await getAttachmentsDirectory();
+  final file = File('${dir.path}/$fileName');
+  if (!await file.exists()) return null;
+  return file.readAsBytes();
+}
+
+/// Writes [bytes] directly under [fileName] in the attachments directory -
+/// the import-side counterpart to [readAttachmentBytes], used when restoring
+/// an image that travelled as embedded bytes in a plan/backup export rather
+/// than being copied from a picked file on this device.
+Future<void> saveAttachmentBytes(
+  List<int> bytes,
+  String fileName, {
+  Directory? directory,
+}) async {
+  final dir = directory ?? await getAttachmentsDirectory();
+  if (!await dir.exists()) {
+    await dir.create(recursive: true);
+  }
+  await File('${dir.path}/$fileName').writeAsBytes(bytes);
 }

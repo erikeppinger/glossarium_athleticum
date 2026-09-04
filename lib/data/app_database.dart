@@ -37,7 +37,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,6 +59,34 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 6) {
         await m.addColumn(exercises, exercises.imagePath);
+      }
+      if (from < 7) {
+        await m.addColumn(sessionLogs, sessionLogs.notes);
+      }
+      if (from < 8) {
+        // planSessionId's NOT NULL -> nullable change (to allow ad-hoc
+        // activities with no scheduled session) isn't an addColumn - SQLite
+        // can't ALTER a column's nullability in place, so this recreates
+        // the whole table (matching-named columns copy over; the three new
+        // ones default to null for existing rows, which is correct).
+        // newColumns must list every column that doesn't exist on the old
+        // table yet - without it, the generated COPY statement tries to
+        // SELECT them from the source table and fails with "no such column".
+        await m.alterTable(
+          TableMigration(
+            sessionLogs,
+            newColumns: [
+              sessionLogs.activityName,
+              sessionLogs.durationSec,
+              sessionLogs.distance,
+            ],
+          ),
+        );
+      }
+      if (from < 9) {
+        await m.addColumn(plans, plans.reportPreference);
+        await m.addColumn(plans, plans.reportFrequencyDays);
+        await m.addColumn(plans, plans.reportOptInAt);
       }
     },
   );

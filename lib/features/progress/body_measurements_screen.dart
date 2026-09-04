@@ -161,34 +161,52 @@ class _WeightChart extends StatelessWidget {
     // line into uselessness - pad around the actual range instead.
     final pad = ((maxValue - minValue) * 0.25).clamp(1.0, double.infinity);
 
-    return LineChart(
-      LineChartData(
-        minY: minValue - pad,
-        maxY: maxValue + pad,
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          bottomTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: true, reservedSize: 44),
+    // The list of individual entries is rendered separately below this
+    // chart (see _MeasurementTile), but fl_chart itself has no text
+    // alternative, so a screen reader would otherwise get nothing at all
+    // from this specific widget. minValue/maxValue are already in display
+    // units (derived from `values` above), unlike the raw kg on the DB row -
+    // formatWeightNumber (no further conversion) is the correct formatter here.
+    final unitLabel = unit == WeightUnit.lbs ? 'lbs' : 'kg';
+    final summary =
+        'Weight over time chart. Latest: '
+        '${formatWeightInUnit(measurements.last.weightKg!, unit)}. '
+        'Range: ${formatWeightNumber(minValue)} to '
+        '${formatWeightNumber(maxValue)} $unitLabel.';
+
+    return Semantics(
+      label: summary,
+      child: ExcludeSemantics(
+        child: LineChart(
+          LineChartData(
+            minY: minValue - pad,
+            maxY: maxValue + pad,
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: true, reservedSize: 44),
+              ),
+            ),
+            lineBarsData: [
+              LineChartBarData(
+                spots: [
+                  for (var i = 0; i < values.length; i++)
+                    FlSpot(i.toDouble(), values[i]),
+                ],
+                isCurved: false,
+                dotData: const FlDotData(show: true),
+              ),
+            ],
           ),
         ),
-        lineBarsData: [
-          LineChartBarData(
-            spots: [
-              for (var i = 0; i < values.length; i++)
-                FlSpot(i.toDouble(), values[i]),
-            ],
-            isCurved: false,
-            dotData: const FlDotData(show: true),
-          ),
-        ],
       ),
     );
   }
@@ -296,9 +314,7 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
   late final _armController = _lengthController(widget.existing?.armCm);
 
   TextEditingController _lengthController(double? cm) => TextEditingController(
-    text: cm == null
-        ? ''
-        : formatWeightNumber(cmToDisplay(cm, widget.unit)),
+    text: cm == null ? '' : formatWeightNumber(cmToDisplay(cm, widget.unit)),
   );
   late final _notesController = TextEditingController(
     text: widget.existing?.notes ?? '',
@@ -330,9 +346,8 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
 
   /// At least one actual measurement - an entry with only a date recorded
   /// would just be noise in the history list.
-  bool get _canSave => _controllers
-      .take(7)
-      .any((c) => double.tryParse(c.text.trim()) != null);
+  bool get _canSave =>
+      _controllers.take(7).any((c) => double.tryParse(c.text.trim()) != null);
 
   @override
   Widget build(BuildContext context) {
@@ -355,12 +370,16 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
             ),
             TextField(
               controller: _weightController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(labelText: weightLabel),
             ),
             TextField(
               controller: _bodyFatController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(labelText: 'Body fat (%)'),
             ),
             const SizedBox(height: 8),

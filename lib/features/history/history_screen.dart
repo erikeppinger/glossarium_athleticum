@@ -9,13 +9,14 @@ import '../../logic/progression.dart';
 import '../../logic/units.dart';
 import '../settings/app_preferences.dart';
 
-final _progressionHistoryProvider = FutureProvider.family<
-  List<ProgressionHistoryEntry>,
-  String
->((ref, exerciseId) {
-  final db = ref.watch(appDatabaseProvider);
-  return db.sessionLogDao.getProgressionHistory(exerciseId);
-});
+final _progressionHistoryProvider =
+    FutureProvider.family<List<ProgressionHistoryEntry>, String>((
+      ref,
+      exerciseId,
+    ) {
+      final db = ref.watch(appDatabaseProvider);
+      return db.sessionLogDao.getProgressionHistory(exerciseId);
+    });
 
 /// Currently fixed at intermediate - Phase 6 (onboarding) will feed the
 /// user's actual experience level in here instead.
@@ -45,8 +46,7 @@ class HistoryScreen extends ConsumerWidget {
               child: Text('No logged sets yet for this exercise.'),
             );
           }
-          final sorted = [...history]
-            ..sort((a, b) => a.date.compareTo(b.date));
+          final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
           final suggestion = suggestNextSet(
             history: sorted,
             level: _defaultLevel,
@@ -88,43 +88,57 @@ class HistoryScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                height: 220,
-                child: LineChart(
-                  LineChartData(
-                    minY: 0,
-                    maxY: chartMaxY,
-                    titlesData: FlTitlesData(
-                      topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      bottomTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          interval: chartInterval,
-                          reservedSize: 40,
+              // The "Sessions" list below already renders every one of these
+              // points as text, so this is a secondary/redundant summary
+              // rather than the only way to get the data - still worth
+              // stating up front, since fl_chart itself has no text
+              // alternative and a screen-reader user shouldn't have to
+              // reconstruct the trend from a reversed list further down.
+              Semantics(
+                label:
+                    'Weight over time chart. Latest: '
+                    '${formatWeightInUnit(sorted.last.weight, unit)}. '
+                    'Highest: ${formatWeightInUnit(maxWeight, unit)}.',
+                child: ExcludeSemantics(
+                  child: SizedBox(
+                    height: 220,
+                    child: LineChart(
+                      LineChartData(
+                        minY: 0,
+                        maxY: chartMaxY,
+                        titlesData: FlTitlesData(
+                          topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          bottomTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          leftTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              interval: chartInterval,
+                              reservedSize: 40,
+                            ),
+                          ),
                         ),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: [
+                              for (var i = 0; i < sorted.length; i++)
+                                FlSpot(
+                                  i.toDouble(),
+                                  kgToDisplay(sorted[i].weight, unit),
+                                ),
+                            ],
+                            isCurved: false,
+                            dotData: const FlDotData(show: true),
+                          ),
+                        ],
                       ),
                     ),
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: [
-                          for (var i = 0; i < sorted.length; i++)
-                            FlSpot(
-                              i.toDouble(),
-                              kgToDisplay(sorted[i].weight, unit),
-                            ),
-                        ],
-                        isCurved: false,
-                        dotData: const FlDotData(show: true),
-                      ),
-                    ],
                   ),
                 ),
               ),
@@ -132,7 +146,9 @@ class HistoryScreen extends ConsumerWidget {
               Text('Sessions', style: Theme.of(context).textTheme.titleMedium),
               for (final entry in sorted.reversed)
                 ListTile(
-                  title: Text('${formatWeightInUnit(entry.weight, unit)} × ${entry.reps}'),
+                  title: Text(
+                    '${formatWeightInUnit(entry.weight, unit)} × ${entry.reps}',
+                  ),
                   subtitle: Text(DateFormat.yMMMd().format(entry.date)),
                   trailing: entry.weight == maxWeight
                       ? const Icon(Icons.emoji_events, color: Colors.amber)

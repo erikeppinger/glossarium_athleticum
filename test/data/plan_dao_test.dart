@@ -287,4 +287,20 @@ void main() {
     final after = (await db.planDao.getPlanDetails('plan-1'))!.plan.updatedAt;
     expect(after.isAfter(before), isTrue);
   });
+
+  test('updatePlanNotes saves the text and bumps updated_at', () async {
+    await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+    final before = (await db.planDao.getPlanDetails('plan-1'))!.plan;
+    expect(before.notes, '');
+    await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
+
+    await db.planDao.updatePlanNotes(
+      'plan-1',
+      'Swap deadlifts for RDLs next block',
+    );
+
+    final after = (await db.planDao.getPlanDetails('plan-1'))!.plan;
+    expect(after.notes, 'Swap deadlifts for RDLs next block');
+    expect(after.updatedAt.isAfter(before.updatedAt), isTrue);
+  });
 }

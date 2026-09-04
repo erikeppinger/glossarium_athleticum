@@ -176,6 +176,22 @@ void main() {
     test('less than the prior max is not a PR', () {
       expect(isPersonalRecord(58, [55, 60]), isFalse);
     });
+
+    // Regression test: a list literal like `[55, 60]` above infers as
+    // `List<num>`, which never reproduced the real crash - execution_screen
+    // .dart actually passes a concrete `List<double>` (weights read back
+    // from the DB plus this session's own logged weights), and calling
+    // `.reduce()` against an `Iterable<num>`-typed parameter backed by a
+    // `List<double>` at runtime threw "type '(num, num) => num' is not a
+    // subtype of type '(double, double) => double'" - reproduced live by
+    // logging a second set in execution mode on an emulator, which got
+    // stuck on "pending" forever since the exception fired before
+    // `form.logged` was ever set. Force the same reification here.
+    test('works against a real List<double>, not just a num literal list', () {
+      final priorWeights = List<double>.from([55.0, 60.0]);
+      expect(isPersonalRecord(61.0, priorWeights), isTrue);
+      expect(isPersonalRecord(60.0, priorWeights), isFalse);
+    });
   });
 
   group('suggestion wording respects the weight unit', () {

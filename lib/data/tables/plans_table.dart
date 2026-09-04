@@ -15,6 +15,24 @@ class Plans extends Table {
   /// out of the way; deleting is the irreversible one. Null = active.
   DateTimeColumn get archivedAt => dateTime().nullable()();
 
+  /// Tri-state opt-in for a periodic "check your progress on this plan"
+  /// reminder - 'notAsked'/'enabled'/'declined', same reasoning as
+  /// `BodyTracking`: a "no" is remembered rather than asked again. Per-plan
+  /// (not a device-wide setting, unlike the existing weekly-digest
+  /// notification) since interest in check-ins can differ per plan. Asked
+  /// once at first session start - see plan_report_prompt.dart.
+  TextColumn get reportPreference =>
+      text().withDefault(const Constant('notAsked'))();
+
+  /// Days between reminders once enabled (7/14/30 offered at opt-in time) -
+  /// null until enabled.
+  IntColumn get reportFrequencyDays => integer().nullable()();
+
+  /// When the plan owner opted in - the anchor point reminders are computed
+  /// from each time they're rebuilt, so "every 7 days" means every 7 days
+  /// from when they said yes, not from some arbitrary fixed epoch.
+  DateTimeColumn get reportOptInAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

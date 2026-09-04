@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
 import '../data/app_database.dart';
 import '../data/daos/plan_dao.dart';
+import '../export/exercise_json.dart' show exerciseFromJson, restoreExerciseImage;
 import '../logic/exercise_name_matching.dart';
 
 /// Thrown for a plan JSON file that isn't usable at all - wrong/missing
@@ -37,6 +40,7 @@ Future<String> importPlanJson(
   Map<String, dynamic> json,
   AppDatabase db, {
   String? planId,
+  Directory? attachmentsDirectory,
 }) async {
   if (json['schema_version'] != _supportedSchemaVersion) {
     throw PlanJsonFormatException(
@@ -47,6 +51,18 @@ Future<String> importPlanJson(
   final name = json['name'];
   if (weeksJson is! List || name is! String) {
     throw const PlanJsonFormatException('Not a valid plan file.');
+  }
+
+  // Embedded full definitions (schemaVersion added alongside image support)
+  // for the custom exercises this plan references - written before exercise
+  // resolution below so a plan built around a custom exercise (with a photo)
+  // arrives fully formed on a device that doesn't have it yet, rather than
+  // being recreated as a bare name-only stub.
+  final embeddedExercisesJson = json['exercises'] as List? ?? const [];
+  for (final exerciseJson in embeddedExercisesJson) {
+    final map = exerciseJson as Map<String, dynamic>;
+    await db.exerciseDao.upsertExercise(exerciseFromJson(map));
+    await restoreExerciseImage(map, directory: attachmentsDirectory);
   }
 
   final library = await db.exerciseDao.getAllExercises();

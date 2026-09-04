@@ -6,6 +6,9 @@ import 'package:training_app/data/app_database.dart';
 import 'package:training_app/data/app_database_provider.dart';
 import 'package:training_app/data/daos/plan_dao.dart';
 import 'package:training_app/features/execution/execution_screen.dart';
+import 'package:training_app/features/notifications/reminder_coordinator.dart';
+
+import 'fake_notification_service.dart';
 
 // Covers un-checking a mis-tapped/mis-typed set before "Finish session" -
 // a real usability gap (no correction path) found in a post-ship review.
@@ -53,7 +56,12 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [appDatabaseProvider.overrideWithValue(db)],
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            notificationServiceProvider.overrideWithValue(
+              FakeNotificationService(),
+            ),
+          ],
           child: MaterialApp(home: ExecutionScreen(planSessionId: sessionId)),
         ),
       );
@@ -96,6 +104,16 @@ void main() {
       await tester.pump();
 
       await tester.tap(find.text('Finish session'));
+      await tester.pumpAndSettle();
+      // Finishing now prompts for an optional note before writing the log -
+      // scoped to the dialog since the rest-timer banner's own "Skip" button
+      // is still on screen underneath it.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Skip'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       final logs = await db.sessionLogDao.getLogsForPlanSession(sessionId);

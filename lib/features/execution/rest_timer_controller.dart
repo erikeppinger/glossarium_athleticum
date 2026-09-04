@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../logic/rest_timer.dart';
+import '../notifications/notification_service.dart';
+import '../notifications/reminder_coordinator.dart' show notificationServiceProvider;
 
 class RestTimerState {
   final Duration? remaining;
@@ -29,13 +31,16 @@ class RestTimerState {
 /// `home_screen.dart` (always mounted) so the timer keeps running and stays
 /// visible even after the execution screen that started it is popped.
 class RestTimerController extends StateNotifier<RestTimerState> {
-  RestTimerController() : super(RestTimerState.idle);
+  RestTimerController(this._notificationService) : super(RestTimerState.idle);
+
+  final NotificationService _notificationService;
 
   Timer? _ticker;
   DateTime? _endTime;
 
   void start(Duration duration, {required int planSessionId}) {
-    _endTime = DateTime.now().add(duration);
+    final endTime = DateTime.now().add(duration);
+    _endTime = endTime;
     state = RestTimerState(
       remaining: duration,
       total: duration,
@@ -43,12 +48,22 @@ class RestTimerController extends StateNotifier<RestTimerState> {
     );
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
+    // Fire-and-forget: a slow/failed platform call shouldn't block the timer
+    // itself starting, and the in-app overlay already shows the countdown
+    // regardless of whether the OS notification lands.
+    unawaited(
+      _notificationService.showRestTimerNotification(
+        planSessionId: planSessionId,
+        endTime: endTime,
+      ),
+    );
   }
 
   void skip() {
     _ticker?.cancel();
     _endTime = null;
     state = RestTimerState.idle;
+    unawaited(_notificationService.cancelRestTimerNotification());
   }
 
   void _tick() {
@@ -69,6 +84,10 @@ class RestTimerController extends StateNotifier<RestTimerState> {
       // countdown itself isn't visible.
       HapticFeedback.vibrate();
       SystemSound.play(SystemSoundType.alert);
+      // Belt-and-suspenders alongside the notification's own `timeoutAfter`
+      // (see showRestTimerNotification) - whichever fires first is fine,
+      // cancelling an already-gone notification is a harmless no-op.
+      unawaited(_notificationService.cancelRestTimerNotification());
     }
   }
 
@@ -81,5 +100,5 @@ class RestTimerController extends StateNotifier<RestTimerState> {
 
 final restTimerControllerProvider =
     StateNotifierProvider<RestTimerController, RestTimerState>(
-      (ref) => RestTimerController(),
+      (ref) => RestTimerController(ref.read(notificationServiceProvider)),
     );

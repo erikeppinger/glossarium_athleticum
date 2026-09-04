@@ -25,11 +25,7 @@ class ProgressCharts extends StatefulWidget {
   final List<DailyTotals> totals;
   final WeightUnit unit;
 
-  const ProgressCharts({
-    super.key,
-    required this.totals,
-    required this.unit,
-  });
+  const ProgressCharts({super.key, required this.totals, required this.unit});
 
   @override
   State<ProgressCharts> createState() => _ProgressChartsState();
@@ -138,93 +134,115 @@ class _MetricChart extends StatelessWidget {
         ? '${metric.label} (${unit == WeightUnit.lbs ? 'lbs' : 'kg'})'
         : metric.label;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Expanded(
-              child: BarChart(
-                BarChartData(
-                  maxY: chartMax,
-                  minY: 0,
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  barTouchData: BarTouchData(
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final t = totals[group.x];
-                        return BarTooltipItem(
-                          '${DateFormat.MMMd().format(t.day)}\n'
-                          '${_formatValue(rod.toY)}',
-                          TextStyle(
-                            color: Theme.of(context).colorScheme.onInverseSurface,
+    // fl_chart draws to a canvas with no text alternative of its own, so a
+    // screen reader gets nothing from it - a swipeable chart series like
+    // this one has no visible list of the underlying numbers anywhere else
+    // in the screen the way, say, the history screen's chart does. The
+    // summary trades away per-day detail for the headline numbers someone
+    // would actually want read aloud.
+    final latest = values.last;
+    final average = values.reduce((a, b) => a + b) / values.length;
+    final summary =
+        '$title chart. Latest: ${_formatValue(latest)}. '
+        'Average over ${values.length} day${values.length == 1 ? '' : 's'}: '
+        '${_formatValue(average)}. Highest: ${_formatValue(maxValue)}.';
+
+    return Semantics(
+      label: summary,
+      child: ExcludeSemantics(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: BarChart(
+                    BarChartData(
+                      maxY: chartMax,
+                      minY: 0,
+                      gridData: const FlGridData(show: false),
+                      borderData: FlBorderData(show: false),
+                      barTouchData: BarTouchData(
+                        touchTooltipData: BarTouchTooltipData(
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            final t = totals[group.x];
+                            return BarTooltipItem(
+                              '${DateFormat.MMMd().format(t.day)}\n'
+                              '${_formatValue(rod.toY)}',
+                              TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onInverseSurface,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      titlesData: FlTitlesData(
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 44,
+                            interval: interval,
                           ),
-                        );
-                      },
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            // Only label a handful of days - one label per bar
+                            // overlaps into an unreadable smear on a full month.
+                            getTitlesWidget: (value, meta) {
+                              final index = value.toInt();
+                              if (index < 0 || index >= totals.length) {
+                                return const SizedBox.shrink();
+                              }
+                              final step = (totals.length / 4).ceil();
+                              if (index % step != 0) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  DateFormat.Md().format(totals[index].day),
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      barGroups: [
+                        for (var i = 0; i < values.length; i++)
+                          BarChartGroupData(
+                            x: i,
+                            barRods: [
+                              BarChartRodData(
+                                toY: values[i],
+                                width: 10,
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(3),
+                                ),
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 44,
-                        interval: interval,
-                      ),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 28,
-                        // Only label a handful of days - one label per bar
-                        // overlaps into an unreadable smear on a full month.
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index < 0 || index >= totals.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final step = (totals.length / 4).ceil();
-                          if (index % step != 0) return const SizedBox.shrink();
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              DateFormat.Md().format(totals[index].day),
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  barGroups: [
-                    for (var i = 0; i < values.length; i++)
-                      BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: values[i],
-                            width: 10,
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(3),
-                            ),
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ],
-                      ),
-                  ],
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -236,5 +254,4 @@ class _MetricChart extends StatelessWidget {
     }
     return value.toStringAsFixed(0);
   }
-
 }

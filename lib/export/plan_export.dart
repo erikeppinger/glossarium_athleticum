@@ -1,6 +1,17 @@
+import 'dart:io';
+
 import 'package:csv/csv.dart';
 
+import '../data/app_database.dart';
 import '../data/daos/plan_dao.dart';
+import 'exercise_json.dart';
+
+/// File extension for a passphrase-encrypted single-plan export - the plan
+/// analogue of `backup_export.dart`'s `backupFileExtension`. A plan file can
+/// now embed a custom exercise's photo (see [planToJsonWithImages]), so
+/// there's real reason to encrypt it before sending it somewhere less
+/// trusted than a full-device backup already gets.
+const encryptedPlanFileExtension = 'tplan';
 
 /// Converts a loaded plan into the shape schema/plan.schema.json describes -
 /// the single-plan export/import format (Phase 3). Sessions are grouped by
@@ -51,6 +62,41 @@ Map<String, dynamic> planToJson(PlanDetails details) {
         },
     ],
   };
+}
+
+/// [planToJson] plus full definitions (including image bytes) for every
+/// *custom* exercise this plan references - a plain single-plan export only
+/// ever carried an exercise's id/name, so a plan built around a custom
+/// exercise with a photo silently lost that exercise's full detail and image
+/// when imported on a device that didn't already have it. Seed-library
+/// exercises are never embedded: every device already has them, and they're
+/// reseeded on launch regardless.
+Future<Map<String, dynamic>> planToJsonWithImages(
+  PlanDetails details,
+  AppDatabase db, {
+  Directory? attachmentsDirectory,
+}) async {
+  final json = planToJson(details);
+
+  final referencedIds = <String>{
+    for (final session in details.sessions)
+      for (final exercise in session.exercises)
+        if (exercise.exerciseId != null) exercise.exerciseId!,
+  };
+  if (referencedIds.isEmpty) return json;
+
+  final customExercises = (await db.exerciseDao.getCustomExercises())
+      .where((e) => referencedIds.contains(e.id));
+
+  final exerciseJsonList = <Map<String, dynamic>>[];
+  for (final e in customExercises) {
+    exerciseJsonList.add(
+      await exerciseToJsonWithImage(e, directory: attachmentsDirectory),
+    );
+  }
+  if (exerciseJsonList.isEmpty) return json;
+
+  return {...json, 'exercises': exerciseJsonList};
 }
 
 /// The header row, in the canonical column order - shared with the plan

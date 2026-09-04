@@ -49,6 +49,11 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   late String? _measurementType = _existing?.measurementType;
   late String? _imagePath = _existing?.imagePath;
 
+  late final String? _initialCategory = _existing?.category;
+  late final String? _initialDifficulty = _existing?.difficulty;
+  late final String? _initialMeasurementType = _existing?.measurementType;
+  late final String? _initialImagePath = _existing?.imagePath;
+
   late final _nameController = TextEditingController(
     text: _existing?.name ?? '',
   );
@@ -84,6 +89,20 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
     _videoReferenceController,
     _authorController,
   ];
+  late final _initialControllerTexts = _controllers
+      .map((c) => c.text)
+      .toList(growable: false);
+
+  bool get _hasUnsavedChanges {
+    if (_category != _initialCategory) return true;
+    if (_difficulty != _initialDifficulty) return true;
+    if (_measurementType != _initialMeasurementType) return true;
+    if (_imagePath != _initialImagePath) return true;
+    for (var i = 0; i < _controllers.length; i++) {
+      if (_controllers[i].text != _initialControllerTexts[i]) return true;
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -102,22 +121,63 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _previewing
-              ? 'Preview'
-              : _isEditing
-              ? 'Edit exercise'
-              : 'Create exercise',
+    // canPop is read fresh on every pop attempt from whatever's last built,
+    // but plain TextFields don't rebuild their parent on each keystroke - so
+    // without this listener, typing wouldn't ever flip canPop to false.
+    return ListenableBuilder(
+      listenable: Listenable.merge(_controllers),
+      builder: (context, _) => PopScope(
+        // The form (photo included) lives only in memory until "Save" -
+        // backing out silently would otherwise discard it with no way back.
+        canPop: _saving || !_hasUnsavedChanges,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _confirmDiscard();
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              _previewing
+                  ? 'Preview'
+                  : _isEditing
+                  ? 'Edit exercise'
+                  : 'Create exercise',
+            ),
+          ),
+          body: _saving
+              ? const Center(child: CircularProgressIndicator())
+              : _previewing
+              ? _buildPreview(context)
+              : _buildForm(context),
         ),
       ),
-      body: _saving
-          ? const Center(child: CircularProgressIndicator())
-          : _previewing
-          ? _buildPreview(context)
-          : _buildForm(context),
     );
+  }
+
+  Future<void> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: Text(
+          _isEditing
+              ? 'Your edits to "${_existing!.name}" have not been saved.'
+              : 'This exercise has not been saved yet.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   Widget _buildForm(BuildContext context) {
@@ -641,6 +701,7 @@ class _ImagePickerFieldState extends State<_ImagePickerField> {
             fileName: widget.fileName!,
             height: 180,
             width: double.infinity,
+            semanticLabel: 'Your selected photo',
           ),
         ),
         Positioned(
@@ -648,10 +709,15 @@ class _ImagePickerFieldState extends State<_ImagePickerField> {
           right: 4,
           child: Row(
             children: [
-              _OverlayButton(icon: Icons.edit, onPressed: _pick),
+              _OverlayButton(
+                icon: Icons.edit,
+                tooltip: 'Change photo',
+                onPressed: _pick,
+              ),
               const SizedBox(width: 6),
               _OverlayButton(
                 icon: Icons.close,
+                tooltip: 'Remove photo',
                 onPressed: widget.onCleared,
               ),
             ],
@@ -664,22 +730,32 @@ class _ImagePickerFieldState extends State<_ImagePickerField> {
 
 class _OverlayButton extends StatelessWidget {
   final IconData icon;
+  final String tooltip;
   final VoidCallback onPressed;
 
-  const _OverlayButton({required this.icon, required this.onPressed});
+  const _OverlayButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black54,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: 18, color: Colors.white),
-        ),
+    // A hand-rolled Material+InkWell (rather than IconButton, everywhere
+    // else's pattern) for a compact circular overlay chip - but that meant
+    // no tooltip and no accessible name at all, missed by an earlier
+    // accessibility pass since it only checked real IconButtons. IconButton
+    // itself, restyled, gives the same look back with the label for free.
+    return IconButton(
+      icon: Icon(icon, size: 18, color: Colors.white),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.black54,
+        shape: const CircleBorder(),
+        padding: const EdgeInsets.all(6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }

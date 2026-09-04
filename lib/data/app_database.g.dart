@@ -972,6 +972,40 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _reportPreferenceMeta = const VerificationMeta(
+    'reportPreference',
+  );
+  @override
+  late final GeneratedColumn<String> reportPreference = GeneratedColumn<String>(
+    'report_preference',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('notAsked'),
+  );
+  static const VerificationMeta _reportFrequencyDaysMeta =
+      const VerificationMeta('reportFrequencyDays');
+  @override
+  late final GeneratedColumn<int> reportFrequencyDays = GeneratedColumn<int>(
+    'report_frequency_days',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reportOptInAtMeta = const VerificationMeta(
+    'reportOptInAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reportOptInAt =
+      GeneratedColumn<DateTime>(
+        'report_opt_in_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -980,6 +1014,9 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
     createdAt,
     updatedAt,
     archivedAt,
+    reportPreference,
+    reportFrequencyDays,
+    reportOptInAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1034,6 +1071,33 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
         archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
       );
     }
+    if (data.containsKey('report_preference')) {
+      context.handle(
+        _reportPreferenceMeta,
+        reportPreference.isAcceptableOrUnknown(
+          data['report_preference']!,
+          _reportPreferenceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('report_frequency_days')) {
+      context.handle(
+        _reportFrequencyDaysMeta,
+        reportFrequencyDays.isAcceptableOrUnknown(
+          data['report_frequency_days']!,
+          _reportFrequencyDaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('report_opt_in_at')) {
+      context.handle(
+        _reportOptInAtMeta,
+        reportOptInAt.isAcceptableOrUnknown(
+          data['report_opt_in_at']!,
+          _reportOptInAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1067,6 +1131,18 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}archived_at'],
       ),
+      reportPreference: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}report_preference'],
+      )!,
+      reportFrequencyDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}report_frequency_days'],
+      ),
+      reportOptInAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}report_opt_in_at'],
+      ),
     );
   }
 
@@ -1087,6 +1163,23 @@ class Plan extends DataClass implements Insertable<Plan> {
   /// intact and restorable. Archiving is the reversible way to get a plan
   /// out of the way; deleting is the irreversible one. Null = active.
   final DateTime? archivedAt;
+
+  /// Tri-state opt-in for a periodic "check your progress on this plan"
+  /// reminder - 'notAsked'/'enabled'/'declined', same reasoning as
+  /// `BodyTracking`: a "no" is remembered rather than asked again. Per-plan
+  /// (not a device-wide setting, unlike the existing weekly-digest
+  /// notification) since interest in check-ins can differ per plan. Asked
+  /// once at first session start - see plan_report_prompt.dart.
+  final String reportPreference;
+
+  /// Days between reminders once enabled (7/14/30 offered at opt-in time) -
+  /// null until enabled.
+  final int? reportFrequencyDays;
+
+  /// When the plan owner opted in - the anchor point reminders are computed
+  /// from each time they're rebuilt, so "every 7 days" means every 7 days
+  /// from when they said yes, not from some arbitrary fixed epoch.
+  final DateTime? reportOptInAt;
   const Plan({
     required this.id,
     required this.name,
@@ -1094,6 +1187,9 @@ class Plan extends DataClass implements Insertable<Plan> {
     required this.createdAt,
     required this.updatedAt,
     this.archivedAt,
+    required this.reportPreference,
+    this.reportFrequencyDays,
+    this.reportOptInAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1105,6 +1201,13 @@ class Plan extends DataClass implements Insertable<Plan> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || archivedAt != null) {
       map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
+    map['report_preference'] = Variable<String>(reportPreference);
+    if (!nullToAbsent || reportFrequencyDays != null) {
+      map['report_frequency_days'] = Variable<int>(reportFrequencyDays);
+    }
+    if (!nullToAbsent || reportOptInAt != null) {
+      map['report_opt_in_at'] = Variable<DateTime>(reportOptInAt);
     }
     return map;
   }
@@ -1119,6 +1222,13 @@ class Plan extends DataClass implements Insertable<Plan> {
       archivedAt: archivedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(archivedAt),
+      reportPreference: Value(reportPreference),
+      reportFrequencyDays: reportFrequencyDays == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reportFrequencyDays),
+      reportOptInAt: reportOptInAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reportOptInAt),
     );
   }
 
@@ -1134,6 +1244,11 @@ class Plan extends DataClass implements Insertable<Plan> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
+      reportPreference: serializer.fromJson<String>(json['reportPreference']),
+      reportFrequencyDays: serializer.fromJson<int?>(
+        json['reportFrequencyDays'],
+      ),
+      reportOptInAt: serializer.fromJson<DateTime?>(json['reportOptInAt']),
     );
   }
   @override
@@ -1146,6 +1261,9 @@ class Plan extends DataClass implements Insertable<Plan> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'archivedAt': serializer.toJson<DateTime?>(archivedAt),
+      'reportPreference': serializer.toJson<String>(reportPreference),
+      'reportFrequencyDays': serializer.toJson<int?>(reportFrequencyDays),
+      'reportOptInAt': serializer.toJson<DateTime?>(reportOptInAt),
     };
   }
 
@@ -1156,6 +1274,9 @@ class Plan extends DataClass implements Insertable<Plan> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> archivedAt = const Value.absent(),
+    String? reportPreference,
+    Value<int?> reportFrequencyDays = const Value.absent(),
+    Value<DateTime?> reportOptInAt = const Value.absent(),
   }) => Plan(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1163,6 +1284,13 @@ class Plan extends DataClass implements Insertable<Plan> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    reportPreference: reportPreference ?? this.reportPreference,
+    reportFrequencyDays: reportFrequencyDays.present
+        ? reportFrequencyDays.value
+        : this.reportFrequencyDays,
+    reportOptInAt: reportOptInAt.present
+        ? reportOptInAt.value
+        : this.reportOptInAt,
   );
   Plan copyWithCompanion(PlansCompanion data) {
     return Plan(
@@ -1174,6 +1302,15 @@ class Plan extends DataClass implements Insertable<Plan> {
       archivedAt: data.archivedAt.present
           ? data.archivedAt.value
           : this.archivedAt,
+      reportPreference: data.reportPreference.present
+          ? data.reportPreference.value
+          : this.reportPreference,
+      reportFrequencyDays: data.reportFrequencyDays.present
+          ? data.reportFrequencyDays.value
+          : this.reportFrequencyDays,
+      reportOptInAt: data.reportOptInAt.present
+          ? data.reportOptInAt.value
+          : this.reportOptInAt,
     );
   }
 
@@ -1185,14 +1322,26 @@ class Plan extends DataClass implements Insertable<Plan> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('archivedAt: $archivedAt')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('reportPreference: $reportPreference, ')
+          ..write('reportFrequencyDays: $reportFrequencyDays, ')
+          ..write('reportOptInAt: $reportOptInAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, notes, createdAt, updatedAt, archivedAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    notes,
+    createdAt,
+    updatedAt,
+    archivedAt,
+    reportPreference,
+    reportFrequencyDays,
+    reportOptInAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1202,7 +1351,10 @@ class Plan extends DataClass implements Insertable<Plan> {
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.archivedAt == this.archivedAt);
+          other.archivedAt == this.archivedAt &&
+          other.reportPreference == this.reportPreference &&
+          other.reportFrequencyDays == this.reportFrequencyDays &&
+          other.reportOptInAt == this.reportOptInAt);
 }
 
 class PlansCompanion extends UpdateCompanion<Plan> {
@@ -1212,6 +1364,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> archivedAt;
+  final Value<String> reportPreference;
+  final Value<int?> reportFrequencyDays;
+  final Value<DateTime?> reportOptInAt;
   final Value<int> rowid;
   const PlansCompanion({
     this.id = const Value.absent(),
@@ -1220,6 +1375,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.archivedAt = const Value.absent(),
+    this.reportPreference = const Value.absent(),
+    this.reportFrequencyDays = const Value.absent(),
+    this.reportOptInAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PlansCompanion.insert({
@@ -1229,6 +1387,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.archivedAt = const Value.absent(),
+    this.reportPreference = const Value.absent(),
+    this.reportFrequencyDays = const Value.absent(),
+    this.reportOptInAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -1241,6 +1402,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? archivedAt,
+    Expression<String>? reportPreference,
+    Expression<int>? reportFrequencyDays,
+    Expression<DateTime>? reportOptInAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1250,6 +1414,10 @@ class PlansCompanion extends UpdateCompanion<Plan> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (archivedAt != null) 'archived_at': archivedAt,
+      if (reportPreference != null) 'report_preference': reportPreference,
+      if (reportFrequencyDays != null)
+        'report_frequency_days': reportFrequencyDays,
+      if (reportOptInAt != null) 'report_opt_in_at': reportOptInAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1261,6 +1429,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? archivedAt,
+    Value<String>? reportPreference,
+    Value<int?>? reportFrequencyDays,
+    Value<DateTime?>? reportOptInAt,
     Value<int>? rowid,
   }) {
     return PlansCompanion(
@@ -1270,6 +1441,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       archivedAt: archivedAt ?? this.archivedAt,
+      reportPreference: reportPreference ?? this.reportPreference,
+      reportFrequencyDays: reportFrequencyDays ?? this.reportFrequencyDays,
+      reportOptInAt: reportOptInAt ?? this.reportOptInAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1295,6 +1469,15 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     if (archivedAt.present) {
       map['archived_at'] = Variable<DateTime>(archivedAt.value);
     }
+    if (reportPreference.present) {
+      map['report_preference'] = Variable<String>(reportPreference.value);
+    }
+    if (reportFrequencyDays.present) {
+      map['report_frequency_days'] = Variable<int>(reportFrequencyDays.value);
+    }
+    if (reportOptInAt.present) {
+      map['report_opt_in_at'] = Variable<DateTime>(reportOptInAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1310,6 +1493,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('archivedAt: $archivedAt, ')
+          ..write('reportPreference: $reportPreference, ')
+          ..write('reportFrequencyDays: $reportFrequencyDays, ')
+          ..write('reportOptInAt: $reportOptInAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2410,9 +2596,9 @@ class $SessionLogsTable extends SessionLogs
   late final GeneratedColumn<int> planSessionId = GeneratedColumn<int>(
     'plan_session_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES plan_sessions (id) ON DELETE CASCADE',
     ),
@@ -2428,8 +2614,58 @@ class $SessionLogsTable extends SessionLogs
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
-  List<GeneratedColumn> get $columns => [id, planSessionId, loggedAt];
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _activityNameMeta = const VerificationMeta(
+    'activityName',
+  );
+  @override
+  late final GeneratedColumn<String> activityName = GeneratedColumn<String>(
+    'activity_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _durationSecMeta = const VerificationMeta(
+    'durationSec',
+  );
+  @override
+  late final GeneratedColumn<double> durationSec = GeneratedColumn<double>(
+    'duration_sec',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _distanceMeta = const VerificationMeta(
+    'distance',
+  );
+  @override
+  late final GeneratedColumn<double> distance = GeneratedColumn<double>(
+    'distance',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    planSessionId,
+    loggedAt,
+    notes,
+    activityName,
+    durationSec,
+    distance,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2455,8 +2691,6 @@ class $SessionLogsTable extends SessionLogs
           _planSessionIdMeta,
         ),
       );
-    } else if (isInserting) {
-      context.missing(_planSessionIdMeta);
     }
     if (data.containsKey('logged_at')) {
       context.handle(
@@ -2465,6 +2699,36 @@ class $SessionLogsTable extends SessionLogs
       );
     } else if (isInserting) {
       context.missing(_loggedAtMeta);
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('activity_name')) {
+      context.handle(
+        _activityNameMeta,
+        activityName.isAcceptableOrUnknown(
+          data['activity_name']!,
+          _activityNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('duration_sec')) {
+      context.handle(
+        _durationSecMeta,
+        durationSec.isAcceptableOrUnknown(
+          data['duration_sec']!,
+          _durationSecMeta,
+        ),
+      );
+    }
+    if (data.containsKey('distance')) {
+      context.handle(
+        _distanceMeta,
+        distance.isAcceptableOrUnknown(data['distance']!, _distanceMeta),
+      );
     }
     return context;
   }
@@ -2482,11 +2746,27 @@ class $SessionLogsTable extends SessionLogs
       planSessionId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}plan_session_id'],
-      )!,
+      ),
       loggedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}logged_at'],
       )!,
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      activityName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}activity_name'],
+      ),
+      durationSec: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}duration_sec'],
+      ),
+      distance: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}distance'],
+      ),
     );
   }
 
@@ -2498,27 +2778,70 @@ class $SessionLogsTable extends SessionLogs
 
 class SessionLog extends DataClass implements Insertable<SessionLog> {
   final String id;
-  final int planSessionId;
+  final int? planSessionId;
   final DateTime loggedAt;
+
+  /// Optional free-text note taken right after finishing, e.g. "felt heavy
+  /// today" - surfaced on the workout's own detail screen.
+  final String? notes;
+
+  /// Non-null only for an ad-hoc activity (e.g. "Walk", "Run", "Yoga") -
+  /// null for a normal plan-session log, which gets its name from the plan
+  /// session it belongs to instead.
+  final String? activityName;
+  final double? durationSec;
+  final double? distance;
   const SessionLog({
     required this.id,
-    required this.planSessionId,
+    this.planSessionId,
     required this.loggedAt,
+    this.notes,
+    this.activityName,
+    this.durationSec,
+    this.distance,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['plan_session_id'] = Variable<int>(planSessionId);
+    if (!nullToAbsent || planSessionId != null) {
+      map['plan_session_id'] = Variable<int>(planSessionId);
+    }
     map['logged_at'] = Variable<DateTime>(loggedAt);
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || activityName != null) {
+      map['activity_name'] = Variable<String>(activityName);
+    }
+    if (!nullToAbsent || durationSec != null) {
+      map['duration_sec'] = Variable<double>(durationSec);
+    }
+    if (!nullToAbsent || distance != null) {
+      map['distance'] = Variable<double>(distance);
+    }
     return map;
   }
 
   SessionLogsCompanion toCompanion(bool nullToAbsent) {
     return SessionLogsCompanion(
       id: Value(id),
-      planSessionId: Value(planSessionId),
+      planSessionId: planSessionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(planSessionId),
       loggedAt: Value(loggedAt),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      activityName: activityName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(activityName),
+      durationSec: durationSec == null && nullToAbsent
+          ? const Value.absent()
+          : Value(durationSec),
+      distance: distance == null && nullToAbsent
+          ? const Value.absent()
+          : Value(distance),
     );
   }
 
@@ -2529,8 +2852,12 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return SessionLog(
       id: serializer.fromJson<String>(json['id']),
-      planSessionId: serializer.fromJson<int>(json['planSessionId']),
+      planSessionId: serializer.fromJson<int?>(json['planSessionId']),
       loggedAt: serializer.fromJson<DateTime>(json['loggedAt']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      activityName: serializer.fromJson<String?>(json['activityName']),
+      durationSec: serializer.fromJson<double?>(json['durationSec']),
+      distance: serializer.fromJson<double?>(json['distance']),
     );
   }
   @override
@@ -2538,17 +2865,34 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'planSessionId': serializer.toJson<int>(planSessionId),
+      'planSessionId': serializer.toJson<int?>(planSessionId),
       'loggedAt': serializer.toJson<DateTime>(loggedAt),
+      'notes': serializer.toJson<String?>(notes),
+      'activityName': serializer.toJson<String?>(activityName),
+      'durationSec': serializer.toJson<double?>(durationSec),
+      'distance': serializer.toJson<double?>(distance),
     };
   }
 
-  SessionLog copyWith({String? id, int? planSessionId, DateTime? loggedAt}) =>
-      SessionLog(
-        id: id ?? this.id,
-        planSessionId: planSessionId ?? this.planSessionId,
-        loggedAt: loggedAt ?? this.loggedAt,
-      );
+  SessionLog copyWith({
+    String? id,
+    Value<int?> planSessionId = const Value.absent(),
+    DateTime? loggedAt,
+    Value<String?> notes = const Value.absent(),
+    Value<String?> activityName = const Value.absent(),
+    Value<double?> durationSec = const Value.absent(),
+    Value<double?> distance = const Value.absent(),
+  }) => SessionLog(
+    id: id ?? this.id,
+    planSessionId: planSessionId.present
+        ? planSessionId.value
+        : this.planSessionId,
+    loggedAt: loggedAt ?? this.loggedAt,
+    notes: notes.present ? notes.value : this.notes,
+    activityName: activityName.present ? activityName.value : this.activityName,
+    durationSec: durationSec.present ? durationSec.value : this.durationSec,
+    distance: distance.present ? distance.value : this.distance,
+  );
   SessionLog copyWithCompanion(SessionLogsCompanion data) {
     return SessionLog(
       id: data.id.present ? data.id.value : this.id,
@@ -2556,6 +2900,14 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
           ? data.planSessionId.value
           : this.planSessionId,
       loggedAt: data.loggedAt.present ? data.loggedAt.value : this.loggedAt,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      activityName: data.activityName.present
+          ? data.activityName.value
+          : this.activityName,
+      durationSec: data.durationSec.present
+          ? data.durationSec.value
+          : this.durationSec,
+      distance: data.distance.present ? data.distance.value : this.distance,
     );
   }
 
@@ -2564,65 +2916,108 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
     return (StringBuffer('SessionLog(')
           ..write('id: $id, ')
           ..write('planSessionId: $planSessionId, ')
-          ..write('loggedAt: $loggedAt')
+          ..write('loggedAt: $loggedAt, ')
+          ..write('notes: $notes, ')
+          ..write('activityName: $activityName, ')
+          ..write('durationSec: $durationSec, ')
+          ..write('distance: $distance')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, planSessionId, loggedAt);
+  int get hashCode => Object.hash(
+    id,
+    planSessionId,
+    loggedAt,
+    notes,
+    activityName,
+    durationSec,
+    distance,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is SessionLog &&
           other.id == this.id &&
           other.planSessionId == this.planSessionId &&
-          other.loggedAt == this.loggedAt);
+          other.loggedAt == this.loggedAt &&
+          other.notes == this.notes &&
+          other.activityName == this.activityName &&
+          other.durationSec == this.durationSec &&
+          other.distance == this.distance);
 }
 
 class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
   final Value<String> id;
-  final Value<int> planSessionId;
+  final Value<int?> planSessionId;
   final Value<DateTime> loggedAt;
+  final Value<String?> notes;
+  final Value<String?> activityName;
+  final Value<double?> durationSec;
+  final Value<double?> distance;
   final Value<int> rowid;
   const SessionLogsCompanion({
     this.id = const Value.absent(),
     this.planSessionId = const Value.absent(),
     this.loggedAt = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.activityName = const Value.absent(),
+    this.durationSec = const Value.absent(),
+    this.distance = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SessionLogsCompanion.insert({
     required String id,
-    required int planSessionId,
+    this.planSessionId = const Value.absent(),
     required DateTime loggedAt,
+    this.notes = const Value.absent(),
+    this.activityName = const Value.absent(),
+    this.durationSec = const Value.absent(),
+    this.distance = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
-       planSessionId = Value(planSessionId),
        loggedAt = Value(loggedAt);
   static Insertable<SessionLog> custom({
     Expression<String>? id,
     Expression<int>? planSessionId,
     Expression<DateTime>? loggedAt,
+    Expression<String>? notes,
+    Expression<String>? activityName,
+    Expression<double>? durationSec,
+    Expression<double>? distance,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (planSessionId != null) 'plan_session_id': planSessionId,
       if (loggedAt != null) 'logged_at': loggedAt,
+      if (notes != null) 'notes': notes,
+      if (activityName != null) 'activity_name': activityName,
+      if (durationSec != null) 'duration_sec': durationSec,
+      if (distance != null) 'distance': distance,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   SessionLogsCompanion copyWith({
     Value<String>? id,
-    Value<int>? planSessionId,
+    Value<int?>? planSessionId,
     Value<DateTime>? loggedAt,
+    Value<String?>? notes,
+    Value<String?>? activityName,
+    Value<double?>? durationSec,
+    Value<double?>? distance,
     Value<int>? rowid,
   }) {
     return SessionLogsCompanion(
       id: id ?? this.id,
       planSessionId: planSessionId ?? this.planSessionId,
       loggedAt: loggedAt ?? this.loggedAt,
+      notes: notes ?? this.notes,
+      activityName: activityName ?? this.activityName,
+      durationSec: durationSec ?? this.durationSec,
+      distance: distance ?? this.distance,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2639,6 +3034,18 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
     if (loggedAt.present) {
       map['logged_at'] = Variable<DateTime>(loggedAt.value);
     }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (activityName.present) {
+      map['activity_name'] = Variable<String>(activityName.value);
+    }
+    if (durationSec.present) {
+      map['duration_sec'] = Variable<double>(durationSec.value);
+    }
+    if (distance.present) {
+      map['distance'] = Variable<double>(distance.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2651,6 +3058,10 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
           ..write('id: $id, ')
           ..write('planSessionId: $planSessionId, ')
           ..write('loggedAt: $loggedAt, ')
+          ..write('notes: $notes, ')
+          ..write('activityName: $activityName, ')
+          ..write('durationSec: $durationSec, ')
+          ..write('distance: $distance, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4560,6 +4971,9 @@ typedef $$PlansTableCreateCompanionBuilder = PlansCompanion Function({
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> archivedAt,
+  Value<String> reportPreference,
+  Value<int?> reportFrequencyDays,
+  Value<DateTime?> reportOptInAt,
   Value<int> rowid,
 });
 typedef $$PlansTableUpdateCompanionBuilder = PlansCompanion Function({
@@ -4569,6 +4983,9 @@ typedef $$PlansTableUpdateCompanionBuilder = PlansCompanion Function({
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> archivedAt,
+  Value<String> reportPreference,
+  Value<int?> reportFrequencyDays,
+  Value<DateTime?> reportOptInAt,
   Value<int> rowid,
 });
 
@@ -4630,6 +5047,21 @@ class $$PlansTableFilterComposer extends Composer<_$AppDatabase, $PlansTable> {
 
   ColumnFilters<DateTime> get archivedAt => $composableBuilder(
     column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reportPreference => $composableBuilder(
+    column: $table.reportPreference,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reportFrequencyDays => $composableBuilder(
+    column: $table.reportFrequencyDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reportOptInAt => $composableBuilder(
+    column: $table.reportOptInAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4697,6 +5129,21 @@ class $$PlansTableOrderingComposer
     column: $table.archivedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get reportPreference => $composableBuilder(
+    column: $table.reportPreference,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reportFrequencyDays => $composableBuilder(
+    column: $table.reportFrequencyDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reportOptInAt => $composableBuilder(
+    column: $table.reportOptInAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PlansTableAnnotationComposer
@@ -4725,6 +5172,21 @@ class $$PlansTableAnnotationComposer
 
   GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
     column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reportPreference => $composableBuilder(
+    column: $table.reportPreference,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reportFrequencyDays => $composableBuilder(
+    column: $table.reportFrequencyDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get reportOptInAt => $composableBuilder(
+    column: $table.reportOptInAt,
     builder: (column) => column,
   );
 
@@ -4788,6 +5250,9 @@ class $$PlansTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
+                Value<String> reportPreference = const Value.absent(),
+                Value<int?> reportFrequencyDays = const Value.absent(),
+                Value<DateTime?> reportOptInAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlansCompanion(
                 id: id,
@@ -4796,6 +5261,9 @@ class $$PlansTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 archivedAt: archivedAt,
+                reportPreference: reportPreference,
+                reportFrequencyDays: reportFrequencyDays,
+                reportOptInAt: reportOptInAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4806,6 +5274,9 @@ class $$PlansTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> archivedAt = const Value.absent(),
+                Value<String> reportPreference = const Value.absent(),
+                Value<int?> reportFrequencyDays = const Value.absent(),
+                Value<DateTime?> reportOptInAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlansCompanion.insert(
                 id: id,
@@ -4814,6 +5285,9 @@ class $$PlansTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 archivedAt: archivedAt,
+                reportPreference: reportPreference,
+                reportFrequencyDays: reportFrequencyDays,
+                reportOptInAt: reportOptInAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -5912,15 +6386,23 @@ typedef $$PlanExercisesTableProcessedTableManager =
 typedef $$SessionLogsTableCreateCompanionBuilder =
     SessionLogsCompanion Function({
       required String id,
-      required int planSessionId,
+      Value<int?> planSessionId,
       required DateTime loggedAt,
+      Value<String?> notes,
+      Value<String?> activityName,
+      Value<double?> durationSec,
+      Value<double?> distance,
       Value<int> rowid,
     });
 typedef $$SessionLogsTableUpdateCompanionBuilder =
     SessionLogsCompanion Function({
       Value<String> id,
-      Value<int> planSessionId,
+      Value<int?> planSessionId,
       Value<DateTime> loggedAt,
+      Value<String?> notes,
+      Value<String?> activityName,
+      Value<double?> durationSec,
+      Value<double?> distance,
       Value<int> rowid,
     });
 
@@ -5932,9 +6414,9 @@ final class $$SessionLogsTableReferences
       .planSessions
       .createAlias('session_logs__plan_session_id__plan_sessions__id');
 
-  $$PlanSessionsTableProcessedTableManager get planSessionId {
-    final $_column = $_itemColumn<int>('plan_session_id')!;
-
+  $$PlanSessionsTableProcessedTableManager? get planSessionId {
+    final $_column = $_itemColumn<int>('plan_session_id');
+    if ($_column == null) return null;
     final manager = $$PlanSessionsTableTableManager(
       $_db,
       $_db.planSessions,
@@ -5981,6 +6463,26 @@ class $$SessionLogsTableFilterComposer
 
   ColumnFilters<DateTime> get loggedAt => $composableBuilder(
     column: $table.loggedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get activityName => $composableBuilder(
+    column: $table.activityName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get durationSec => $composableBuilder(
+    column: $table.durationSec,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get distance => $composableBuilder(
+    column: $table.distance,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6052,6 +6554,26 @@ class $$SessionLogsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get activityName => $composableBuilder(
+    column: $table.activityName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get durationSec => $composableBuilder(
+    column: $table.durationSec,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get distance => $composableBuilder(
+    column: $table.distance,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PlanSessionsTableOrderingComposer get planSessionId {
     final $$PlanSessionsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -6090,6 +6612,22 @@ class $$SessionLogsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get loggedAt =>
       $composableBuilder(column: $table.loggedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get activityName => $composableBuilder(
+    column: $table.activityName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get durationSec => $composableBuilder(
+    column: $table.durationSec,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get distance =>
+      $composableBuilder(column: $table.distance, builder: (column) => column);
 
   $$PlanSessionsTableAnnotationComposer get planSessionId {
     final $$PlanSessionsTableAnnotationComposer composer = $composerBuilder(
@@ -6169,25 +6707,41 @@ class $$SessionLogsTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
-                Value<int> planSessionId = const Value.absent(),
+                Value<int?> planSessionId = const Value.absent(),
                 Value<DateTime> loggedAt = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<String?> activityName = const Value.absent(),
+                Value<double?> durationSec = const Value.absent(),
+                Value<double?> distance = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SessionLogsCompanion(
                 id: id,
                 planSessionId: planSessionId,
                 loggedAt: loggedAt,
+                notes: notes,
+                activityName: activityName,
+                durationSec: durationSec,
+                distance: distance,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String id,
-                required int planSessionId,
+                Value<int?> planSessionId = const Value.absent(),
                 required DateTime loggedAt,
+                Value<String?> notes = const Value.absent(),
+                Value<String?> activityName = const Value.absent(),
+                Value<double?> durationSec = const Value.absent(),
+                Value<double?> distance = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SessionLogsCompanion.insert(
                 id: id,
                 planSessionId: planSessionId,
                 loggedAt: loggedAt,
+                notes: notes,
+                activityName: activityName,
+                durationSec: durationSec,
+                distance: distance,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

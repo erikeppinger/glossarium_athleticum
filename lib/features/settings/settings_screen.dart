@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/app_database_provider.dart';
@@ -20,6 +21,13 @@ import '../onboarding/onboarding_screen.dart';
 import 'app_preferences.dart';
 import 'color_palette_screen.dart';
 import 'backup_dialogs.dart';
+import 'privacy_policy_screen.dart';
+import 'templates_screen.dart';
+
+final _appVersionProvider = FutureProvider<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return '${info.version} (${info.buildNumber})';
+});
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -52,6 +60,12 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Theme'),
             subtitle: Text(_themeModeLabel(prefs.themeMode)),
             onTap: () => _pickThemeMode(context, ref, prefs.themeMode),
+          ),
+          ListTile(
+            leading: const Icon(Icons.access_time),
+            title: const Text('Clock format'),
+            subtitle: Text(prefs.clockFormat.label),
+            onTap: () => _pickClockFormat(context, ref, prefs.clockFormat),
           ),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
@@ -114,6 +128,15 @@ class SettingsScreen extends ConsumerWidget {
                 .read(appPreferencesProvider.notifier)
                 .setShowProgressCharts(show),
           ),
+          ListTile(
+            leading: const Icon(Icons.summarize_outlined),
+            title: const Text('Default share detail'),
+            subtitle: Text(
+              '${prefs.reportDetail.label} - the Progress tab\'s share '
+              'button can still pick either, one-off, from its menu.',
+            ),
+            onTap: () => _pickReportDetail(context, ref, prefs.reportDetail),
+          ),
             ],
           ),
 
@@ -150,8 +173,15 @@ class SettingsScreen extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.schedule),
               title: const Text('Reminder time'),
-              subtitle: Text(_formatMinutes(prefs.reminderTimeMinutes)),
-              onTap: () => _pickReminderTime(context, ref, prefs.reminderTimeMinutes),
+              subtitle: Text(
+                _formatMinutes(context, prefs.reminderTimeMinutes, prefs.clockFormat),
+              ),
+              onTap: () => _pickReminderTime(
+                context,
+                ref,
+                prefs.reminderTimeMinutes,
+                prefs.clockFormat,
+              ),
             ),
             if (prefs.weeklyDigestEnabled)
               ListTile(
@@ -169,6 +199,17 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.folder_outlined,
             summary: 'Export, restore, erase',
             children: [
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Plan / library templates'),
+            subtitle: const Text(
+              'Blank spreadsheet or text templates to build a plan or '
+              'exercise library outside the app, then import it.',
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const TemplatesScreen()),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.upload_file),
             title: const Text('Export full backup'),
@@ -223,6 +264,28 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Send feedback'),
             subtitle: const Text('Report a bug or suggest something, by email.'),
             onTap: () => _sendFeedback(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Privacy Policy'),
+            subtitle: const Text(
+              'What this app does (and does not) do with your data.',
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const PrivacyPolicyScreen(),
+              ),
+            ),
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final versionAsync = ref.watch(_appVersionProvider);
+              return ListTile(
+                leading: const Icon(Icons.tag_outlined),
+                title: const Text('Version'),
+                subtitle: Text(versionAsync.valueOrNull ?? '...'),
+              );
+            },
           ),
             ],
           ),
@@ -298,6 +361,31 @@ class SettingsScreen extends ConsumerWidget {
     await ref.read(appPreferencesProvider.notifier).setSummaryPeriod(choice);
   }
 
+  Future<void> _pickReportDetail(
+    BuildContext context,
+    WidgetRef ref,
+    ReportDetail current,
+  ) async {
+    final choice = await showDialog<ReportDetail>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Default share detail'),
+        children: [
+          for (final detail in ReportDetail.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(detail),
+              child: ListTile(
+                title: Text(detail.label),
+                subtitle: Text(detail.description),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setReportDetail(choice);
+  }
+
   String _themeModeLabel(ThemeMode mode) => switch (mode) {
     ThemeMode.system => 'Match system',
     ThemeMode.light => 'Light',
@@ -326,6 +414,28 @@ class SettingsScreen extends ConsumerWidget {
     await ref.read(appPreferencesProvider.notifier).setThemeMode(choice);
   }
 
+  Future<void> _pickClockFormat(
+    BuildContext context,
+    WidgetRef ref,
+    ClockFormat current,
+  ) async {
+    final choice = await showDialog<ClockFormat>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Clock format'),
+        children: [
+          for (final format in ClockFormat.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(format),
+              child: Text(format.label),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || choice == current) return;
+    await ref.read(appPreferencesProvider.notifier).setClockFormat(choice);
+  }
+
   static const _weekdayNames = [
     'Monday',
     'Tuesday',
@@ -338,10 +448,21 @@ class SettingsScreen extends ConsumerWidget {
 
   String _weekdayName(int weekday) => _weekdayNames[weekday - 1];
 
-  String _formatMinutes(int minutes) {
-    final h = (minutes ~/ 60).toString().padLeft(2, '0');
-    final m = (minutes % 60).toString().padLeft(2, '0');
-    return '$h:$m';
+  /// [ClockFormat.system] follows the device's own 24-hour setting rather
+  /// than guessing from locale - `MediaQuery.alwaysUse24HourFormat` is
+  /// exactly the flag Flutter's own time picker uses for the same decision.
+  bool _use24Hour(BuildContext context, ClockFormat format) => switch (format) {
+    ClockFormat.h24 => true,
+    ClockFormat.h12 => false,
+    ClockFormat.system => MediaQuery.of(context).alwaysUse24HourFormat,
+  };
+
+  String _formatMinutes(BuildContext context, int minutes, ClockFormat format) {
+    return formatTimeOfDay(
+      minutes ~/ 60,
+      minutes % 60,
+      use24Hour: _use24Hour(context, format),
+    );
   }
 
   /// Turning a reminder on needs the OS permission first - if it's refused,
@@ -391,10 +512,25 @@ class SettingsScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     int current,
+    ClockFormat clockFormat,
   ) async {
+    // An explicit h24/h12 choice overrides whatever the picker would
+    // otherwise show for "system" (the device's own 24-hour setting) - so
+    // the dialog matches what the settings row itself just displayed.
+    final forced = clockFormat == ClockFormat.system
+        ? null
+        : clockFormat == ClockFormat.h24;
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+      builder: forced == null
+          ? null
+          : (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(alwaysUse24HourFormat: forced),
+              child: child!,
+            ),
     );
     if (picked == null) return;
     await ref

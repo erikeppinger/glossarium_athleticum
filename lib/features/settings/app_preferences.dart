@@ -20,6 +20,45 @@ const _hasSeenOnboardingKey = 'has_seen_onboarding';
 const _showProgressChartsKey = 'show_progress_charts';
 const _colorPaletteKey = 'color_palette';
 const _bodyTrackingKey = 'body_tracking';
+const _reportDetailKey = 'report_detail';
+const _clockFormatKey = 'clock_format';
+
+/// How times of day (currently just the reminder-time setting) are
+/// displayed and entered. [system] follows the device's own 24-hour setting
+/// (`MediaQuery.alwaysUse24HourFormat`) rather than this app's locale
+/// guess - explicit [h24]/[h12] override it, since relying on system locale
+/// alone doesn't cover someone who wants a specific format regardless of
+/// their device's region setting (24-hour is standard in much of Europe
+/// regardless of language, for instance).
+enum ClockFormat { system, h24, h12 }
+
+extension ClockFormatLabel on ClockFormat {
+  String get label => switch (this) {
+    ClockFormat.system => 'Match system',
+    ClockFormat.h24 => '24-hour',
+    ClockFormat.h12 => '12-hour (AM/PM)',
+  };
+}
+
+/// How much detail the Progress tab's "Share summary" action includes -
+/// see `progress_screen.dart`'s `_shareSummary`. [brief] is the original
+/// sessions/volume/PRs-only text; [detailed] adds the per-exercise top-set
+/// dashboard, closer to what someone would actually want to hand a trainer.
+enum ReportDetail { brief, detailed }
+
+extension ReportDetailLabel on ReportDetail {
+  String get label => switch (this) {
+    ReportDetail.brief => 'Brief',
+    ReportDetail.detailed => 'Detailed',
+  };
+
+  String get description => switch (this) {
+    ReportDetail.brief => 'Sessions, volume, and PRs for the period.',
+    ReportDetail.detailed =>
+      'Everything in Brief, plus the current top set for every exercise - '
+          'closer to what you\'d hand a trainer.',
+  };
+}
 
 /// Whether the user has opted into body-measurement tracking.
 ///
@@ -62,6 +101,12 @@ class AppPreferences {
   /// Opt-in state for body-measurement tracking. Off until asked for.
   final BodyTracking bodyTracking;
 
+  /// Default detail level for the Progress tab's shared summary text.
+  final ReportDetail reportDetail;
+
+  /// How to display/enter times of day - see [ClockFormat].
+  final ClockFormat clockFormat;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -75,6 +120,8 @@ class AppPreferences {
     this.showProgressCharts = true,
     this.colorPalette = AppColorPalette.pastel,
     this.bodyTracking = BodyTracking.notAsked,
+    this.reportDetail = ReportDetail.brief,
+    this.clockFormat = ClockFormat.system,
   });
 
   /// Whether the body-measurement UI should be visible at all.
@@ -93,6 +140,8 @@ class AppPreferences {
     bool? showProgressCharts,
     AppColorPalette? colorPalette,
     BodyTracking? bodyTracking,
+    ReportDetail? reportDetail,
+    ClockFormat? clockFormat,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -107,6 +156,8 @@ class AppPreferences {
     showProgressCharts: showProgressCharts ?? this.showProgressCharts,
     colorPalette: colorPalette ?? this.colorPalette,
     bodyTracking: bodyTracking ?? this.bodyTracking,
+    reportDetail: reportDetail ?? this.reportDetail,
+    clockFormat: clockFormat ?? this.clockFormat,
   );
 }
 
@@ -146,6 +197,14 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       bodyTracking: BodyTracking.values.firstWhere(
         (b) => b.name == prefs.getString(_bodyTrackingKey),
         orElse: () => BodyTracking.notAsked,
+      ),
+      reportDetail: ReportDetail.values.firstWhere(
+        (d) => d.name == prefs.getString(_reportDetailKey),
+        orElse: () => ReportDetail.brief,
+      ),
+      clockFormat: ClockFormat.values.firstWhere(
+        (f) => f.name == prefs.getString(_clockFormatKey),
+        orElse: () => ClockFormat.system,
       ),
     );
   }
@@ -220,6 +279,18 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(bodyTracking: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_bodyTrackingKey, value.name);
+  }
+
+  Future<void> setReportDetail(ReportDetail value) async {
+    state = state.copyWith(reportDetail: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_reportDetailKey, value.name);
+  }
+
+  Future<void> setClockFormat(ClockFormat value) async {
+    state = state.copyWith(clockFormat: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_clockFormatKey, value.name);
   }
 }
 

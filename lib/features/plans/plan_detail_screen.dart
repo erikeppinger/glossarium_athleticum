@@ -14,9 +14,11 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../export/plan_export.dart';
+import '../../security/backup_encryption.dart';
 import '../calendar/calendar_screen.dart';
 import '../execution/start_session_helper.dart';
 import '../notifications/reminder_coordinator.dart';
+import '../settings/backup_dialogs.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
 
@@ -78,6 +80,10 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                   value: _PlanExportAction.shareJson,
                   child: Text('Share as plan file (.json)'),
                 ),
+                PopupMenuItem(
+                  value: _PlanExportAction.shareJsonEncrypted,
+                  child: Text('Share as encrypted plan file (.tplan)'),
+                ),
                 PopupMenuDivider(),
                 PopupMenuItem(
                   value: _PlanExportAction.saveCsv,
@@ -86,6 +92,10 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                 PopupMenuItem(
                   value: _PlanExportAction.saveJson,
                   child: Text('Save as plan file (.json)'),
+                ),
+                PopupMenuItem(
+                  value: _PlanExportAction.saveJsonEncrypted,
+                  child: Text('Save as encrypted plan file (.tplan)'),
                 ),
               ],
             ),
@@ -111,6 +121,41 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                     ),
                   ),
                 ),
+              // A readable home for the plan's own notes (edited via the
+              // plan list's "⋮ > Notes" action) - previously the only places
+              // this text ever showed were a one-line list-row preview and
+              // the action sheet itself, never anywhere meant for actually
+              // reading it.
+              if (details.plan.notes.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.notes_outlined,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Notes',
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(details.plan.notes),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               // Only worth the space once a plan is long enough to scroll.
               if (details.sessions.length >= 8)
@@ -125,6 +170,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                         ? null
                         : IconButton(
                             icon: const Icon(Icons.clear),
+                            tooltip: 'Clear search',
                             onPressed: () {
                               _searchController.clear();
                               setState(() => _query = '');
@@ -240,28 +286,58 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         await _sharePlan(context, details, _ExportFormat.csv);
       case _PlanExportAction.shareJson:
         await _sharePlan(context, details, _ExportFormat.json);
+      case _PlanExportAction.shareJsonEncrypted:
+        await _sharePlan(context, details, _ExportFormat.jsonEncrypted);
       case _PlanExportAction.saveCsv:
         await _savePlan(context, details, _ExportFormat.csv);
       case _PlanExportAction.saveJson:
         await _savePlan(context, details, _ExportFormat.json);
+      case _PlanExportAction.saveJsonEncrypted:
+        await _savePlan(context, details, _ExportFormat.jsonEncrypted);
     }
   }
 
-  ({String contents, String fileName}) _renderPlan(
+  /// Null return means the export was cancelled - either at the file picker
+  /// (handled by callers already) or, for the encrypted format, at the
+  /// passphrase prompt.
+  Future<({String contents, String fileName})?> _renderPlan(
+    BuildContext context,
     PlanDetails details,
     _ExportFormat format,
-  ) {
+  ) async {
     final safeName = details.plan.name.replaceAll(RegExp(r'[^\w\- ]'), '_');
-    return switch (format) {
-      _ExportFormat.csv => (
-        contents: planToCsv(details),
-        fileName: '$safeName.csv',
-      ),
-      _ExportFormat.json => (
-        contents: jsonEncode(planToJson(details)),
-        fileName: '$safeName.json',
-      ),
-    };
+    switch (format) {
+      case _ExportFormat.csv:
+        return (contents: planToCsv(details), fileName: '$safeName.csv');
+      case _ExportFormat.json:
+      case _ExportFormat.jsonEncrypted:
+        // Embeds full definitions (including image bytes) for any custom
+        // exercise this plan uses - a plain export previously carried only
+        // an exercise's id/name, so its photo silently didn't travel with it.
+        final json = await planToJsonWithImages(
+          details,
+          ref.read(appDatabaseProvider),
+        );
+        final plainJson = jsonEncode(json);
+        if (format == _ExportFormat.json) {
+          return (contents: plainJson, fileName: '$safeName.json');
+        }
+
+        if (!context.mounted) return null;
+        final passphrase = await promptPassphrase(
+          context,
+          title: 'Choose a passphrase',
+          helperText:
+              "You'll need this exact passphrase to import this plan file "
+              'elsewhere.',
+        );
+        if (passphrase == null || passphrase.isEmpty) return null;
+        final envelope = await encryptBackup(plainJson, passphrase);
+        return (
+          contents: envelope,
+          fileName: '$safeName.$encryptedPlanFileExtension',
+        );
+    }
   }
 
   Future<void> _savePlan(
@@ -269,12 +345,13 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     PlanDetails details,
     _ExportFormat format,
   ) async {
-    final rendered = _renderPlan(details, format);
+    final rendered = await _renderPlan(context, details, format);
+    if (rendered == null || !context.mounted) return;
     final uri = await FilePicker.saveFile(
       fileName: rendered.fileName,
       bytes: Uint8List.fromList(utf8.encode(rendered.contents)),
       type: FileType.custom,
-      allowedExtensions: [format == _ExportFormat.csv ? 'csv' : 'json'],
+      allowedExtensions: [_extensionFor(format)],
     );
 
     if (!context.mounted) return;
@@ -282,6 +359,12 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       SnackBar(content: Text(uri == null ? 'Export cancelled.' : 'Saved.')),
     );
   }
+
+  String _extensionFor(_ExportFormat format) => switch (format) {
+    _ExportFormat.csv => 'csv',
+    _ExportFormat.json => 'json',
+    _ExportFormat.jsonEncrypted => encryptedPlanFileExtension,
+  };
 
   /// Hands the exported plan to the OS share sheet, so the user can send it
   /// via Bluetooth, WhatsApp, email, or anything else installed - rather
@@ -291,7 +374,8 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     PlanDetails details,
     _ExportFormat format,
   ) async {
-    final rendered = _renderPlan(details, format);
+    final rendered = await _renderPlan(context, details, format);
+    if (rendered == null || !context.mounted) return;
     final tempDir = await getTemporaryDirectory();
     final file = File(p.join(tempDir.path, rendered.fileName));
     await file.writeAsString(rendered.contents);
@@ -302,6 +386,13 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
   }
 }
 
-enum _ExportFormat { csv, json }
+enum _ExportFormat { csv, json, jsonEncrypted }
 
-enum _PlanExportAction { shareCsv, shareJson, saveCsv, saveJson }
+enum _PlanExportAction {
+  shareCsv,
+  shareJson,
+  shareJsonEncrypted,
+  saveCsv,
+  saveJson,
+  saveJsonEncrypted,
+}

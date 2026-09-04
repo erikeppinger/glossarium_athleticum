@@ -467,6 +467,20 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
     });
   }
 
+  /// Free-text notes on the plan itself - a scratchpad for things like "swap
+  /// exercise X for Y next block", distinct from a plan exercise's own notes
+  /// (edited per-row via `edit_session_screen.dart`). Already part of the
+  /// plan JSON export/import and shown read-only in the plan list, but
+  /// nothing let it actually be edited from within the app until now.
+  Future<void> updatePlanNotes(String planId, String notes) {
+    return transaction(() async {
+      await (update(plans)..where((p) => p.id.equals(planId))).write(
+        PlansCompanion(notes: Value(notes)),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
   /// Hides a plan from the plan list without touching any of its data.
   /// The reversible counterpart to [deletePlan] - see [unarchivePlan].
   Future<void> archivePlan(String planId) {
@@ -476,6 +490,26 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       );
       await _touchUpdatedAt(planId);
     });
+  }
+
+  /// Sets this plan's opt-in state for the periodic progress-reminder
+  /// notification - see plan_report_prompt.dart. [reportOptInAt] is stamped
+  /// to now whenever [preference] is `'enabled'` (including re-enabling
+  /// after a change of frequency), since it's the anchor point the actual
+  /// reminder schedule is computed from - see
+  /// `lib/logic/notification_schedule.dart`'s `buildPlanReportReminder`.
+  Future<void> setReportPreference({
+    required String planId,
+    required String preference,
+    int? frequencyDays,
+  }) {
+    return (update(plans)..where((p) => p.id.equals(planId))).write(
+      PlansCompanion(
+        reportPreference: Value(preference),
+        reportFrequencyDays: Value(preference == 'enabled' ? frequencyDays : null),
+        reportOptInAt: Value(preference == 'enabled' ? DateTime.now() : null),
+      ),
+    );
   }
 
   Future<void> unarchivePlan(String planId) {
@@ -552,7 +586,9 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
         final logs = await (select(
           db.sessionLogs,
         )..where((l) => l.planSessionId.isIn(sessionIds))).get();
-        loggedSessionIds.addAll(logs.map((l) => l.planSessionId));
+        // Safe to unwrap: every row here matched planSessionId.isIn(sessionIds),
+        // so none of them can be an ad-hoc activity's null.
+        loggedSessionIds.addAll(logs.map((l) => l.planSessionId!));
       }
 
       // The prescription rows are safe to drop either way - a logged set

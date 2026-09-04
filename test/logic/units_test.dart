@@ -69,4 +69,53 @@ void main() {
       }
     });
   });
+
+  group('formatDurationSec', () {
+    test('formats under an hour as minutes', () {
+      expect(formatDurationSec(1800), '30 min');
+    });
+
+    test('formats an exact hour with no minutes remainder', () {
+      expect(formatDurationSec(3600), '1 h');
+    });
+
+    test('formats over an hour with a minutes remainder', () {
+      expect(formatDurationSec(5400), '1 h 30 min');
+    });
+  });
+
+  group('formatDistanceMeters', () {
+    test('formats under a kilometre in metres', () {
+      expect(formatDistanceMeters(450), '450 m');
+    });
+
+    test('formats an exact kilometre with no decimal', () {
+      expect(formatDistanceMeters(3000), '3 km');
+    });
+
+    test('formats a partial kilometre with one decimal', () {
+      expect(formatDistanceMeters(3200), '3.2 km');
+    });
+  });
+
+  group('formatTimeOfDay', () {
+    test('24-hour pads hour and minute to two digits', () {
+      expect(formatTimeOfDay(8, 0, use24Hour: true), '08:00');
+      expect(formatTimeOfDay(23, 5, use24Hour: true), '23:05');
+    });
+
+    test('12-hour midnight and noon both show 12, not 0', () {
+      expect(formatTimeOfDay(0, 0, use24Hour: false), '12:00 AM');
+      expect(formatTimeOfDay(12, 0, use24Hour: false), '12:00 PM');
+    });
+
+    test('12-hour morning and evening hours convert and label correctly', () {
+      expect(formatTimeOfDay(8, 30, use24Hour: false), '8:30 AM');
+      expect(formatTimeOfDay(20, 15, use24Hour: false), '8:15 PM');
+    });
+
+    test('12-hour keeps minute zero-padded', () {
+      expect(formatTimeOfDay(9, 5, use24Hour: false), '9:05 AM');
+    });
+  });
 }
