@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,9 +24,16 @@ import 'exercise_library_providers.dart';
 /// it just because the names coincide; [countNameCollisions] only powers an
 /// informational heads-up here, never a merge decision.
 class ExerciseLibraryImportScreen extends ConsumerStatefulWidget {
-  final String csvContent;
+  final String? csvContent;
+  final Uint8List? xlsxBytes;
 
-  const ExerciseLibraryImportScreen({super.key, required this.csvContent});
+  /// Exactly one of [csvContent] (CSV text) or [xlsxBytes] (a decoded
+  /// .xlsx workbook) must be provided, not both.
+  const ExerciseLibraryImportScreen({super.key, this.csvContent, this.xlsxBytes})
+    : assert(
+        (csvContent == null) != (xlsxBytes == null),
+        'pass exactly one of csvContent or xlsxBytes',
+      );
 
   @override
   ConsumerState<ExerciseLibraryImportScreen> createState() =>
@@ -41,7 +50,10 @@ class _ExerciseLibraryImportScreenState
   void initState() {
     super.initState();
     try {
-      _result = parseExerciseCsv(widget.csvContent);
+      final csvContent = widget.csvContent;
+      _result = csvContent != null
+          ? parseExerciseCsv(csvContent)
+          : parseExerciseXlsx(widget.xlsxBytes!);
     } on ExerciseImportFormatException catch (e) {
       _formatError = e.message;
     }

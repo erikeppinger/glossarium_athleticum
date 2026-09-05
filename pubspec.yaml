@@ -57,6 +57,7 @@ dependencies:
   package_info_plus: ^10.2.1
   xml: ^7.0.1
   pdf: ^3.13.0
+  archive: 4.0.9
 
 dev_dependencies:
   flutter_test:

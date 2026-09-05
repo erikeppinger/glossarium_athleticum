@@ -116,7 +116,7 @@ class PlanListScreen extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.table_chart),
-              title: const Text('From spreadsheet (.csv)'),
+              title: const Text('From spreadsheet (.csv or .xlsx)'),
               subtitle: const Text('Excel/Sheets export, or the plan template'),
               onTap: () => Navigator.of(context).pop(_ImportSource.spreadsheet),
             ),
@@ -163,21 +163,26 @@ class PlanListScreen extends ConsumerWidget {
   Future<void> _importFromSpreadsheet(BuildContext context) async {
     final file = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: ['csv'],
+      allowedExtensions: ['csv', 'xlsx'],
     );
     if (file == null) return;
 
     final bytes = await file.readAsBytes();
-    final csvContent = utf8.decode(bytes);
-    final suggestedName = file.name.replaceAll(RegExp(r'\.csv$'), '');
+    final isXlsx = file.name.toLowerCase().endsWith('.xlsx');
+    final suggestedName = file.name.replaceAll(RegExp(r'\.(csv|xlsx)$'), '');
 
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => PlanImportScreen(
-          csvContent: csvContent,
-          suggestedPlanName: suggestedName,
-        ),
+        builder: (context) => isXlsx
+            ? PlanImportScreen(
+                xlsxBytes: bytes,
+                suggestedPlanName: suggestedName,
+              )
+            : PlanImportScreen(
+                csvContent: utf8.decode(bytes),
+                suggestedPlanName: suggestedName,
+              ),
       ),
     );
   }

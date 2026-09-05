@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:csv/csv.dart';
 
 import '../data/app_database.dart';
 import '../logic/exercise_name_matching.dart';
+import 'xlsx_reader.dart';
 
 /// Column names the template defines, in the order documented in
 /// templates/training_plan_template.csv - order in the actual file may
@@ -113,9 +116,34 @@ class PlanImportResult {
 /// (a required column missing entirely, or the file exceeding [maxImportRows])
 /// throw [PlanImportFormatException] since there's nothing to preview.
 PlanImportResult parsePlanCsv(String csvContent) {
-  final rawRows = Csv(lineDelimiter: '\n')
-      .decode(csvContent.replaceAll('\r\n', '\n'));
+  final rawRows = Csv(
+    lineDelimiter: '\n',
+  ).decode(csvContent.replaceAll('\r\n', '\n'));
+  return _parsePlanRows(rawRows);
+}
 
+/// Same as [parsePlanCsv], reading an .xlsx workbook instead of CSV text -
+/// see `xlsx_reader.dart` for why this app has its own minimal reader
+/// rather than a library. Tries each sheet in the workbook's own order and
+/// uses the first one whose header row has every required column, so a
+/// template's instructional/legend tab ahead of the real data sheet is
+/// skipped automatically.
+PlanImportResult parsePlanXlsx(Uint8List bytes) {
+  final sheets = readXlsxSheets(bytes);
+  for (final rows in sheets) {
+    if (rows.isEmpty) continue;
+    final header = rows.first.map((c) => c.trim()).toSet();
+    if (_requiredColumns.every(header.contains)) {
+      return _parsePlanRows(rows);
+    }
+  }
+  throw PlanImportFormatException(
+    'None of the ${sheets.length} sheet(s) in this file have the required '
+    'columns: ${_requiredColumns.join(', ')}.',
+  );
+}
+
+PlanImportResult _parsePlanRows(List<List<dynamic>> rawRows) {
   if (rawRows.isEmpty) {
     throw PlanImportFormatException('The file is empty.');
   }

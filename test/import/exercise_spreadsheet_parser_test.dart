@@ -102,18 +102,31 @@ $_header
       expect(result.errors.single.rowNumber, 2);
     });
 
-    test('reports an unrecognized Difficulty or Measurement Type as a row error', () {
+    test('reports an unrecognized Difficulty as a row error', () {
       const csv = '''
 $_header
-Bench Press,Main Lift,Push,Chest,Barbell,Expert,Kilograms,,,
+Bench Press,Main Lift,Push,Chest,Barbell,Expert,Weight x Reps,,,
 ''';
       final result = parseExerciseCsv(csv);
       expect(result.rows, isEmpty);
       expect(result.errors, hasLength(1));
-      final message = result.errors.single.message;
-      expect(message, contains('Difficulty'));
-      expect(message, contains('Measurement Type'));
+      expect(result.errors.single.message, contains('Difficulty'));
     });
+
+    test(
+      'accepts a Measurement Type outside the single-exercise picker\'s '
+      'fixed list - the seed library\'s own real data uses compound values '
+      "like 'Weight x Reps or Max Load' that picker never offers",
+      () {
+        const csv = '''
+$_header
+Atlas Stone to Platform,Odd Object Lift,Squat/Hinge,Full Body,Atlas Stones,Advanced,Max Load or Time,,,
+''';
+        final result = parseExerciseCsv(csv);
+        expect(result.hasErrors, isFalse);
+        expect(result.rows.single.measurementType, 'Max Load or Time');
+      },
+    );
 
     test('throws for a file over the row limit', () {
       final rows = List.generate(

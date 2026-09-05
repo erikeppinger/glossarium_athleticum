@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:csv/csv.dart';
 
 import '../data/app_database.dart';
 import '../features/exercise_library/create_exercise_screen.dart'
-    show difficulties, measurementTypes;
+    show difficulties;
 import '../logic/exercise_name_matching.dart';
+import 'xlsx_reader.dart';
 
 /// Column names the template defines, in the order documented in
 /// seed-data/strongman_exercise_database.csv - order in the actual file may
@@ -95,7 +98,31 @@ ExerciseImportResult parseExerciseCsv(String csvContent) {
   final rawRows = Csv(
     lineDelimiter: '\n',
   ).decode(csvContent.replaceAll('\r\n', '\n'));
+  return _parseExerciseRows(rawRows);
+}
 
+/// Same as [parseExerciseCsv], reading an .xlsx workbook instead of CSV
+/// text - see `xlsx_reader.dart` for why this app has its own minimal
+/// reader rather than a library. Tries each sheet in the workbook's own
+/// order and uses the first one whose header row has every required
+/// column, so a template's Legend tab ahead of the real data sheet is
+/// skipped automatically.
+ExerciseImportResult parseExerciseXlsx(Uint8List bytes) {
+  final sheets = readXlsxSheets(bytes);
+  for (final rows in sheets) {
+    if (rows.isEmpty) continue;
+    final header = rows.first.map((c) => c.trim()).toSet();
+    if (_requiredColumns.every(header.contains)) {
+      return _parseExerciseRows(rows);
+    }
+  }
+  throw ExerciseImportFormatException(
+    'None of the ${sheets.length} sheet(s) in this file have the required '
+    'columns: ${_requiredColumns.join(', ')}.',
+  );
+}
+
+ExerciseImportResult _parseExerciseRows(List<List<dynamic>> rawRows) {
   if (rawRows.isEmpty) {
     throw ExerciseImportFormatException('The file is empty.');
   }
@@ -151,9 +178,15 @@ ExerciseImportResult parseExerciseCsv(String csvContent) {
 
     final difficulty = cell('Difficulty');
     final measurementType = cell('Measurement Type');
+    // Difficulty really is a closed set everywhere (the seed library never
+    // uses anything but these three) - but Measurement Type isn't: the
+    // column is free text at the database level, and the seed library's
+    // own real data uses compound values like "Weight x Reps or Max Load"
+    // that create_exercise_screen.dart's single-exercise picker (a closed
+    // 5-value list, meant for one exercise at a time) never offers. Only
+    // required-non-empty (checked above) applies to it here.
     final invalidValues = <String>[
       if (!difficulties.contains(difficulty)) 'Difficulty',
-      if (!measurementTypes.contains(measurementType)) 'Measurement Type',
     ];
     if (invalidValues.isNotEmpty) {
       errors.add(

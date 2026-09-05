@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,6 +103,32 @@ Bench Press,Main Lift,Push,Chest,Barbell,Advanced,Weight x Reps,,,
         all.firstWhere((e) => e.name == 'Bench Press' && e.isCustom).difficulty,
         'Advanced',
       );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
+
+  testWidgets(
+    'importing the real seed-data .xlsx template works end to end',
+    (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      final bytes = File(
+        'seed-data/strongman_exercise_database.xlsx',
+      ).readAsBytesSync();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(db)],
+          child: MaterialApp(
+            home: ExerciseLibraryImportScreen(xlsxBytes: bytes),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Band Pull-Apart'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();

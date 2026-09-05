@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,15 +16,24 @@ import 'plan_providers.dart';
 /// drops or guesses a row: unparseable rows are listed with their reason,
 /// and unmatched exercise names must be explicitly resolved (matched to an
 /// existing library exercise, or added as a custom one) before importing.
+///
+/// Takes exactly one of [csvContent] (CSV text) or [xlsxBytes] (a decoded
+/// .xlsx workbook) - not both - so the caller only has to read the picked
+/// file, not also decide how to parse it.
 class PlanImportScreen extends ConsumerStatefulWidget {
-  final String csvContent;
+  final String? csvContent;
+  final Uint8List? xlsxBytes;
   final String suggestedPlanName;
 
   const PlanImportScreen({
     super.key,
-    required this.csvContent,
+    this.csvContent,
+    this.xlsxBytes,
     required this.suggestedPlanName,
-  });
+  }) : assert(
+         (csvContent == null) != (xlsxBytes == null),
+         'pass exactly one of csvContent or xlsxBytes',
+       );
 
   @override
   ConsumerState<PlanImportScreen> createState() => _PlanImportScreenState();
@@ -40,7 +51,10 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.suggestedPlanName);
     try {
-      _result = parsePlanCsv(widget.csvContent);
+      final csvContent = widget.csvContent;
+      _result = csvContent != null
+          ? parsePlanCsv(csvContent)
+          : parsePlanXlsx(widget.xlsxBytes!);
     } on PlanImportFormatException catch (e) {
       _formatError = e.message;
     }

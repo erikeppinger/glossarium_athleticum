@@ -324,7 +324,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.table_chart),
-              title: const Text('From spreadsheet (.csv)'),
+              title: const Text('From spreadsheet (.csv or .xlsx)'),
               subtitle: const Text('Excel/Sheets export, or the library template'),
               onTap: () =>
                   Navigator.of(context).pop(_LibraryImportSource.spreadsheet),
@@ -361,18 +361,19 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
   Future<void> _importFromSpreadsheet(BuildContext context) async {
     final file = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: ['csv'],
+      allowedExtensions: ['csv', 'xlsx'],
     );
     if (file == null || !context.mounted) return;
 
     final bytes = await file.readAsBytes();
-    final csvContent = utf8.decode(bytes);
+    final isXlsx = file.name.toLowerCase().endsWith('.xlsx');
 
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) =>
-            ExerciseLibraryImportScreen(csvContent: csvContent),
+        builder: (context) => isXlsx
+            ? ExerciseLibraryImportScreen(xlsxBytes: bytes)
+            : ExerciseLibraryImportScreen(csvContent: utf8.decode(bytes)),
       ),
     );
   }
