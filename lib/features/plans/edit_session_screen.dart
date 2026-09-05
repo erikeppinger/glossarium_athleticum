@@ -4,7 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/numeric_input_formatters.dart';
+import 'exercise_prescription_form.dart';
+import 'plan_detail_screen.dart';
+import 'plan_fork.dart';
 import 'plan_providers.dart';
 
 final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
@@ -41,11 +45,6 @@ class EditSessionScreen extends ConsumerWidget {
           if (details == null) {
             return const Center(child: Text('Session not found.'));
           }
-          if (details.exercises.isEmpty) {
-            return const Center(
-              child: Text('This session has no exercises yet.'),
-            );
-          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -54,6 +53,11 @@ class EditSessionScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 16),
+              if (details.exercises.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('This session has no exercises yet.'),
+                ),
               for (var i = 0; i < details.exercises.length; i++)
                 _ExerciseCard(
                   exercise: details.exercises[i],
@@ -61,10 +65,20 @@ class EditSessionScreen extends ConsumerWidget {
                   isLast: i == details.exercises.length - 1,
                   onEdit: () =>
                       _edit(context, ref, details.exercises[i]),
-                  onDelete: () =>
-                      _delete(context, ref, details.exercises[i]),
+                  onDelete: () => _removeExercise(
+                    context,
+                    ref,
+                    details,
+                    details.exercises[i],
+                  ),
                   onMove: (up) => _move(ref, details.exercises[i], up),
                 ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _addExercise(context, ref, details),
+                icon: const Icon(Icons.add),
+                label: const Text('Add exercise'),
+              ),
             ],
           );
         },
@@ -83,9 +97,12 @@ class EditSessionScreen extends ConsumerWidget {
     _invalidate(ref);
   }
 
-  Future<void> _delete(
+  /// Removing an exercise is a structural change, like adding one (see
+  /// [_addExercise]) - it forks a new plan rather than mutating this one.
+  Future<void> _removeExercise(
     BuildContext context,
     WidgetRef ref,
+    PlanSessionDetails details,
     PlanExercise exercise,
   ) async {
     final confirmed = await showDialog<bool>(
@@ -93,8 +110,9 @@ class EditSessionScreen extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: const Text('Remove exercise?'),
         content: Text(
-          'Remove "${exercise.exerciseName}" from this session? '
-          'Previously logged workouts are not affected.',
+          'Removing "${exercise.exerciseName}" saves this session\'s plan '
+          'under a new name, so the original plan is left exactly as it '
+          'is. Previously logged workouts are not affected either way.',
         ),
         actions: [
           TextButton(
@@ -108,11 +126,119 @@ class EditSessionScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !context.mounted) return;
+
+    final remaining = [
+      for (final e in details.exercises)
+        if (e.id != exercise.id) e.toInput(),
+    ];
+    await _forkAndNavigate(context, ref, details, remaining);
+  }
+
+  /// Adding an exercise to an already-existing session is a structural
+  /// change - rather than mutating this plan in place (the way
+  /// `PlanDao.addExerciseToSession` does for a plan still being built via
+  /// the Exercise Library's own "Add to plan" flow), it forks a new plan
+  /// with the addition, leaving the plan actually open here untouched. See
+  /// plan_fork.dart's own doc comment for the full reasoning.
+  Future<void> _addExercise(
+    BuildContext context,
+    WidgetRef ref,
+    PlanSessionDetails details,
+  ) async {
+    final exercise = await Navigator.of(context).push<Exercise>(
+      MaterialPageRoute(builder: (context) => const ExercisePickerScreen()),
+    );
+    if (exercise == null || !context.mounted) return;
+
+    final input = await showDialog<PlanExerciseInput>(
+      context: context,
+      builder: (context) => PrescribeExerciseDialog(
+        exerciseName: exercise.name,
+        exerciseId: exercise.id,
+      ),
+    );
+    if (input == null || !context.mounted) return;
+
+    final updated = [
+      for (final e in details.exercises) e.toInput(),
+      input,
+    ];
+    await _forkAndNavigate(context, ref, details, updated);
+  }
+
+  /// Shared by [_addExercise]/[_removeExercise]: asks for the forked
+  /// plan's name (pre-filled, editable), performs the fork, then navigates
+  /// to the *new* plan's detail screen - staying on this session's edit
+  /// screen would be confusing once a different plan now holds the change.
+  Future<void> _forkAndNavigate(
+    BuildContext context,
+    WidgetRef ref,
+    PlanSessionDetails details,
+    List<PlanExerciseInput> newExercises,
+  ) async {
+    // Renumber 1..N regardless of the source rows' original order values -
+    // both callers build this list in the final display order already.
+    final ordered = [
+      for (var i = 0; i < newExercises.length; i++)
+        newExercises[i].withOrder(i + 1),
+    ];
 
     final db = ref.read(appDatabaseProvider);
-    await db.planDao.deletePlanExercise(exercise.id);
-    _invalidate(ref);
+    final source = await db.planDao.getPlanDetails(planId);
+    if (source == null || !context.mounted) return;
+
+    final newName = await _promptForkName(context, source.plan.name);
+    if (newName == null || !context.mounted) return;
+
+    final newPlanId = await forkPlanWithModifiedSession(
+      db,
+      sourcePlanId: planId,
+      newPlanName: newName,
+      editedSessionId: sessionId,
+      newExercisesForEditedSession: ordered,
+    );
+
+    if (!context.mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => PlanDetailScreen(planId: newPlanId),
+      ),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Created "$newName" with your changes.')),
+    );
+  }
+
+  Future<String?> _promptForkName(BuildContext context, String planName) {
+    final controller = TextEditingController(text: '$planName (edited)');
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save as a new plan'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'New plan name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ).then((name) {
+      controller.dispose();
+      return name == null || name.isEmpty ? null : name;
+    });
   }
 
   Future<void> _edit(

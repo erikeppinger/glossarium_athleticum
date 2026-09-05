@@ -31,6 +31,39 @@ class PlanExerciseInput {
     this.notes = '',
     this.videoUrl = '',
   });
+
+  /// A copy with a different [order] - used wherever a list of these is
+  /// assembled in display order and just needs renumbering 1..N before
+  /// being saved (see plan_builder_screen.dart, edit_session_screen.dart).
+  PlanExerciseInput withOrder(int order) => PlanExerciseInput(
+    order: order,
+    exerciseId: exerciseId,
+    exerciseName: exerciseName,
+    sets: sets,
+    reps: reps,
+    weightIntensity: weightIntensity,
+    restSec: restSec,
+    notes: notes,
+    videoUrl: videoUrl,
+  );
+}
+
+/// Converts an already-saved row back into the shape [PlanDao.createPlan]
+/// needs to write it again elsewhere - used wherever an existing session's
+/// exercises are being copied verbatim (forking a plan) or rebuilt with one
+/// added/removed (see plan_fork.dart, edit_session_screen.dart).
+extension PlanExerciseToInput on PlanExercise {
+  PlanExerciseInput toInput({int? order}) => PlanExerciseInput(
+    order: order ?? this.order,
+    exerciseId: exerciseId,
+    exerciseName: exerciseName,
+    sets: sets,
+    reps: reps,
+    weightIntensity: weightIntensity,
+    restSec: restSec,
+    notes: notes,
+    videoUrl: videoUrl,
+  );
 }
 
 /// One Week+Day+Session Name group, as supplied when building a plan.
@@ -263,6 +296,72 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       );
       await _touchUpdatedAt(session.planId);
     });
+  }
+
+  /// Clones [sessionId]'s exercises into new sessions at each of
+  /// [weekNumbers] (same day and session name) - lets a block that repeats
+  /// across a program's weeks be built once and copied, instead of
+  /// re-entering every exercise by hand for each repeat week. Skips a week
+  /// number if a session with the same day + name already exists in that
+  /// plan (idempotent-feeling, matching [addSessionDate]'s own "no-op if
+  /// already there" precedent) - returns how many were actually added vs.
+  /// skipped so the caller can mention it. Deliberately does not copy
+  /// [PlanSessionDates]: a duplicated week's session starts unscheduled,
+  /// since copying calendar dates across different weeks makes no sense.
+  Future<({int added, int skipped})> duplicateSessionToWeeks({
+    required int sessionId,
+    required List<int> weekNumbers,
+  }) async {
+    final source = await getSessionDetails(sessionId);
+    if (source == null) return (added: 0, skipped: 0);
+    final session = source.session;
+
+    var added = 0;
+    var skipped = 0;
+    await transaction(() async {
+      for (final week in weekNumbers) {
+        final exists =
+            await (select(planSessions)..where(
+                  (s) =>
+                      s.planId.equals(session.planId) &
+                      s.weekNumber.equals(week) &
+                      s.day.equals(session.day) &
+                      s.sessionName.equals(session.sessionName),
+                ))
+                .getSingleOrNull();
+        if (exists != null) {
+          skipped++;
+          continue;
+        }
+        final newSessionId = await into(planSessions).insert(
+          PlanSessionsCompanion.insert(
+            planId: session.planId,
+            weekNumber: week,
+            day: session.day,
+            sessionName: session.sessionName,
+          ),
+        );
+        for (final exercise in source.exercises) {
+          await into(planExercises).insert(
+            PlanExercisesCompanion.insert(
+              sessionId: newSessionId,
+              order: exercise.order,
+              exerciseId: Value(exercise.exerciseId),
+              exerciseName: exercise.exerciseName,
+              sets: exercise.sets,
+              reps: exercise.reps,
+              weightIntensity: Value(exercise.weightIntensity),
+              restSec: Value(exercise.restSec),
+              notes: Value(exercise.notes),
+              videoUrl: Value(exercise.videoUrl),
+            ),
+          );
+        }
+        added++;
+      }
+      if (added > 0) await _touchUpdatedAt(session.planId);
+    });
+    return (added: added, skipped: skipped);
   }
 
   Future<void> _touchUpdatedAt(String planId) {

@@ -366,6 +366,74 @@ void main() {
     });
   });
 
+  group('duplicateSessionToWeeks', () {
+    test('clones the session\'s exercises into each target week', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+
+      final result = await db.planDao.duplicateSessionToWeeks(
+        sessionId: sessionId,
+        weekNumbers: [2, 3],
+      );
+      expect(result, (added: 2, skipped: 0));
+
+      final sessions = (await db.planDao.getPlanDetails('plan-1'))!.sessions;
+      expect(sessions, hasLength(3));
+      final week2 = sessions.firstWhere((s) => s.session.weekNumber == 2);
+      final week3 = sessions.firstWhere((s) => s.session.weekNumber == 3);
+      for (final s in [week2, week3]) {
+        expect(s.session.day, 'Mon');
+        expect(s.session.sessionName, 'Push Day');
+        expect(s.exercises.map((e) => e.exerciseName), [
+          'Bench Press',
+          'Overhead Press',
+        ]);
+        expect(s.dates, isEmpty, reason: 'duplicated sessions start unscheduled');
+      }
+    });
+
+    test(
+      'skips a week that already has a session with the same day and name',
+      () async {
+        await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+        final details = (await db.planDao.getPlanDetails('plan-1'))!;
+        final sessionId = details.sessions.single.session.id;
+        await db.planDao.addSession(
+          planId: 'plan-1',
+          weekNumber: 2,
+          day: 'Mon',
+          sessionName: 'Push Day',
+        );
+
+        final result = await db.planDao.duplicateSessionToWeeks(
+          sessionId: sessionId,
+          weekNumbers: [2, 3],
+        );
+        expect(result, (added: 1, skipped: 1));
+
+        final sessions = (await db.planDao.getPlanDetails('plan-1'))!.sessions;
+        // The pre-existing week-2 session, plus the original and the new
+        // week-3 one - not a second week-2 duplicate.
+        expect(sessions.where((s) => s.session.weekNumber == 2), hasLength(1));
+        expect(sessions.where((s) => s.session.weekNumber == 3), hasLength(1));
+      },
+    );
+
+    test('duplicating to zero weeks is a harmless no-op', () async {
+      await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+      final sessionId =
+          (await db.planDao.getPlanDetails('plan-1'))!.sessions.single.session.id;
+
+      final result = await db.planDao.duplicateSessionToWeeks(
+        sessionId: sessionId,
+        weekNumbers: [],
+      );
+      expect(result, (added: 0, skipped: 0));
+      expect((await db.planDao.getPlanDetails('plan-1'))!.sessions, hasLength(1));
+    });
+  });
+
   test('addSessionDate bumps the parent plan\'s updated_at', () async {
     await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
     final sessionId =

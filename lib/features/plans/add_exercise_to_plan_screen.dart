@@ -5,6 +5,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../shared/numeric_input_formatters.dart';
+import 'exercise_prescription_form.dart';
 import 'plan_providers.dart';
 
 const _newPlanSentinel = '__new_plan__';
@@ -44,21 +45,13 @@ class _AddExerciseToPlanScreenState
   final _newSessionWeekController = TextEditingController(text: '1');
   final _newSessionNameController = TextEditingController();
 
-  final _setsController = TextEditingController(text: '3');
-  final _repsController = TextEditingController(text: '8-10');
-  final _weightController = TextEditingController();
-  final _restController = TextEditingController(text: '90');
-  final _notesController = TextEditingController();
+  final _prescription = ExercisePrescriptionControllers();
 
   late final List<TextEditingController> _allControllers = [
     _newPlanNameController,
     _newSessionWeekController,
     _newSessionNameController,
-    _setsController,
-    _repsController,
-    _weightController,
-    _restController,
-    _notesController,
+    ..._prescription.all,
   ];
   late final _initialControllerTexts = _allControllers
       .map((c) => c.text)
@@ -220,68 +213,7 @@ class _AddExerciseToPlanScreenState
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _setsController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: integerInputFormatters,
-                          decoration: const InputDecoration(
-                            labelText: 'Sets',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _repsController,
-                          decoration: const InputDecoration(
-                            labelText: 'Reps',
-                            hintText: 'e.g. 8-10',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _weightController,
-                          decoration: const InputDecoration(
-                            labelText: 'Weight/Intensity',
-                            hintText: 'e.g. 60kg',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _restController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: integerInputFormatters,
-                          decoration: const InputDecoration(
-                            labelText: 'Rest (sec)',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _notesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 2,
-                  ),
+                  ExercisePrescriptionFields(controllers: _prescription),
                   const SizedBox(height: 24),
                   // Scoped to just this button, rather than a whole-screen
                   // setState() on every keystroke: _canSubmit() depends on
@@ -370,8 +302,7 @@ class _AddExerciseToPlanScreenState
             _newSessionNameController.text.trim().isEmpty)) {
       return false;
     }
-    if (int.tryParse(_setsController.text.trim()) == null) return false;
-    if (_repsController.text.trim().isEmpty) return false;
+    if (!_prescription.isValid) return false;
     return true;
   }
 
@@ -398,15 +329,10 @@ class _AddExerciseToPlanScreenState
 
     await db.planDao.addExerciseToSession(
       sessionId: sessionId,
-      input: PlanExerciseInput(
+      input: _prescription.toInput(
         order: 0, // ignored - addExerciseToSession assigns the real next order
         exerciseId: widget.exerciseId,
         exerciseName: widget.exerciseName,
-        sets: int.parse(_setsController.text.trim()),
-        reps: _repsController.text.trim(),
-        weightIntensity: _weightController.text.trim(),
-        restSec: int.tryParse(_restController.text.trim()),
-        notes: _notesController.text.trim(),
       ),
     );
 

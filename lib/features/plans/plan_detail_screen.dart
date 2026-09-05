@@ -19,6 +19,7 @@ import '../calendar/calendar_screen.dart';
 import '../execution/start_session_helper.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../settings/backup_dialogs.dart';
+import '../shared/numeric_input_formatters.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
 
@@ -273,6 +274,15 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                         alignment: MainAxisAlignment.end,
                         children: [
                           IconButton(
+                            icon: const Icon(Icons.repeat),
+                            tooltip: 'Duplicate to other weeks',
+                            onPressed: () => _duplicateToWeeks(
+                              context,
+                              ref,
+                              session.session,
+                            ),
+                          ),
+                          IconButton(
                             icon: const Icon(Icons.edit),
                             tooltip: 'Edit session',
                             onPressed: () => Navigator.of(context).push(
@@ -297,6 +307,38 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         error: (error, _) => Center(child: Text('Error: $error')),
       ),
     );
+  }
+
+  /// Clones this session's exercises into new sessions at each week in a
+  /// range - so a block that repeats across a program's weeks (e.g. the
+  /// same "Push Day" every week for 6 weeks) doesn't have to be re-entered
+  /// by hand for every repeat.
+  Future<void> _duplicateToWeeks(
+    BuildContext context,
+    WidgetRef ref,
+    PlanSession session,
+  ) async {
+    final range = await showDialog<(int, int)>(
+      context: context,
+      builder: (context) => _WeekRangeDialog(startWeek: session.weekNumber + 1),
+    );
+    if (range == null) return;
+    final (from, to) = range;
+    final weeks = [for (var w = from; w <= to; w++) w];
+
+    final db = ref.read(appDatabaseProvider);
+    final result = await db.planDao.duplicateSessionToWeeks(
+      sessionId: session.id,
+      weekNumbers: weeks,
+    );
+    if (!context.mounted) return;
+    ref.invalidate(planDetailsProvider(planId));
+
+    final message = result.skipped == 0
+        ? 'Duplicated to ${result.added} week(s).'
+        : 'Duplicated to ${result.added} week(s) - skipped ${result.skipped} '
+              'that already had this session.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _addDate(
@@ -520,6 +562,91 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
 
     await SharePlus.instance.share(
       ShareParams(files: [XFile(file.path)], text: 'Training plan: ${details.plan.name}'),
+    );
+  }
+}
+
+class _WeekRangeDialog extends StatefulWidget {
+  final int startWeek;
+
+  const _WeekRangeDialog({required this.startWeek});
+
+  @override
+  State<_WeekRangeDialog> createState() => _WeekRangeDialogState();
+}
+
+class _WeekRangeDialogState extends State<_WeekRangeDialog> {
+  late final _fromController = TextEditingController(text: '${widget.startWeek}');
+  late final _toController = TextEditingController(text: '${widget.startWeek}');
+
+  @override
+  void dispose() {
+    _fromController.dispose();
+    _toController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Duplicate to other weeks'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Copies this session\'s exercises into new sessions at each '
+            'week in this range. Duplicated sessions start unscheduled.',
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _fromController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: integerInputFormatters,
+                  decoration: const InputDecoration(
+                    labelText: 'From week',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _toController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: integerInputFormatters,
+                  decoration: const InputDecoration(
+                    labelText: 'To week',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final from = int.tryParse(_fromController.text.trim());
+            final to = int.tryParse(_toController.text.trim());
+            if (from == null || to == null || from > to) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Enter a valid week range.')),
+              );
+              return;
+            }
+            Navigator.of(context).pop((from, to));
+          },
+          child: const Text('Duplicate'),
+        ),
+      ],
     );
   }
 }

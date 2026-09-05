@@ -10,6 +10,7 @@ import '../../security/backup_encryption.dart';
 import '../settings/backup_dialogs.dart';
 import '../settings/templates_screen.dart';
 import 'plan_actions.dart';
+import 'plan_builder_screen.dart';
 import 'plan_detail_screen.dart';
 import 'plan_import_screen.dart';
 import 'plan_providers.dart';
@@ -32,7 +33,10 @@ class PlanListScreen extends ConsumerWidget {
           final archived = ref.watch(archivedPlansProvider).valueOrNull ?? [];
           if (plans.isEmpty && archived.isEmpty) {
             return const Center(
-              child: Text('No plans yet. Import one from a spreadsheet.'),
+              child: Text(
+                'No plans yet. Build one from the Exercise Library, or '
+                'import one from a spreadsheet.',
+              ),
             );
           }
           return ListView(
@@ -101,8 +105,8 @@ class PlanListScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showImportOptions(context, ref),
-        icon: const Icon(Icons.upload_file),
-        label: const Text('Import plan'),
+        icon: const Icon(Icons.add),
+        label: const Text('New plan'),
       ),
     );
   }
@@ -114,6 +118,13 @@ class PlanListScreen extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.fitness_center),
+              title: const Text('Build a new plan'),
+              subtitle: const Text('Add exercises from your library, from scratch'),
+              onTap: () => Navigator.of(context).pop(_ImportSource.build),
+            ),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.table_chart),
               title: const Text('From spreadsheet (.csv or .xlsx)'),
@@ -147,6 +158,10 @@ class PlanListScreen extends ConsumerWidget {
 
     if (!context.mounted || choice == null) return;
     switch (choice) {
+      case _ImportSource.build:
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const PlanBuilderScreen()),
+        );
       case _ImportSource.template:
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (context) => const TemplatesScreen()),
@@ -235,4 +250,4 @@ class PlanListScreen extends ConsumerWidget {
   }
 }
 
-enum _ImportSource { spreadsheet, json, encryptedJson, template }
+enum _ImportSource { build, spreadsheet, json, encryptedJson, template }
