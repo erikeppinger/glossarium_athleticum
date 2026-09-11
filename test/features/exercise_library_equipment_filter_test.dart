@@ -95,4 +95,50 @@ void main() {
       await db.close();
     },
   );
+
+  testWidgets(
+    'stays hidden even with equipment configured if the library has no '
+    'equipment data at all - a stale preference should not show a dead filter',
+    (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      await db.exerciseDao.upsertExercise(
+        ExercisesCompanion.insert(
+          id: 'EX_BODYWEIGHT',
+          name: 'Push-Up',
+          category: 'Main Lift',
+          movementPattern: 'Push',
+          muscleGroups: 'Chest',
+          equipment: '',
+          difficulty: 'Beginner',
+          measurementType: 'Weight x Reps',
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            appPreferencesProvider.overrideWith(
+              (ref) => AppPreferencesNotifier()
+                ..state = const AppPreferences(availableEquipment: {'Barbell'}),
+            ),
+          ],
+          child: const MaterialApp(home: ExerciseLibraryScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('My equipment'),
+        findsNothing,
+        reason:
+            'equipment is configured, but nothing in the library has any '
+            'equipment tagged - the filter could never match anything',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
 }

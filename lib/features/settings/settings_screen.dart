@@ -94,8 +94,10 @@ class SettingsScreen extends ConsumerWidget {
             secondary: const Icon(Icons.auto_graph),
             title: const Text('Progression suggestions'),
             subtitle: const Text(
-              'Shows a "Suggested next session" card in exercise history. '
-              'Turning this off does not affect logged data.',
+              'Shows a "Suggested next session" card in exercise history, '
+              'based on published resistance-training research (tap the '
+              'info icon on the card for details). Turning this off does '
+              'not affect logged data.',
             ),
             value: prefs.progressionSuggestionsEnabled,
             onChanged: (enabled) => ref
@@ -176,6 +178,52 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _pickReportDetail(context, ref, prefs.reportDetail),
           ),
+            ],
+          ),
+
+          _Section(
+            title: 'Focus mode',
+            icon: Icons.center_focus_strong,
+            summary: prefs.focusModeEnabled ? 'On' : 'Off',
+            children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.center_focus_strong),
+            title: const Text('Focus mode'),
+            subtitle: const Text(
+              'Hides progress reports, PRs, and streaks so you can just '
+              'train without being nudged about any of it. Nothing is '
+              'deleted - turn it off anytime to see everything again.',
+            ),
+            value: prefs.focusModeEnabled,
+            onChanged: (enabled) => ref
+                .read(appPreferencesProvider.notifier)
+                .setFocusModeEnabled(enabled),
+          ),
+          if (prefs.focusModeEnabled) ...[
+            SwitchListTile(
+              secondary: const Icon(Icons.bar_chart),
+              title: const Text('Hide progress & PRs'),
+              subtitle: const Text(
+                'Empties the Progress tab and skips the trophy icon when '
+                'you log a new best.',
+              ),
+              value: prefs.focusModeHideProgress,
+              onChanged: (hide) => ref
+                  .read(appPreferencesProvider.notifier)
+                  .setFocusModeHideProgress(hide),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.local_fire_department_outlined),
+              title: const Text('Hide streaks & weekly summary'),
+              subtitle: const Text(
+                'Empties the streak and "this week" cards on the Today tab.',
+              ),
+              value: prefs.focusModeHideStreaks,
+              onChanged: (hide) => ref
+                  .read(appPreferencesProvider.notifier)
+                  .setFocusModeHideStreaks(hide),
+            ),
+          ],
             ],
           ),
 

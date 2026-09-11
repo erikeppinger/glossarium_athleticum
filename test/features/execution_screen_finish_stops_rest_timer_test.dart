@@ -54,10 +54,11 @@ void main() {
       final details = await db.planDao.getPlanDetails('plan-1');
       final sessionId = details!.sessions.single.session.id;
 
-      // Mirrors home_screen.dart's real structure - a Navigator stacked with
-      // RestTimerOverlay as an always-mounted sibling - since the bug this
-      // guards against is specifically about the overlay outliving the
-      // session that started its timer.
+      // Mirrors main.dart's real structure - RestTimerOverlay floats above
+      // the whole MaterialApp via `builder`, always mounted regardless of
+      // whatever route is on top - since the bug this guards against is
+      // specifically about the overlay outliving the session that started
+      // its timer.
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -67,16 +68,13 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            home: Stack(
-              children: [
-                Navigator(
-                  onGenerateRoute: (settings) => MaterialPageRoute(
-                    builder: (context) =>
-                        ExecutionScreen(planSessionId: sessionId),
-                  ),
-                ),
-                const RestTimerOverlay(),
-              ],
+            builder: (context, child) =>
+                Stack(children: [?child, const RestTimerOverlay()]),
+            home: Navigator(
+              onGenerateRoute: (settings) => MaterialPageRoute(
+                builder: (context) =>
+                    ExecutionScreen(planSessionId: sessionId),
+              ),
             ),
           ),
         ),
@@ -86,11 +84,14 @@ void main() {
       await tester.tap(find.byIcon(Icons.check));
       await tester.pump();
 
-      // The rest timer started - showing in both the execution screen's own
-      // inline banner and (since it's an always-mounted sibling here, unlike
-      // execution_screen_test.dart) the RestTimerOverlay at the same time -
-      // confirming the setup actually exercises the timer before finishing.
-      expect(find.textContaining('Rest:'), findsNWidgets(2));
+      // The rest timer started - showing in the execution screen's own
+      // inline banner. RestTimerOverlay is *not* also showing it a second
+      // time even though it's always mounted here too, same as in the real
+      // app - see executionScreenVisibleProvider, which the overlay checks
+      // specifically to avoid duplicating ExecutionScreen's own banner now
+      // that it floats above every screen instead of being hidden by
+      // z-order the way it used to be.
+      expect(find.textContaining('Rest:'), findsOneWidget);
 
       await tester.tap(find.text('Finish session'));
       await tester.pumpAndSettle();

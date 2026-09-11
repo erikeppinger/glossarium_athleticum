@@ -27,6 +27,11 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
   Future<int> deleteExercise(String id) =>
       (delete(exercises)..where((e) => e.id.equals(id))).go();
 
+  Future<void> setFavorite(String exerciseId, bool isFavorite) =>
+      (update(exercises)..where((e) => e.id.equals(exerciseId))).write(
+        ExercisesCompanion(isFavorite: Value(isFavorite)),
+      );
+
   /// Custom (user-created) exercises only - what a full backup needs to
   /// round-trip; seed-library exercises are reseeded on import instead of
   /// being duplicated into every backup.
@@ -119,6 +124,48 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
       )..where((e) => e.exerciseId.equals(exerciseId))).go();
       await (delete(exercises)..where((e) => e.id.equals(exerciseId))).go();
     });
+  }
+
+  /// Bulk version of [deleteExerciseKeepingHistory], for the "manage
+  /// libraries" screen's "delete this whole group" action - one transaction
+  /// rather than one per exercise, same "children before parents" ordering.
+  /// Never touches `SessionLogs`/`LoggedSets`, same as the single-exercise
+  /// version: logged history is kept regardless of what happens to the
+  /// library entry it references.
+  Future<void> deleteExercisesKeepingHistory(List<String> exerciseIds) {
+    if (exerciseIds.isEmpty) return Future.value();
+    return transaction(() async {
+      await (delete(
+        db.planExercises,
+      )..where((e) => e.exerciseId.isIn(exerciseIds))).go();
+      await (delete(exercises)..where((e) => e.id.isIn(exerciseIds))).go();
+    });
+  }
+
+  /// Renames every exercise's `sourcePlanName` from [oldName] to [newName] -
+  /// the "manage libraries" screen's rename action for a `plan:<name>`
+  /// group. Exercises are grouped by this value purely for display/filtering
+  /// (see `getCreatorFilterOptions`) - there's no separate "library" row to
+  /// update, so relabelling the group means relabelling every exercise in it.
+  Future<void> renameSourcePlanName({
+    required String oldName,
+    required String newName,
+  }) {
+    return (update(
+      exercises,
+    )..where((e) => e.sourcePlanName.equals(oldName))).write(
+      ExercisesCompanion(sourcePlanName: Value(newName)),
+    );
+  }
+
+  /// Same as [renameSourcePlanName], for an `author:<name>` group.
+  Future<void> renameAuthor({
+    required String oldName,
+    required String newName,
+  }) {
+    return (update(exercises)..where((e) => e.author.equals(oldName))).write(
+      ExercisesCompanion(author: Value(newName)),
+    );
   }
 
   /// Every distinct `plan:<name>`/`author:<name>` creator-filter value in the

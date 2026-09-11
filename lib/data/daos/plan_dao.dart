@@ -20,6 +20,10 @@ class PlanExerciseInput {
   final String notes;
   final String videoUrl;
 
+  /// See `PlanExercises.supersetGroupId`'s own doc comment - a small
+  /// integer scoped to this session only, not a foreign key.
+  final int? supersetGroupId;
+
   const PlanExerciseInput({
     required this.order,
     required this.exerciseName,
@@ -30,6 +34,7 @@ class PlanExerciseInput {
     this.restSec,
     this.notes = '',
     this.videoUrl = '',
+    this.supersetGroupId,
   });
 
   /// A copy with a different [order] - used wherever a list of these is
@@ -45,7 +50,25 @@ class PlanExerciseInput {
     restSec: restSec,
     notes: notes,
     videoUrl: videoUrl,
+    supersetGroupId: supersetGroupId,
   );
+
+  /// A copy with a different (or cleared, via null) [supersetGroupId] -
+  /// used by the plan builder to tag several still-in-memory drafts with a
+  /// shared group before the plan is even saved.
+  PlanExerciseInput withSupersetGroupId(int? supersetGroupId) =>
+      PlanExerciseInput(
+        order: order,
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        sets: sets,
+        reps: reps,
+        weightIntensity: weightIntensity,
+        restSec: restSec,
+        notes: notes,
+        videoUrl: videoUrl,
+        supersetGroupId: supersetGroupId,
+      );
 }
 
 /// Converts an already-saved row back into the shape [PlanDao.createPlan]
@@ -63,6 +86,7 @@ extension PlanExerciseToInput on PlanExercise {
     restSec: restSec,
     notes: notes,
     videoUrl: videoUrl,
+    supersetGroupId: supersetGroupId,
   );
 }
 
@@ -223,6 +247,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
               restSec: Value(e.restSec),
               notes: Value(e.notes),
               videoUrl: Value(e.videoUrl),
+              supersetGroupId: Value(e.supersetGroupId),
             ),
           );
         }
@@ -292,6 +317,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           restSec: Value(input.restSec),
           notes: Value(input.notes),
           videoUrl: Value(input.videoUrl),
+          supersetGroupId: Value(input.supersetGroupId),
         ),
       );
       await _touchUpdatedAt(session.planId);
@@ -354,6 +380,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
               restSec: Value(exercise.restSec),
               notes: Value(exercise.notes),
               videoUrl: Value(exercise.videoUrl),
+              supersetGroupId: Value(exercise.supersetGroupId),
             ),
           );
         }
@@ -617,6 +644,66 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       await (update(planExercises)..where((e) => e.id.equals(other.id))).write(
         PlanExercisesCompanion(order: Value(row.order)),
       );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Tags every row in [planExerciseIds] with a newly-assigned, shared
+  /// `supersetGroupId` - they must all belong to the same session (throws
+  /// [ArgumentError] otherwise, since a superset only makes sense within one
+  /// session's own round-robin execution). The new id is the smallest
+  /// unused positive integer within that session, so re-grouping after an
+  /// earlier group was cleared reuses freed numbers rather than growing
+  /// forever.
+  Future<void> setSupersetGroup(List<int> planExerciseIds) {
+    return transaction(() async {
+      final rows =
+          await (select(
+            planExercises,
+          )..where((e) => e.id.isIn(planExerciseIds))).get();
+      if (rows.length != planExerciseIds.length) {
+        throw ArgumentError('One or more planExerciseIds do not exist');
+      }
+      final sessionIds = rows.map((r) => r.sessionId).toSet();
+      if (sessionIds.length > 1) {
+        throw ArgumentError(
+          'All exercises being grouped must belong to the same session',
+        );
+      }
+      final sessionId = sessionIds.single;
+
+      final siblings =
+          await (select(
+            planExercises,
+          )..where((e) => e.sessionId.equals(sessionId))).get();
+      final usedGroupIds = siblings
+          .map((e) => e.supersetGroupId)
+          .whereType<int>()
+          .toSet();
+      var newGroupId = 1;
+      while (usedGroupIds.contains(newGroupId)) {
+        newGroupId++;
+      }
+
+      for (final id in planExerciseIds) {
+        await (update(planExercises)..where((e) => e.id.equals(id))).write(
+          PlanExercisesCompanion(supersetGroupId: Value(newGroupId)),
+        );
+      }
+      final planId = await _planIdForPlanExercise(planExerciseIds.first);
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Removes one exercise from whatever superset group it's in (a no-op if
+  /// it isn't in one), leaving the rest of that group untouched.
+  Future<void> clearSupersetGroup(int planExerciseId) {
+    return transaction(() async {
+      await (update(planExercises)..where((e) => e.id.equals(planExerciseId)))
+          .write(
+            const PlanExercisesCompanion(supersetGroupId: Value(null)),
+          );
+      final planId = await _planIdForPlanExercise(planExerciseId);
       await _touchUpdatedAt(planId);
     });
   }

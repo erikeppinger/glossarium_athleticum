@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/daos/plan_dao.dart';
+import '../../logic/partial_rom_protocol.dart';
+import '../shared/info_dialog.dart';
 import '../shared/numeric_input_formatters.dart';
 
 /// The sets/reps/weight/rest/notes fields for prescribing one exercise
@@ -118,8 +120,44 @@ class ExercisePrescriptionFields extends StatelessWidget {
           ),
           maxLines: 2,
         ),
+        Row(
+          children: [
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _insertPartialRomTemplate(controllers),
+                icon: const Icon(Icons.tune, size: 18),
+                label: const Text(
+                  'Insert partial-ROM overload template',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.info_outline, size: 18),
+              tooltip: 'What is this based on?',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => showInfoDialog(
+                context,
+                title: 'What is this based on?',
+                content: partialRomProtocolNote,
+              ),
+            ),
+          ],
+        ),
       ],
     );
+  }
+
+  /// Sets weight to "110%" (resolved against the exercise's estimated 1RM
+  /// by the same percentage-prescription machinery Part 5 already built -
+  /// no new resolution logic needed) and appends the template's
+  /// instructions to notes, rather than replacing whatever's already there.
+  void _insertPartialRomTemplate(ExercisePrescriptionControllers controllers) {
+    controllers.weight.text = '110%';
+    final existingNotes = controllers.notes.text.trim();
+    controllers.notes.text = existingNotes.isEmpty
+        ? partialRomTemplateNote
+        : '$existingNotes\n\n$partialRomTemplateNote';
   }
 }
 

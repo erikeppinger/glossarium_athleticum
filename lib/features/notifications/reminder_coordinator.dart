@@ -16,14 +16,19 @@ final notificationServiceProvider = Provider<NotificationService>(
 /// changing the reminder time, assigning/moving a session's date, or changing
 /// a plan's report opt-in (see plan_report_prompt.dart).
 ///
-/// Always cancels everything first rather than diffing - the set of pending
-/// reminders is small (one per dated session), and a full rebuild can't leave
-/// a stale reminder behind for a session that was deleted or rescheduled.
+/// Always cancels every *pending* reminder first rather than diffing - the
+/// set is small (one per dated session), and a full rebuild can't leave a
+/// stale reminder behind for a session that was deleted or rescheduled.
+/// Deliberately scoped to pending (scheduled-but-not-fired) reminders only,
+/// not a blanket `cancelAll()` - this runs on every app launch
+/// (`home_screen.dart`'s own `initState`), which used to silently wipe out
+/// an already-showing ongoing notification (e.g. "session in progress",
+/// re-posted moments earlier during startup) every single time.
 Future<void> resyncReminders(WidgetRef ref) async {
   final service = ref.read(notificationServiceProvider);
   final prefs = ref.read(appPreferencesProvider);
 
-  await service.cancelAll();
+  await service.cancelAllScheduledReminders();
 
   final db = ref.read(appDatabaseProvider);
   final now = DateTime.now();

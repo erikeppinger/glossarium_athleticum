@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/local_storage.dart';
+import '../../logic/exercise_images.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import '../history/history_screen.dart';
@@ -46,35 +47,33 @@ class ExerciseDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // Seed-library entries are reseeded on every launch, so editing or
-          // deleting one would silently be undone - only custom exercises
-          // are genuinely mutable.
-          if (exercise.isCustom) ...[
-            IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              tooltip: 'Edit exercise',
-              onPressed: () => _edit(context),
-            ),
+          // Seed-library entries are reseeded on every launch, so deleting
+          // one would silently be undone - only custom exercises can be
+          // deleted. Editing is open to everyone, though: create_exercise_
+          // screen.dart forks a built-in exercise into a new custom one
+          // rather than trying to mutate the original in place.
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: exercise.isCustom
+                ? 'Edit exercise'
+                : 'Edit (saves as a new custom exercise)',
+            onPressed: () => _edit(context),
+          ),
+          if (exercise.isCustom)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete exercise',
               onPressed: () => _delete(context, ref),
             ),
-          ],
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (exercise.imagePath != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: AttachmentImage(
-                fileName: exercise.imagePath!,
-                width: double.infinity,
-                height: 200,
-                semanticLabel: 'Photo of ${exercise.name}',
-              ),
+          if (parseImagePaths(exercise.imagePaths).isNotEmpty) ...[
+            _ImageGallery(
+              fileNames: parseImagePaths(exercise.imagePaths),
+              exerciseName: exercise.name,
             ),
             const SizedBox(height: 16),
           ],
@@ -216,9 +215,9 @@ class ExerciseDetailScreen extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
-    // Nothing else references the image once the row is gone.
-    if (exercise.imagePath != null) {
-      await deleteAttachment(exercise.imagePath!);
+    // Nothing else references these images once the row is gone.
+    for (final path in parseImagePaths(exercise.imagePaths)) {
+      await deleteAttachment(path);
     }
     await db.exerciseDao.deleteExerciseKeepingHistory(exercise.id);
     ref.invalidate(filteredExercisesProvider);
@@ -239,5 +238,89 @@ class ExerciseDetailScreen extends ConsumerWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text("Couldn't open this link.")));
     }
+  }
+}
+
+/// A swipeable gallery for an exercise's photos - a single image just shows
+/// itself with no chrome (matching the pre-multi-photo look exactly), so
+/// this only grows more complex once there's actually more than one to page
+/// between.
+class _ImageGallery extends StatefulWidget {
+  final List<String> fileNames;
+  final String exerciseName;
+
+  const _ImageGallery({required this.fileNames, required this.exerciseName});
+
+  @override
+  State<_ImageGallery> createState() => _ImageGalleryState();
+}
+
+class _ImageGalleryState extends State<_ImageGallery> {
+  final _controller = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.fileNames.length == 1) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: AttachmentImage(
+          fileName: widget.fileNames.first,
+          width: double.infinity,
+          height: 200,
+          semanticLabel: 'Photo of ${widget.exerciseName}',
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            height: 200,
+            child: PageView(
+              controller: _controller,
+              onPageChanged: (i) => setState(() => _page = i),
+              children: [
+                for (var i = 0; i < widget.fileNames.length; i++)
+                  AttachmentImage(
+                    fileName: widget.fileNames[i],
+                    width: double.infinity,
+                    height: 200,
+                    semanticLabel:
+                        'Photo ${i + 1} of ${widget.fileNames.length} of '
+                        '${widget.exerciseName}',
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < widget.fileNames.length; i++)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i == _page
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 }

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/local_storage.dart';
+import '../../logic/exercise_images.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import '../shared/attachment_image.dart';
@@ -46,18 +47,33 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   Exercise? get _existing => widget.existing;
   bool get _isEditing => _existing != null;
 
+  /// Editing a seed-library exercise can't mutate it in place - it's
+  /// reseeded on every launch, so the edit would silently be undone (see
+  /// exercise_detail_screen.dart's own note on this). Instead it saves as a
+  /// brand-new custom exercise, leaving the original untouched - the
+  /// "moniker: Custom or edited" the user asked for directly, made visible
+  /// by pre-filling the name with "(edited)" below rather than a new hidden
+  /// data field. Editing an *already*-custom exercise is unaffected -
+  /// still a true in-place update, same id.
+  bool get _willFork => _isEditing && !_existing!.isCustom;
+
   late String? _category = _existing?.category;
   late String? _difficulty = _existing?.difficulty;
   late String? _measurementType = _existing?.measurementType;
-  late String? _imagePath = _existing?.imagePath;
+  // A fork never starts pre-loaded with the original's photos - sharing the
+  // same attachment filenames would let removing/replacing one here delete
+  // a file the original exercise still points to (see _save's own note).
+  late List<String> _imagePaths = _willFork
+      ? []
+      : parseImagePaths(_existing?.imagePaths);
 
   late final String? _initialCategory = _existing?.category;
   late final String? _initialDifficulty = _existing?.difficulty;
   late final String? _initialMeasurementType = _existing?.measurementType;
-  late final String? _initialImagePath = _existing?.imagePath;
+  late final List<String> _initialImagePaths = List.of(_imagePaths);
 
   late final _nameController = TextEditingController(
-    text: _existing?.name ?? '',
+    text: _willFork ? '${_existing!.name} (edited)' : (_existing?.name ?? ''),
   );
   late final _movementPatternController = TextEditingController(
     text: _existing?.movementPattern ?? '',
@@ -99,7 +115,12 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
     if (_category != _initialCategory) return true;
     if (_difficulty != _initialDifficulty) return true;
     if (_measurementType != _initialMeasurementType) return true;
-    if (_imagePath != _initialImagePath) return true;
+    if (_imagePaths.length != _initialImagePaths.length ||
+        !_imagePaths.every(
+          (p) => _initialImagePaths.contains(p),
+        )) {
+      return true;
+    }
     for (var i = 0; i < _controllers.length; i++) {
       if (_controllers[i].text != _initialControllerTexts[i]) return true;
     }
@@ -140,6 +161,8 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
             title: Text(
               _previewing
                   ? 'Preview'
+                  : _willFork
+                  ? 'Edit exercise (saves as a copy)'
                   : _isEditing
                   ? 'Edit exercise'
                   : 'Create exercise',
@@ -188,10 +211,25 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _ImagePickerField(
-          fileName: _imagePath,
-          onPicked: (name) => setState(() => _imagePath = name),
-          onCleared: () => setState(() => _imagePath = null),
+        if (_willFork) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'This is a built-in library exercise, so your changes save as '
+              'a new custom exercise - "${_existing!.name}" itself is left '
+              'untouched.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        _ImageGalleryField(
+          fileNames: _imagePaths,
+          onChanged: (names) => setState(() => _imagePaths = names),
         ),
         const SizedBox(height: 16),
         TextField(
@@ -522,16 +560,25 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final db = ref.read(appDatabaseProvider);
-    // Editing reuses the existing id so plans and logged sets keep pointing
-    // at the same row; only creating mints a new one.
-    final id = _existing?.id ?? const Uuid().v4();
+    // True in-place edits reuse the existing id so plans and logged sets
+    // keep pointing at the same row; creating - and forking a built-in
+    // exercise, which is really a creation under the hood - both mint a
+    // fresh one.
+    final id = (_isEditing && !_willFork) ? _existing!.id : const Uuid().v4();
     final name = _nameController.text.trim();
 
     // An image that was swapped out or removed leaves an orphan file behind
-    // otherwise - nothing else references it, so clean it up now.
-    final previousImage = _existing?.imagePath;
-    if (previousImage != null && previousImage != _imagePath) {
-      await deleteAttachment(previousImage);
+    // otherwise - nothing else references it, so clean it up now. Only for a
+    // true in-place edit: a fork never started with the original's images
+    // (see _imagePaths' own doc comment), so there's nothing of the
+    // original's to ever delete here.
+    if (_isEditing && !_willFork) {
+      final removed = parseImagePaths(
+        _existing!.imagePaths,
+      ).where((p) => !_imagePaths.contains(p));
+      for (final path in removed) {
+        await deleteAttachment(path);
+      }
     }
 
     await db.exerciseDao.upsertExercise(
@@ -553,10 +600,17 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
               ? null
               : _authorController.text.trim(),
         ),
-        imagePath: Value(_imagePath),
-        // Preserve provenance on edit - re-saving an imported exercise
-        // shouldn't make it look like it was created from scratch.
-        sourcePlanName: Value(_existing?.sourcePlanName),
+        // Kept in sync alongside imagePaths purely as a defensive fallback
+        // for any code that still reads the deprecated single field - see
+        // its own doc comment on exercises_table.dart.
+        imagePath: Value(_imagePaths.isEmpty ? null : _imagePaths.first),
+        imagePaths: Value(joinImagePaths(_imagePaths)),
+        // Preserve provenance on a true in-place edit - re-saving an
+        // imported exercise shouldn't make it look like it was created from
+        // scratch. A fork is a new exercise in its own right, so it starts
+        // with no inherited provenance instead of misattributing itself to
+        // whatever created the original.
+        sourcePlanName: Value(_willFork ? null : _existing?.sourcePlanName),
       ),
     );
     // One-shot FutureProviders - won't notice this write on their own.
@@ -639,31 +693,27 @@ class _PickerField extends StatelessWidget {
   }
 }
 
-/// Picks an image for an exercise from the device.
+/// Picks up to [maxExerciseImages] images for an exercise from the device,
+/// shown as a horizontal strip of thumbnails plus an "add" tile.
 ///
 /// User-supplied rather than bundled stock imagery, deliberately: shipping
 /// scraped exercise photos would be a licensing problem for anyone publishing
 /// the app, and a photo of your own bar setup or a coach's whiteboard cue is
 /// more useful than a generic render anyway.
-class _ImagePickerField extends StatefulWidget {
-  final String? fileName;
-  final ValueChanged<String> onPicked;
-  final VoidCallback onCleared;
+class _ImageGalleryField extends StatefulWidget {
+  final List<String> fileNames;
+  final ValueChanged<List<String>> onChanged;
 
-  const _ImagePickerField({
-    required this.fileName,
-    required this.onPicked,
-    required this.onCleared,
-  });
+  const _ImageGalleryField({required this.fileNames, required this.onChanged});
 
   @override
-  State<_ImagePickerField> createState() => _ImagePickerFieldState();
+  State<_ImageGalleryField> createState() => _ImageGalleryFieldState();
 }
 
-class _ImagePickerFieldState extends State<_ImagePickerField> {
+class _ImageGalleryFieldState extends State<_ImageGalleryField> {
   bool _picking = false;
 
-  Future<void> _pick() async {
+  Future<void> _addPhoto() async {
     setState(() => _picking = true);
     try {
       final file = await FilePicker.pickFile(type: FileType.image);
@@ -672,26 +722,40 @@ class _ImagePickerFieldState extends State<_ImagePickerField> {
       // Copied into the app's own attachments directory so the image
       // survives the source being moved or deleted, and so "delete all data"
       // can reliably wipe it.
-      widget.onPicked(await saveAttachment(path));
+      final name = await saveAttachment(path);
+      widget.onChanged([...widget.fileNames, name]);
     } finally {
       if (mounted) setState(() => _picking = false);
     }
+  }
+
+  void _replace(int index) async {
+    setState(() => _picking = true);
+    try {
+      final file = await FilePicker.pickFile(type: FileType.image);
+      final path = file?.path;
+      if (path == null) return;
+      final name = await saveAttachment(path);
+      final updated = List.of(widget.fileNames);
+      updated[index] = name;
+      widget.onChanged(updated);
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  void _remove(int index) {
+    final updated = List.of(widget.fileNames)..removeAt(index);
+    widget.onChanged(updated);
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    if (_picking) {
-      return const SizedBox(
-        height: 160,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (widget.fileName == null) {
+    if (widget.fileNames.isEmpty && !_picking) {
       return InkWell(
-        onTap: _pick,
+        onTap: _addPhoto,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           height: 120,
@@ -704,9 +768,9 @@ class _ImagePickerFieldState extends State<_ImagePickerField> {
             children: [
               Icon(Icons.add_photo_alternate_outlined, color: scheme.primary),
               const SizedBox(height: 6),
-              Text('Add a photo', style: Theme.of(context).textTheme.bodyMedium),
+              Text('Add photos', style: Theme.of(context).textTheme.bodyMedium),
               Text(
-                'Optional - your own image of the setup or cue',
+                'Optional - up to $maxExerciseImages of your own',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -715,37 +779,72 @@ class _ImagePickerFieldState extends State<_ImagePickerField> {
       );
     }
 
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: AttachmentImage(
-            fileName: widget.fileName!,
-            height: 180,
-            width: double.infinity,
-            semanticLabel: 'Your selected photo',
-          ),
-        ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: Row(
-            children: [
-              _OverlayButton(
-                icon: Icons.edit,
-                tooltip: 'Change photo',
-                onPressed: _pick,
+    return SizedBox(
+      height: 140,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (var i = 0; i < widget.fileNames.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: 140,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: AttachmentImage(
+                        fileName: widget.fileNames[i],
+                        height: 140,
+                        width: 140,
+                        semanticLabel: 'Photo ${i + 1} of ${widget.fileNames.length}',
+                      ),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Row(
+                        children: [
+                          _OverlayButton(
+                            icon: Icons.edit,
+                            tooltip: 'Change this photo',
+                            onPressed: () => _replace(i),
+                          ),
+                          const SizedBox(width: 6),
+                          _OverlayButton(
+                            icon: Icons.close,
+                            tooltip: 'Remove this photo',
+                            onPressed: () => _remove(i),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 6),
-              _OverlayButton(
-                icon: Icons.close,
-                tooltip: 'Remove photo',
-                onPressed: widget.onCleared,
+            ),
+          if (_picking)
+            const SizedBox(
+              width: 140,
+              height: 140,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (widget.fileNames.length < maxExerciseImages)
+            InkWell(
+              onTap: _addPhoto,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(
+                  border: Border.all(color: scheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.add_photo_alternate_outlined, color: scheme.primary),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+        ],
+      ),
     );
   }
 }

@@ -195,9 +195,10 @@ const _pages = [
     icon: Icons.lock_outline,
     title: 'Your data stays yours',
     body:
-        'Everything is stored on this device. Export an encrypted backup, or '
-        'share a single plan with someone, whenever you choose to - nothing '
-        'leaves your phone on its own.',
+        'Everything is stored on this device. No account or sign-in, no '
+        'telemetry or analytics, and no server this app talks to - your '
+        'training data never leaves your phone unless you export a backup '
+        'or share a plan yourself.',
   ),
 ];
 

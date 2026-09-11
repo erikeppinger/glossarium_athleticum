@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Value;
@@ -8,7 +9,9 @@ import 'package:uuid/uuid.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../data/local_storage.dart';
 import '../../import/plan_spreadsheet_parser.dart';
+import '../../logic/exercise_images.dart';
 import '../exercise_library/exercise_library_providers.dart';
 import 'plan_providers.dart';
 
@@ -25,11 +28,27 @@ class PlanImportScreen extends ConsumerStatefulWidget {
   final Uint8List? xlsxBytes;
   final String suggestedPlanName;
 
+  /// Image bytes keyed by filename, from a "plan with pictures" zip bundle
+  /// (see `plan_zip_bundle.dart`) - null for a plain .csv/.xlsx import. A
+  /// row's optional "Picture" column value is looked up here (case-
+  /// insensitively) when a new custom exercise is created for it; a picture
+  /// referencing a name not present here (typo, or a plain spreadsheet
+  /// import that never had any images to begin with) is silently skipped -
+  /// missing artwork isn't a reason to block importing the plan itself.
+  final Map<String, Uint8List>? imagesByFileName;
+
+  /// Injectable for testing, same as every attachments-touching function in
+  /// `local_storage.dart` - real callers omit it and get the actual
+  /// platform attachments directory.
+  final Directory? attachmentsDirectory;
+
   const PlanImportScreen({
     super.key,
     this.csvContent,
     this.xlsxBytes,
     required this.suggestedPlanName,
+    this.imagesByFileName,
+    this.attachmentsDirectory,
   }) : assert(
          (csvContent == null) != (xlsxBytes == null),
          'pass exactly one of csvContent or xlsxBytes',
@@ -339,6 +358,7 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
         sourcePlanName: Value(_nameController.text.trim()),
       ),
     );
+    await _attachPictureIfAny(id, row.picture);
     ref.invalidate(allExercisesForMatchingProvider);
     // Exercise Library's providers are separate one-shot Futures that don't
     // notice a custom exercise created from this screen on their own.
@@ -346,6 +366,61 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
     ref.invalidate(exerciseCategoriesProvider);
     ref.invalidate(creatorFilterOptionsProvider);
     _resolveAllWithName(row.exerciseName, id);
+  }
+
+  /// Copies a row's "Picture" column value out of the zip bundle's image
+  /// map (see `PlanImportScreen.imagesByFileName`) and attaches it to the
+  /// exercise just created for that row - a no-op whenever there's no
+  /// bundle, no picture named for this row, or that name isn't actually in
+  /// the bundle (a typo in the spreadsheet, most likely). Only ever called
+  /// right after creating a brand-new custom exercise, never against an
+  /// existing library match - attaching to a *seed* exercise would silently
+  /// vanish on the next reseed, the exact landmine `create_exercise_screen.
+  /// dart`'s fork-on-edit was built to avoid, and attaching to an existing
+  /// *custom* match would mean mutating a row this screen didn't create,
+  /// which is a bigger decision than a plan import should make on its own.
+  ///
+  /// Not covered by a driven testWidgets flow (tap "Add as custom", assert
+  /// the result) - two independent attempts each hung for the full 10-minute
+  /// test timeout with nothing more informative than a bare
+  /// `_RawReceivePort._handleMessage` frame, the same "unreliably testable"
+  /// shape already documented for `add_exercise_to_plan_screen.dart`'s
+  /// picker-driven flow. Covered instead at the level below this: `readPlanZipBundle`
+  /// (plan_zip_bundle_test.dart) and the "Picture" column parsing
+  /// (plan_spreadsheet_parser_test.dart) are both tested directly; this
+  /// method is the thin, reviewed-by-eye glue between them.
+  Future<void> _attachPictureIfAny(String exerciseId, String picture) async {
+    if (picture.isEmpty) return;
+    final images = widget.imagesByFileName;
+    if (images == null) return;
+    var bytes = images[picture];
+    if (bytes == null) {
+      // Fall back to a case-insensitive match - a spreadsheet's "Picture"
+      // cell and the zip's actual filename don't always agree on case.
+      for (final entry in images.entries) {
+        if (entry.key.toLowerCase() == picture.toLowerCase()) {
+          bytes = entry.value;
+          break;
+        }
+      }
+    }
+    if (bytes == null) return;
+
+    final dot = picture.lastIndexOf('.');
+    final extension = dot == -1 ? '' : picture.substring(dot);
+    final savedName = await saveAttachmentFromBytes(
+      bytes,
+      extension: extension,
+      directory: widget.attachmentsDirectory,
+    );
+    final db = ref.read(appDatabaseProvider);
+    await db.exerciseDao.upsertExercise(
+      ExercisesCompanion(
+        id: Value(exerciseId),
+        imagePath: Value(savedName),
+        imagePaths: Value(joinImagePaths([savedName])),
+      ),
+    );
   }
 
   /// Same as [_createCustom], but for every still-unmatched name in one
@@ -373,6 +448,7 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
           sourcePlanName: Value(planName),
         ),
       );
+      await _attachPictureIfAny(id, row.picture);
       idsByName[row.exerciseName.toLowerCase()] = id;
     }
 

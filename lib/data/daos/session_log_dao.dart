@@ -44,11 +44,19 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     String? notes,
   }) {
     return transaction(() async {
+      // Also clears any autosaved draft for this plan session (see
+      // saveDraft/deleteDraft) - a real, finished log now exists, so a
+      // stale draft would otherwise sit around as dead data forever (it's
+      // already invisible to every read query, but there's no reason to
+      // keep it). Uses the non-transactional helper, not the public
+      // deleteDraft, since drift's transaction() isn't reentrant.
+      await _deleteDraftRows(planSessionId);
       await into(sessionLogs).insert(
         SessionLogsCompanion.insert(
           id: id,
           planSessionId: Value(planSessionId),
           loggedAt: loggedAt,
+          finishedAt: Value(loggedAt),
           notes: Value(notes),
         ),
       );
@@ -89,6 +97,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         id: id,
         planSessionId: const Value(null),
         loggedAt: loggedAt,
+        finishedAt: Value(loggedAt),
         activityName: Value(activityName),
         durationSec: Value(durationSec),
         distance: Value(distance),
@@ -98,15 +107,128 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return id;
   }
 
+  /// Autosaves whatever's been checked off so far in an in-progress
+  /// execution-mode session, as a **draft** (`finishedAt: null`) - called
+  /// from `execution_screen.dart`'s app-lifecycle observer when the app is
+  /// backgrounded, so a real Android process kill (common - see the report
+  /// this was built for) doesn't silently erase an unfinished workout the
+  /// way it used to, when nothing was written to the database at all until
+  /// "Finish session". Replaces (delete + reinsert) any prior draft for the
+  /// same [planSessionId] wholesale rather than diffing - a session is only
+  /// ever actively open in one execution screen at a time, so there's never
+  /// more than one draft per plan session to reconcile.
+  Future<void> saveDraft({
+    required int planSessionId,
+    required DateTime loggedAt,
+    required List<LoggedSetInput> entries,
+  }) {
+    return transaction(() async {
+      await _deleteDraftRows(planSessionId);
+      if (entries.isEmpty) return;
+      final draftId = 'draft-$planSessionId';
+      await into(sessionLogs).insert(
+        SessionLogsCompanion.insert(
+          id: draftId,
+          planSessionId: Value(planSessionId),
+          loggedAt: loggedAt,
+        ),
+      );
+      for (final e in entries) {
+        await into(loggedSets).insert(
+          LoggedSetsCompanion.insert(
+            sessionLogId: draftId,
+            exerciseId: e.exerciseId,
+            setNumber: e.setNumber,
+            reps: Value(e.reps),
+            weight: Value(e.weight),
+            durationSec: Value(e.durationSec),
+            distance: Value(e.distance),
+            rpe: Value(e.rpe),
+            isPr: Value(e.isPr),
+          ),
+        );
+      }
+    });
+  }
+
+  /// Deletes any autosaved draft for [planSessionId] - called once a real
+  /// finished log takes its place ([createSessionLog]) or the session is
+  /// explicitly discarded (`execution_screen.dart`'s "Discard" choice).
+  Future<void> deleteDraft(int planSessionId) {
+    return transaction(() => _deleteDraftRows(planSessionId));
+  }
+
+  Future<void> _deleteDraftRows(int planSessionId) async {
+    final draftIds = await (select(sessionLogs)..where(
+          (l) =>
+              l.planSessionId.equals(planSessionId) & l.finishedAt.isNull(),
+        ))
+        .map((l) => l.id)
+        .get();
+    if (draftIds.isEmpty) return;
+    await (delete(loggedSets)..where((s) => s.sessionLogId.isIn(draftIds))).go();
+    await (delete(sessionLogs)..where((l) => l.id.isIn(draftIds))).go();
+  }
+
+  /// Reads back an autosaved draft's logged sets (see [saveDraft]) so
+  /// `execution_screen.dart` can restore a session's checked-off sets after
+  /// a cold start following a process kill, where the in-memory
+  /// `_InProgressSession` provider is gone along with everything else.
+  /// Empty if there's no draft for this plan session.
+  Future<List<LoggedSet>> getDraftSets(int planSessionId) async {
+    final draft = await (select(sessionLogs)..where(
+          (l) =>
+              l.planSessionId.equals(planSessionId) & l.finishedAt.isNull(),
+        ))
+        .getSingleOrNull();
+    if (draft == null) return [];
+    return getLoggedSetsForSessionLog(draft.id);
+  }
+
+  /// The plan session id of the most recently autosaved draft still sitting
+  /// around (`finishedAt` null), if any - read once at app startup
+  /// (`main.dart`'s `_startupProvider`) to restore
+  /// `activeInProgressSessionIdProvider` after a genuine process kill.
+  /// Without this, the "session in progress" resume banner only ever came
+  /// back once the session's own `ExecutionScreen` happened to be reopened
+  /// (e.g. by tapping a still-live rest-timer notification) - a cold start
+  /// from the launcher, with no notification involved, showed no sign a
+  /// session was ever in progress at all, even though its draft (and thus
+  /// its checked-off sets) were safe in the database the whole time.
+  /// `saveDraft`'s own doc comment notes only one draft is expected to exist
+  /// at a time in normal use - `orderBy` just makes the choice deterministic
+  /// if more than one somehow lingers.
+  Future<int?> getActiveDraftPlanSessionId() async {
+    final draft =
+        await (select(sessionLogs)
+              ..where(
+                (l) => l.finishedAt.isNull() & l.planSessionId.isNotNull(),
+              )
+              ..orderBy([(l) => OrderingTerm.desc(l.loggedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    return draft?.planSessionId;
+  }
+
   /// Every weight ever logged for this exercise, for PR checks - the caller
-  /// feeds this to [isPersonalRecord] alongside the new set's weight.
+  /// feeds this to [isPersonalRecord] alongside the new set's weight. Joins
+  /// sessionLogs (unlike most single-table lookups) purely to exclude an
+  /// autosaved draft's sets - a set only checked off in a session that was
+  /// never actually finished shouldn't count toward a real PR.
   Future<List<double>> getPriorWeights(String exerciseId) async {
-    final query = select(loggedSets)
+    final query = select(loggedSets).join([
+      innerJoin(
+        sessionLogs,
+        sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+      ),
+    ])
       ..where(
-        (s) => s.exerciseId.equals(exerciseId) & s.weight.isNotNull(),
+        loggedSets.exerciseId.equals(exerciseId) &
+            loggedSets.weight.isNotNull() &
+            sessionLogs.finishedAt.isNotNull(),
       );
     final rows = await query.get();
-    return rows.map((r) => r.weight!).toList();
+    return rows.map((r) => r.readTable(loggedSets).weight!).toList();
   }
 
   /// Every set logged for this exercise in the single most recent session
@@ -121,7 +243,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         sessionLogs.id.equalsExp(loggedSets.sessionLogId),
       ),
     ])
-      ..where(loggedSets.exerciseId.equals(exerciseId))
+      ..where(
+        loggedSets.exerciseId.equals(exerciseId) &
+            sessionLogs.finishedAt.isNotNull(),
+      )
       ..orderBy([OrderingTerm.desc(sessionLogs.loggedAt)]);
     final rows = await query.get();
     if (rows.isEmpty) return [];
@@ -137,9 +262,19 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// One entry per session that logged this exercise, reduced to that
-  /// session's top set (highest weight) - the shape [suggestNextSet] wants.
-  /// Only weight-based sets are considered; Time/Distance-measured exercises
-  /// aren't covered by progression suggestions yet.
+  /// session's top (heaviest) working weight - the shape [suggestNextSet]
+  /// wants. Only weight-based sets are considered; Time/Distance-measured
+  /// exercises aren't covered by progression suggestions yet.
+  ///
+  /// When a session has multiple sets at that same top weight (the normal
+  /// case - e.g. 3 sets of 8 at 60kg), [ProgressionHistoryEntry.reps] is the
+  /// *fewest* reps among them, not an arbitrary one. The suggestion logic's
+  /// "did you actually beat your target" question should be answered by the
+  /// hardest set at that weight, not the easiest - taking the best of the
+  /// three would let one lucky set on an otherwise-failed day look like a
+  /// clean success. [ProgressionHistoryEntry.rpe] is the *highest* RPE among
+  /// those same sets for the same reason (the most-fatigued set is the more
+  /// honest signal), when any of them recorded one.
   Future<List<ProgressionHistoryEntry>> getProgressionHistory(
     String exerciseId,
   ) async {
@@ -152,7 +287,8 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       ..where(
         loggedSets.exerciseId.equals(exerciseId) &
             loggedSets.weight.isNotNull() &
-            loggedSets.reps.isNotNull(),
+            loggedSets.reps.isNotNull() &
+            sessionLogs.finishedAt.isNotNull(),
       );
     final rows = await query.get();
 
@@ -163,15 +299,27 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     }
 
     return bySession.values.map((setsInSession) {
-      final topSet = setsInSession.reduce((a, b) {
-        final aWeight = a.readTable(loggedSets).weight!;
-        final bWeight = b.readTable(loggedSets).weight!;
-        return aWeight >= bWeight ? a : b;
-      });
+      final topWeight = setsInSession
+          .map((r) => r.readTable(loggedSets).weight!)
+          .reduce((a, b) => a > b ? a : b);
+      final atTopWeight = setsInSession
+          .where((r) => r.readTable(loggedSets).weight! == topWeight)
+          .toList();
+      final hardestReps = atTopWeight
+          .map((r) => r.readTable(loggedSets).reps!)
+          .reduce((a, b) => a < b ? a : b);
+      final recordedRpes = atTopWeight
+          .map((r) => r.readTable(loggedSets).rpe)
+          .whereType<double>()
+          .toList();
+      final highestRpe = recordedRpes.isEmpty
+          ? null
+          : recordedRpes.reduce((a, b) => a > b ? a : b);
       return ProgressionHistoryEntry(
-        date: topSet.readTable(sessionLogs).loggedAt,
-        weight: topSet.readTable(loggedSets).weight!,
-        reps: topSet.readTable(loggedSets).reps!,
+        date: setsInSession.first.readTable(sessionLogs).loggedAt,
+        weight: topWeight,
+        reps: hardestReps,
+        rpe: highestRpe,
       );
     }).toList();
   }
@@ -186,7 +334,11 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   /// instance), most recent first.
   Future<List<SessionLog>> getLogsForPlanSession(int planSessionId) {
     return (select(sessionLogs)
-          ..where((s) => s.planSessionId.equals(planSessionId))
+          ..where(
+            (s) =>
+                s.planSessionId.equals(planSessionId) &
+                s.finishedAt.isNotNull(),
+          )
           ..orderBy([(s) => OrderingTerm.desc(s.loggedAt)]))
         .get();
   }
@@ -226,7 +378,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   Future<Map<int, Map<DateTime, int>>> getLoggedPlanSessionCounts() async {
     final query = selectOnly(sessionLogs)
       ..addColumns([sessionLogs.planSessionId, sessionLogs.loggedAt])
-      ..where(sessionLogs.planSessionId.isNotNull());
+      ..where(
+        sessionLogs.planSessionId.isNotNull() &
+            sessionLogs.finishedAt.isNotNull(),
+      );
     final rows = await query.get();
     final counts = <int, Map<DateTime, int>>{};
     for (final row in rows) {
@@ -245,9 +400,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   /// [SessionLog.loggedAt] itself rather than an `assignedDate`, since
   /// there's no [PlanSession] row to carry one.
   Future<List<SessionLog>> getAdHocActivities() {
-    return (select(
-      sessionLogs,
-    )..where((l) => l.planSessionId.isNull())).get();
+    return (select(sessionLogs)..where(
+          (l) => l.planSessionId.isNull() & l.finishedAt.isNotNull(),
+        ))
+        .get();
   }
 
   /// Every distinct calendar day anything has ever been logged on - a
@@ -256,9 +412,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   /// history rather than one period in isolation, unlike [getPeriodSummary]'s
   /// range-scoped queries.
   Future<List<DateTime>> getAllLoggedDays() async {
-    final rows =
-        await (selectOnly(sessionLogs)..addColumns([sessionLogs.loggedAt]))
-            .get();
+    final query = selectOnly(sessionLogs)
+      ..addColumns([sessionLogs.loggedAt])
+      ..where(sessionLogs.finishedAt.isNotNull());
+    final rows = await query.get();
     final days = <DateTime>{};
     for (final row in rows) {
       final loggedAt = row.read(sessionLogs.loggedAt)!;
@@ -296,7 +453,8 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       ..where(
         (l) =>
             l.loggedAt.isBiggerOrEqualValue(start) &
-            l.loggedAt.isSmallerThanValue(end),
+            l.loggedAt.isSmallerThanValue(end) &
+            l.finishedAt.isNotNull(),
       );
     final logsInPeriod = await logsQuery.get();
     final loggedDaysBySession = <int, Set<DateTime>>{};
@@ -360,9 +518,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   /// display. Grouped by exercise in the order the sets were recorded, which
   /// is the order they were actually performed.
   Future<CompletedWorkout?> getCompletedWorkout(String sessionLogId) async {
-    final log = await (select(
-      sessionLogs,
-    )..where((l) => l.id.equals(sessionLogId))).getSingleOrNull();
+    final log = await (select(sessionLogs)..where(
+          (l) => l.id.equals(sessionLogId) & l.finishedAt.isNotNull(),
+        ))
+        .getSingleOrNull();
     if (log == null) return null;
 
     // Null for an ad-hoc activity - it has no plan session to look up.
@@ -405,6 +564,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   /// Every completed workout, newest first - the history list.
   Future<List<CompletedWorkoutSummary>> getWorkoutHistory() async {
     final logs = await (select(sessionLogs)
+          ..where((l) => l.finishedAt.isNotNull())
           ..orderBy([(l) => OrderingTerm.desc(l.loggedAt)]))
         .get();
     if (logs.isEmpty) return [];
@@ -465,7 +625,8 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       ),
     ])..where(
       sessionLogs.loggedAt.isBiggerOrEqualValue(start) &
-          sessionLogs.loggedAt.isSmallerThanValue(end),
+          sessionLogs.loggedAt.isSmallerThanValue(end) &
+          sessionLogs.finishedAt.isNotNull(),
     );
     final rows = await query.get();
 
@@ -517,7 +678,11 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         sessionLogs,
         sessionLogs.id.equalsExp(loggedSets.sessionLogId),
       ),
-    ])..where(loggedSets.weight.isNotNull() & loggedSets.reps.isNotNull());
+    ])..where(
+      loggedSets.weight.isNotNull() &
+          loggedSets.reps.isNotNull() &
+          sessionLogs.finishedAt.isNotNull(),
+    );
     final rows = await query.get();
 
     final byExercise = <String, List<TypedResult>>{};
@@ -558,7 +723,9 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
   /// Every session log in the database, each with its sets - what a full
   /// backup needs to round-trip execution history.
   Future<List<SessionLogWithSets>> getAllSessionLogsWithSets() async {
-    final logs = await select(sessionLogs).get();
+    final logs = await (select(
+      sessionLogs,
+    )..where((l) => l.finishedAt.isNotNull())).get();
     final result = <SessionLogWithSets>[];
     for (final log in logs) {
       result.add(

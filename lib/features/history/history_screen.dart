@@ -3,20 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../data/app_database_provider.dart';
 import '../../logic/chart_axis.dart';
+import '../../logic/one_rep_max.dart';
 import '../../logic/progression.dart';
 import '../../logic/units.dart';
+import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
-
-final _progressionHistoryProvider =
-    FutureProvider.family<List<ProgressionHistoryEntry>, String>((
-      ref,
-      exerciseId,
-    ) {
-      final db = ref.watch(appDatabaseProvider);
-      return db.sessionLogDao.getProgressionHistory(exerciseId);
-    });
 
 class HistoryScreen extends ConsumerWidget {
   final String exerciseId;
@@ -30,7 +22,10 @@ class HistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final historyAsync = ref.watch(_progressionHistoryProvider(exerciseId));
+    final historyAsync = ref.watch(exerciseProgressionHistoryProvider(exerciseId));
+    final estimatedOneRepMax = ref
+        .watch(estimatedOneRepMaxProvider(exerciseId))
+        .valueOrNull;
     final prefs = ref.watch(appPreferencesProvider);
     final unit = prefs.weightUnit;
 
@@ -64,6 +59,28 @@ class HistoryScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (estimatedOneRepMax != null) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Estimated 1RM: '
+                        '${formatWeightInUnit(estimatedOneRepMax, unit)}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.info_outline, size: 20),
+                      tooltip: 'What is this based on?',
+                      onPressed: () => _showOneRepMaxNote(context),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               if (suggestion != null) ...[
                 Card(
                   color: Theme.of(context).colorScheme.secondaryContainer,
@@ -72,9 +89,23 @@ class HistoryScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Suggested next session',
-                          style: Theme.of(context).textTheme.titleMedium,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Suggested next session',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.info_outline, size: 20),
+                              tooltip: 'What is this based on?',
+                              onPressed: () => _showScienceNote(context),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(suggestion.rationale),
@@ -160,6 +191,42 @@ class HistoryScreen extends ConsumerWidget {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
+      ),
+    );
+  }
+
+  Future<void> _showOneRepMaxNote(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('What is this based on?'),
+        content: const SingleChildScrollView(
+          child: Text(oneRepMaxScienceNote),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showScienceNote(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('What is this based on?'),
+        content: const SingleChildScrollView(
+          child: Text(progressionScienceNote),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }

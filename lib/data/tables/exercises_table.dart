@@ -32,16 +32,30 @@ class Exercises extends Table {
   /// when creating a custom exercise. Null if not provided.
   TextColumn get author => text().nullable()();
 
-  /// Filename of a user-attached image, relative to the attachments
-  /// directory (see lib/data/local_storage.dart) - not an absolute path,
-  /// because the app's sandbox path changes across reinstalls and OS
-  /// upgrades, which would silently break every stored absolute path.
+  /// Deprecated - superseded by [imagePaths] below (a single exercise can now
+  /// have up to `maxExerciseImages` photos, see lib/logic/exercise_images.dart).
+  /// Kept only so a very old exported plan/backup JSON's single `image_path`
+  /// field still has somewhere to land on import; every current read/write
+  /// site uses [imagePaths] instead. Never written by anything but the
+  /// schema 11->12 migration's one-time backfill.
+  TextColumn get imagePath => text().nullable()();
+
+  /// Comma-separated filenames (relative to the attachments directory, see
+  /// lib/data/local_storage.dart - not absolute paths, because the app's
+  /// sandbox path changes across reinstalls and OS upgrades) of up to
+  /// `maxExerciseImages` user-attached photos, in display order. Null/empty
+  /// when none are attached.
   ///
   /// Deliberately user-supplied rather than bundled stock imagery: shipping
-  /// ~38 scraped exercise photos would be a licensing problem for anyone
-  /// publishing the app, and a user's own photo of their actual setup is
-  /// more useful anyway. Null when no image has been attached.
-  TextColumn get imagePath => text().nullable()();
+  /// scraped exercise photos would be a licensing problem for anyone
+  /// publishing the app, and a user's own photos of their actual setup are
+  /// more useful anyway.
+  TextColumn get imagePaths => text().nullable()();
+
+  /// Starred by the user for quick access via the "Favorites only" filter
+  /// chip on the Exercise Library screen - purely a personal-device
+  /// convenience, not part of any exported plan/backup JSON.
+  BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};

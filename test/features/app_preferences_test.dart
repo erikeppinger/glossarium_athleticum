@@ -134,6 +134,74 @@ void main() {
     });
   });
 
+  group('focus mode', () {
+    test('defaults off, with both sub-toggles defaulting to hide', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.focusModeEnabled, isFalse);
+      expect(notifier.state.focusModeHideProgress, isTrue);
+      expect(notifier.state.focusModeHideStreaks, isTrue);
+      expect(
+        notifier.state.hideProgressActive,
+        isFalse,
+        reason: 'the master switch is off, so nothing should be hidden yet',
+      );
+      expect(notifier.state.hideStreaksActive, isFalse);
+    });
+
+    test('both effective getters require the master switch too', () async {
+      final notifier = AppPreferencesNotifier();
+      // Sub-toggles are already true by default - only the master switch
+      // is off, so neither should be "active" yet.
+      expect(notifier.state.hideProgressActive, isFalse);
+      expect(notifier.state.hideStreaksActive, isFalse);
+
+      await notifier.setFocusModeEnabled(true);
+      expect(notifier.state.hideProgressActive, isTrue);
+      expect(notifier.state.hideStreaksActive, isTrue);
+    });
+
+    test('the two sub-toggles are independent of each other', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setFocusModeEnabled(true);
+      await notifier.setFocusModeHideStreaks(false);
+
+      expect(
+        notifier.state.hideProgressActive,
+        isTrue,
+        reason: 'turning off only the streaks sub-toggle must not affect '
+            'the other one',
+      );
+      expect(notifier.state.hideStreaksActive, isFalse);
+    });
+
+    test('turning the master switch off restores everything regardless of '
+        'sub-toggle state', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setFocusModeEnabled(true);
+      await notifier.setFocusModeHideStreaks(false);
+      await notifier.setFocusModeEnabled(false);
+
+      expect(notifier.state.hideProgressActive, isFalse);
+      expect(notifier.state.hideStreaksActive, isFalse);
+    });
+
+    test('persists across reload', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setFocusModeEnabled(true);
+      await notifier.setFocusModeHideProgress(false);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.focusModeEnabled, isTrue);
+      expect(reloaded.state.focusModeHideProgress, isFalse);
+      expect(
+        reloaded.state.focusModeHideStreaks,
+        isTrue,
+        reason: 'untouched sub-toggle should keep its own default',
+      );
+    });
+  });
+
   test('setThemeMode updates state and persists', () async {
     final notifier = AppPreferencesNotifier();
     expect(notifier.state.themeMode, ThemeMode.system);

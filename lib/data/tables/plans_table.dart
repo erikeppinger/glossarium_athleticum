@@ -86,4 +86,15 @@ class PlanExercises extends Table {
   IntColumn get restSec => integer().nullable()();
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get videoUrl => text().withDefault(const Constant(''))();
+
+  /// Non-null when this row is one member of a superset/circuit within its
+  /// own session - every row sharing the same value is done back-to-back
+  /// in round-robin order with one shared rest between rounds (see
+  /// execution_screen.dart's `_groupedExercisesFor`/`_SupersetCard`). A
+  /// small integer **scoped only to its own session** - not a foreign key,
+  /// not globally unique - so two different sessions can each legitimately
+  /// have a group numbered 1 without colliding, and grouping survives
+  /// cloning a session (duplicateSessionToWeeks) or forking a plan for
+  /// free. Set/cleared via PlanDao.setSupersetGroup/clearSupersetGroup.
+  IntColumn get supersetGroupId => integer().nullable()();
 }

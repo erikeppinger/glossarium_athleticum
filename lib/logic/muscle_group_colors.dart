@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../data/app_database.dart' show Exercise;
-
 /// The broad training areas the app colour-codes by. Deliberately few and
 /// coarse: a palette stops being distinguishable somewhere around 8-9 hues
 /// even for people with typical colour vision, and far sooner for people
@@ -150,15 +148,28 @@ const _monochromeColors = {
 };
 
 Color colorForArea(MuscleArea area, AppColorPalette palette) {
-  final map = switch (palette) {
-    AppColorPalette.pastel => _pastelColors,
-    AppColorPalette.okabeIto => _okabeItoColors,
-    AppColorPalette.tolMuted => _tolMutedColors,
-    AppColorPalette.monochrome => _monochromeColors,
-    AppColorPalette.viridis => _viridisColors,
-  };
-  return map[area]!;
+  return _paletteMap(palette)[area]!;
 }
+
+Map<MuscleArea, Color> _paletteMap(AppColorPalette palette) => switch (palette) {
+  AppColorPalette.pastel => _pastelColors,
+  AppColorPalette.okabeIto => _okabeItoColors,
+  AppColorPalette.tolMuted => _tolMutedColors,
+  AppColorPalette.monochrome => _monochromeColors,
+  AppColorPalette.viridis => _viridisColors,
+};
+
+// The provenance/creator bars used to always draw from a fixed, hard-coded
+// Okabe-Ito set regardless of the selected [AppColorPalette] - reported live
+// as inconsistent, since picking e.g. Monochrome or Viridis in Settings
+// visibly changed every muscle-area stripe/chip but left the creator bar
+// exactly as it was ("stays the same yellow regardless what color scheme is
+// picked"). Reusing the same per-palette colour maps (just indexed
+// positionally rather than by muscle area, since provenance/creator values
+// aren't muscle areas) keeps every colour-coded element in the app
+// responding to one setting instead of two.
+List<Color> _paletteColorList(AppColorPalette palette) =>
+    MuscleArea.values.map((a) => _paletteMap(palette)[a]!).toList(growable: false);
 
 /// Maps an exercise's free-text muscle groups / category / movement pattern
 /// onto one broad [MuscleArea].
@@ -213,70 +224,28 @@ MuscleArea areaForExercise({
   return MuscleArea.other;
 }
 
-/// Where an exercise came from - the second colour bar in the library list,
-/// alongside [MuscleArea]'s muscle-group bar. Every custom exercise used to
-/// render only a muscle-area stripe like seed exercises do; when its muscle
-/// groups were left blank (common - it's an optional field on the create
-/// form) that stripe fell back to [MuscleArea.other]'s neutral grey with
-/// nothing else to distinguish it, which read as "all my own exercises are
-/// grey" even though plenty of seed exercises are also grey for the same
-/// reason. A dedicated provenance bar answers a different question
-/// (who made this) than the muscle bar (what does it train), so the two
-/// don't compete for the same signal.
-enum ExerciseProvenance { library, own, fromPlan, byAuthor }
+/// A stable colour for one exercise's `category` (e.g. "Accessory",
+/// "Conditioning", "Main Lift") - unlike [MuscleArea], category is free text
+/// from the library's own data rather than a fixed enum (a custom exercise
+/// can introduce a category no seed exercise uses), so this hashes the
+/// string rather than needing a hand-maintained mapping kept in sync with
+/// every category that ever shows up. Backs the exercise library's category
+/// filter chips and the first of the two colour stripes on each list row -
+/// deliberately the *only* per-value hashed colour left in the library now:
+/// creator/provenance ("Not in library", "Plan: ...", "By: ...") used to be
+/// coloured the same way, both as a filter-chip row and as a second list
+/// stripe, but was reported live as adding colour noise beyond the two rows
+/// (category, muscle area) the list's own stripes are meant to mirror -
+/// removed rather than just de-emphasized, so creator/provenance is still
+/// fully filterable, just plain text like any other secondary filter.
+Color colorForCategoryValue(String category, AppColorPalette palette) =>
+    _colorForHashedValue(category, palette);
 
-extension ExerciseProvenanceLabel on ExerciseProvenance {
-  String get label => switch (this) {
-    ExerciseProvenance.library => 'Library exercise',
-    ExerciseProvenance.own => 'Your own exercise',
-    ExerciseProvenance.fromPlan => 'Added from an imported plan',
-    ExerciseProvenance.byAuthor => 'Custom, with an author credited',
-  };
-}
-
-/// Fixed, palette-independent colours (reusing Okabe-Ito hues, so they're
-/// colour-vision-deficiency-safe regardless of which [AppColorPalette] the
-/// muscle-area bar is currently using) - the two bars carry different kinds
-/// of information, so intentionally don't share a palette selector.
-const _provenanceColors = {
-  ExerciseProvenance.library: Color(0xFF0072B2), // blue
-  ExerciseProvenance.own: Color(0xFFE69F00), // orange
-  ExerciseProvenance.fromPlan: Color(0xFF009E73), // bluish green
-  ExerciseProvenance.byAuthor: Color(0xFFCC79A7), // reddish purple
-};
-
-Color colorForProvenance(ExerciseProvenance provenance) =>
-    _provenanceColors[provenance]!;
-
-ExerciseProvenance provenanceForExercise(Exercise exercise) {
-  if (!exercise.isCustom) return ExerciseProvenance.library;
-  if (exercise.sourcePlanName != null) return ExerciseProvenance.fromPlan;
-  if (exercise.author != null) return ExerciseProvenance.byAuthor;
-  return ExerciseProvenance.own;
-}
-
-// Same 9 Okabe-Ito hues as _okabeItoColors, reused here as a plain list
-// rather than a second hard-coded palette - colorForCreatorValue just needs
-// a qualitative, CVD-safe set to hash into, not the muscle-area mapping.
-final _creatorValueColors = _okabeItoColors.values.toList(growable: false);
-
-/// A stable colour for one *specific* plan or author name, e.g. the exercise
-/// library's "Plan: `name`" / "By: `name`" filter chips.
-///
-/// [colorForProvenance] answers "what broad category is this from" (every
-/// plan-imported exercise shares one green, regardless of which plan) - that
-/// answers a different question than these filter chips ask, which is "which
-/// specific plan/author is this". Sharing one colour across every distinct
-/// plan defeated the entire point of colour-coding the chip row: with more
-/// than one imported plan, every "Plan: ..." chip looked identical apart
-/// from its text. Hashing the raw creator-filter value (e.g. "plan:Foo") to
-/// a fixed hue gives each distinct plan/author its own stable colour instead
-/// - reusing the Okabe-Ito set already established as this app's fixed,
-/// palette-independent accessible colours, rather than a third ad-hoc one.
-Color colorForCreatorValue(String value) {
+Color _colorForHashedValue(String value, AppColorPalette palette) {
   final hash = value.toLowerCase().codeUnits.fold<int>(
     0,
     (h, c) => (h * 31 + c) & 0x7fffffff,
   );
-  return _creatorValueColors[hash % _creatorValueColors.length];
+  final colors = _paletteColorList(palette);
+  return colors[hash % colors.length];
 }

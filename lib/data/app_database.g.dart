@@ -175,6 +175,32 @@ class $ExercisesTable extends Exercises
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _imagePathsMeta = const VerificationMeta(
+    'imagePaths',
+  );
+  @override
+  late final GeneratedColumn<String> imagePaths = GeneratedColumn<String>(
+    'image_paths',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isFavoriteMeta = const VerificationMeta(
+    'isFavorite',
+  );
+  @override
+  late final GeneratedColumn<bool> isFavorite = GeneratedColumn<bool>(
+    'is_favorite',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_favorite" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -192,6 +218,8 @@ class $ExercisesTable extends Exercises
     sourcePlanName,
     author,
     imagePath,
+    imagePaths,
+    isFavorite,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -329,6 +357,18 @@ class $ExercisesTable extends Exercises
         imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
       );
     }
+    if (data.containsKey('image_paths')) {
+      context.handle(
+        _imagePathsMeta,
+        imagePaths.isAcceptableOrUnknown(data['image_paths']!, _imagePathsMeta),
+      );
+    }
+    if (data.containsKey('is_favorite')) {
+      context.handle(
+        _isFavoriteMeta,
+        isFavorite.isAcceptableOrUnknown(data['is_favorite']!, _isFavoriteMeta),
+      );
+    }
     return context;
   }
 
@@ -398,6 +438,14 @@ class $ExercisesTable extends Exercises
         DriftSqlType.string,
         data['${effectivePrefix}image_path'],
       ),
+      imagePaths: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_paths'],
+      ),
+      isFavorite: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_favorite'],
+      )!,
     );
   }
 
@@ -435,16 +483,30 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   /// when creating a custom exercise. Null if not provided.
   final String? author;
 
-  /// Filename of a user-attached image, relative to the attachments
-  /// directory (see lib/data/local_storage.dart) - not an absolute path,
-  /// because the app's sandbox path changes across reinstalls and OS
-  /// upgrades, which would silently break every stored absolute path.
+  /// Deprecated - superseded by [imagePaths] below (a single exercise can now
+  /// have up to `maxExerciseImages` photos, see lib/logic/exercise_images.dart).
+  /// Kept only so a very old exported plan/backup JSON's single `image_path`
+  /// field still has somewhere to land on import; every current read/write
+  /// site uses [imagePaths] instead. Never written by anything but the
+  /// schema 11->12 migration's one-time backfill.
+  final String? imagePath;
+
+  /// Comma-separated filenames (relative to the attachments directory, see
+  /// lib/data/local_storage.dart - not absolute paths, because the app's
+  /// sandbox path changes across reinstalls and OS upgrades) of up to
+  /// `maxExerciseImages` user-attached photos, in display order. Null/empty
+  /// when none are attached.
   ///
   /// Deliberately user-supplied rather than bundled stock imagery: shipping
-  /// ~38 scraped exercise photos would be a licensing problem for anyone
-  /// publishing the app, and a user's own photo of their actual setup is
-  /// more useful anyway. Null when no image has been attached.
-  final String? imagePath;
+  /// scraped exercise photos would be a licensing problem for anyone
+  /// publishing the app, and a user's own photos of their actual setup are
+  /// more useful anyway.
+  final String? imagePaths;
+
+  /// Starred by the user for quick access via the "Favorites only" filter
+  /// chip on the Exercise Library screen - purely a personal-device
+  /// convenience, not part of any exported plan/backup JSON.
+  final bool isFavorite;
   const Exercise({
     required this.id,
     required this.name,
@@ -461,6 +523,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     this.sourcePlanName,
     this.author,
     this.imagePath,
+    this.imagePaths,
+    required this.isFavorite,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -486,6 +550,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     if (!nullToAbsent || imagePath != null) {
       map['image_path'] = Variable<String>(imagePath);
     }
+    if (!nullToAbsent || imagePaths != null) {
+      map['image_paths'] = Variable<String>(imagePaths);
+    }
+    map['is_favorite'] = Variable<bool>(isFavorite);
     return map;
   }
 
@@ -512,6 +580,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       imagePath: imagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(imagePath),
+      imagePaths: imagePaths == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imagePaths),
+      isFavorite: Value(isFavorite),
     );
   }
 
@@ -536,6 +608,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       sourcePlanName: serializer.fromJson<String?>(json['sourcePlanName']),
       author: serializer.fromJson<String?>(json['author']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
+      imagePaths: serializer.fromJson<String?>(json['imagePaths']),
+      isFavorite: serializer.fromJson<bool>(json['isFavorite']),
     );
   }
   @override
@@ -557,6 +631,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'sourcePlanName': serializer.toJson<String?>(sourcePlanName),
       'author': serializer.toJson<String?>(author),
       'imagePath': serializer.toJson<String?>(imagePath),
+      'imagePaths': serializer.toJson<String?>(imagePaths),
+      'isFavorite': serializer.toJson<bool>(isFavorite),
     };
   }
 
@@ -576,6 +652,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     Value<String?> sourcePlanName = const Value.absent(),
     Value<String?> author = const Value.absent(),
     Value<String?> imagePath = const Value.absent(),
+    Value<String?> imagePaths = const Value.absent(),
+    bool? isFavorite,
   }) => Exercise(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -594,6 +672,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
         : this.sourcePlanName,
     author: author.present ? author.value : this.author,
     imagePath: imagePath.present ? imagePath.value : this.imagePath,
+    imagePaths: imagePaths.present ? imagePaths.value : this.imagePaths,
+    isFavorite: isFavorite ?? this.isFavorite,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -628,6 +708,12 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           : this.sourcePlanName,
       author: data.author.present ? data.author.value : this.author,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      imagePaths: data.imagePaths.present
+          ? data.imagePaths.value
+          : this.imagePaths,
+      isFavorite: data.isFavorite.present
+          ? data.isFavorite.value
+          : this.isFavorite,
     );
   }
 
@@ -648,7 +734,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('isCustom: $isCustom, ')
           ..write('sourcePlanName: $sourcePlanName, ')
           ..write('author: $author, ')
-          ..write('imagePath: $imagePath')
+          ..write('imagePath: $imagePath, ')
+          ..write('imagePaths: $imagePaths, ')
+          ..write('isFavorite: $isFavorite')
           ..write(')'))
         .toString();
   }
@@ -670,6 +758,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     sourcePlanName,
     author,
     imagePath,
+    imagePaths,
+    isFavorite,
   );
   @override
   bool operator ==(Object other) =>
@@ -689,7 +779,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.isCustom == this.isCustom &&
           other.sourcePlanName == this.sourcePlanName &&
           other.author == this.author &&
-          other.imagePath == this.imagePath);
+          other.imagePath == this.imagePath &&
+          other.imagePaths == this.imagePaths &&
+          other.isFavorite == this.isFavorite);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -708,6 +800,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<String?> sourcePlanName;
   final Value<String?> author;
   final Value<String?> imagePath;
+  final Value<String?> imagePaths;
+  final Value<bool> isFavorite;
   final Value<int> rowid;
   const ExercisesCompanion({
     this.id = const Value.absent(),
@@ -725,6 +819,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.sourcePlanName = const Value.absent(),
     this.author = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.imagePaths = const Value.absent(),
+    this.isFavorite = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExercisesCompanion.insert({
@@ -743,6 +839,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.sourcePlanName = const Value.absent(),
     this.author = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.imagePaths = const Value.absent(),
+    this.isFavorite = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -768,6 +866,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<String>? sourcePlanName,
     Expression<String>? author,
     Expression<String>? imagePath,
+    Expression<String>? imagePaths,
+    Expression<bool>? isFavorite,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -786,6 +886,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (sourcePlanName != null) 'source_plan_name': sourcePlanName,
       if (author != null) 'author': author,
       if (imagePath != null) 'image_path': imagePath,
+      if (imagePaths != null) 'image_paths': imagePaths,
+      if (isFavorite != null) 'is_favorite': isFavorite,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -806,6 +908,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<String?>? sourcePlanName,
     Value<String?>? author,
     Value<String?>? imagePath,
+    Value<String?>? imagePaths,
+    Value<bool>? isFavorite,
     Value<int>? rowid,
   }) {
     return ExercisesCompanion(
@@ -824,6 +928,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       sourcePlanName: sourcePlanName ?? this.sourcePlanName,
       author: author ?? this.author,
       imagePath: imagePath ?? this.imagePath,
+      imagePaths: imagePaths ?? this.imagePaths,
+      isFavorite: isFavorite ?? this.isFavorite,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -876,6 +982,12 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (imagePath.present) {
       map['image_path'] = Variable<String>(imagePath.value);
     }
+    if (imagePaths.present) {
+      map['image_paths'] = Variable<String>(imagePaths.value);
+    }
+    if (isFavorite.present) {
+      map['is_favorite'] = Variable<bool>(isFavorite.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -900,6 +1012,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('sourcePlanName: $sourcePlanName, ')
           ..write('author: $author, ')
           ..write('imagePath: $imagePath, ')
+          ..write('imagePaths: $imagePaths, ')
+          ..write('isFavorite: $isFavorite, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2242,6 +2356,17 @@ class $PlanExercisesTable extends PlanExercises
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _supersetGroupIdMeta = const VerificationMeta(
+    'supersetGroupId',
+  );
+  @override
+  late final GeneratedColumn<int> supersetGroupId = GeneratedColumn<int>(
+    'superset_group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2255,6 +2380,7 @@ class $PlanExercisesTable extends PlanExercises
     restSec,
     notes,
     videoUrl,
+    supersetGroupId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2347,6 +2473,15 @@ class $PlanExercisesTable extends PlanExercises
         videoUrl.isAcceptableOrUnknown(data['video_url']!, _videoUrlMeta),
       );
     }
+    if (data.containsKey('superset_group_id')) {
+      context.handle(
+        _supersetGroupIdMeta,
+        supersetGroupId.isAcceptableOrUnknown(
+          data['superset_group_id']!,
+          _supersetGroupIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2400,6 +2535,10 @@ class $PlanExercisesTable extends PlanExercises
         DriftSqlType.string,
         data['${effectivePrefix}video_url'],
       )!,
+      supersetGroupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}superset_group_id'],
+      ),
     );
   }
 
@@ -2427,6 +2566,17 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
   final int? restSec;
   final String notes;
   final String videoUrl;
+
+  /// Non-null when this row is one member of a superset/circuit within its
+  /// own session - every row sharing the same value is done back-to-back
+  /// in round-robin order with one shared rest between rounds (see
+  /// execution_screen.dart's `_groupedExercisesFor`/`_SupersetCard`). A
+  /// small integer **scoped only to its own session** - not a foreign key,
+  /// not globally unique - so two different sessions can each legitimately
+  /// have a group numbered 1 without colliding, and grouping survives
+  /// cloning a session (duplicateSessionToWeeks) or forking a plan for
+  /// free. Set/cleared via PlanDao.setSupersetGroup/clearSupersetGroup.
+  final int? supersetGroupId;
   const PlanExercise({
     required this.id,
     required this.sessionId,
@@ -2439,6 +2589,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     this.restSec,
     required this.notes,
     required this.videoUrl,
+    this.supersetGroupId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2458,6 +2609,9 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     }
     map['notes'] = Variable<String>(notes);
     map['video_url'] = Variable<String>(videoUrl);
+    if (!nullToAbsent || supersetGroupId != null) {
+      map['superset_group_id'] = Variable<int>(supersetGroupId);
+    }
     return map;
   }
 
@@ -2478,6 +2632,9 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
           : Value(restSec),
       notes: Value(notes),
       videoUrl: Value(videoUrl),
+      supersetGroupId: supersetGroupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(supersetGroupId),
     );
   }
 
@@ -2498,6 +2655,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       restSec: serializer.fromJson<int?>(json['restSec']),
       notes: serializer.fromJson<String>(json['notes']),
       videoUrl: serializer.fromJson<String>(json['videoUrl']),
+      supersetGroupId: serializer.fromJson<int?>(json['supersetGroupId']),
     );
   }
   @override
@@ -2515,6 +2673,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       'restSec': serializer.toJson<int?>(restSec),
       'notes': serializer.toJson<String>(notes),
       'videoUrl': serializer.toJson<String>(videoUrl),
+      'supersetGroupId': serializer.toJson<int?>(supersetGroupId),
     };
   }
 
@@ -2530,6 +2689,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     Value<int?> restSec = const Value.absent(),
     String? notes,
     String? videoUrl,
+    Value<int?> supersetGroupId = const Value.absent(),
   }) => PlanExercise(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -2542,6 +2702,9 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     restSec: restSec.present ? restSec.value : this.restSec,
     notes: notes ?? this.notes,
     videoUrl: videoUrl ?? this.videoUrl,
+    supersetGroupId: supersetGroupId.present
+        ? supersetGroupId.value
+        : this.supersetGroupId,
   );
   PlanExercise copyWithCompanion(PlanExercisesCompanion data) {
     return PlanExercise(
@@ -2562,6 +2725,9 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       restSec: data.restSec.present ? data.restSec.value : this.restSec,
       notes: data.notes.present ? data.notes.value : this.notes,
       videoUrl: data.videoUrl.present ? data.videoUrl.value : this.videoUrl,
+      supersetGroupId: data.supersetGroupId.present
+          ? data.supersetGroupId.value
+          : this.supersetGroupId,
     );
   }
 
@@ -2578,7 +2744,8 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
           ..write('weightIntensity: $weightIntensity, ')
           ..write('restSec: $restSec, ')
           ..write('notes: $notes, ')
-          ..write('videoUrl: $videoUrl')
+          ..write('videoUrl: $videoUrl, ')
+          ..write('supersetGroupId: $supersetGroupId')
           ..write(')'))
         .toString();
   }
@@ -2596,6 +2763,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     restSec,
     notes,
     videoUrl,
+    supersetGroupId,
   );
   @override
   bool operator ==(Object other) =>
@@ -2611,7 +2779,8 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
           other.weightIntensity == this.weightIntensity &&
           other.restSec == this.restSec &&
           other.notes == this.notes &&
-          other.videoUrl == this.videoUrl);
+          other.videoUrl == this.videoUrl &&
+          other.supersetGroupId == this.supersetGroupId);
 }
 
 class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
@@ -2626,6 +2795,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
   final Value<int?> restSec;
   final Value<String> notes;
   final Value<String> videoUrl;
+  final Value<int?> supersetGroupId;
   const PlanExercisesCompanion({
     this.id = const Value.absent(),
     this.sessionId = const Value.absent(),
@@ -2638,6 +2808,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     this.restSec = const Value.absent(),
     this.notes = const Value.absent(),
     this.videoUrl = const Value.absent(),
+    this.supersetGroupId = const Value.absent(),
   });
   PlanExercisesCompanion.insert({
     this.id = const Value.absent(),
@@ -2651,6 +2822,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     this.restSec = const Value.absent(),
     this.notes = const Value.absent(),
     this.videoUrl = const Value.absent(),
+    this.supersetGroupId = const Value.absent(),
   }) : sessionId = Value(sessionId),
        order = Value(order),
        exerciseName = Value(exerciseName),
@@ -2668,6 +2840,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     Expression<int>? restSec,
     Expression<String>? notes,
     Expression<String>? videoUrl,
+    Expression<int>? supersetGroupId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2681,6 +2854,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
       if (restSec != null) 'rest_sec': restSec,
       if (notes != null) 'notes': notes,
       if (videoUrl != null) 'video_url': videoUrl,
+      if (supersetGroupId != null) 'superset_group_id': supersetGroupId,
     });
   }
 
@@ -2696,6 +2870,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     Value<int?>? restSec,
     Value<String>? notes,
     Value<String>? videoUrl,
+    Value<int?>? supersetGroupId,
   }) {
     return PlanExercisesCompanion(
       id: id ?? this.id,
@@ -2709,6 +2884,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
       restSec: restSec ?? this.restSec,
       notes: notes ?? this.notes,
       videoUrl: videoUrl ?? this.videoUrl,
+      supersetGroupId: supersetGroupId ?? this.supersetGroupId,
     );
   }
 
@@ -2748,6 +2924,9 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     if (videoUrl.present) {
       map['video_url'] = Variable<String>(videoUrl.value);
     }
+    if (supersetGroupId.present) {
+      map['superset_group_id'] = Variable<int>(supersetGroupId.value);
+    }
     return map;
   }
 
@@ -2764,7 +2943,8 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
           ..write('weightIntensity: $weightIntensity, ')
           ..write('restSec: $restSec, ')
           ..write('notes: $notes, ')
-          ..write('videoUrl: $videoUrl')
+          ..write('videoUrl: $videoUrl, ')
+          ..write('supersetGroupId: $supersetGroupId')
           ..write(')'))
         .toString();
   }
@@ -2809,6 +2989,17 @@ class $SessionLogsTable extends SessionLogs
     false,
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _finishedAtMeta = const VerificationMeta(
+    'finishedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> finishedAt = GeneratedColumn<DateTime>(
+    'finished_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
@@ -2857,6 +3048,7 @@ class $SessionLogsTable extends SessionLogs
     id,
     planSessionId,
     loggedAt,
+    finishedAt,
     notes,
     activityName,
     durationSec,
@@ -2895,6 +3087,12 @@ class $SessionLogsTable extends SessionLogs
       );
     } else if (isInserting) {
       context.missing(_loggedAtMeta);
+    }
+    if (data.containsKey('finished_at')) {
+      context.handle(
+        _finishedAtMeta,
+        finishedAt.isAcceptableOrUnknown(data['finished_at']!, _finishedAtMeta),
+      );
     }
     if (data.containsKey('notes')) {
       context.handle(
@@ -2947,6 +3145,10 @@ class $SessionLogsTable extends SessionLogs
         DriftSqlType.dateTime,
         data['${effectivePrefix}logged_at'],
       )!,
+      finishedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}finished_at'],
+      ),
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
@@ -2977,6 +3179,21 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
   final int? planSessionId;
   final DateTime loggedAt;
 
+  /// Null means this row is a **draft** - an in-progress execution-mode
+  /// session autosaved (see `execution_screen.dart`'s app-lifecycle
+  /// observer) so a set already checked off survives the app process being
+  /// killed while backgrounded, without ever showing up anywhere a real,
+  /// finished workout would (Progress, History, Calendar, backup export -
+  /// every one of `SessionLogDao`'s read queries filters on
+  /// `finishedAt.isNotNull()`). Set the instant a row is created for
+  /// [SessionLogDao.createSessionLog]/[SessionLogDao.createAdHocActivity] -
+  /// those two are the only ways a *real* log has ever been created, so
+  /// existing rows predating this column are backfilled to `loggedAt` in the
+  /// schema 10->11 migration. A draft row is replaced wholesale (delete +
+  /// reinsert) on every autosave rather than diffed/updated in place - see
+  /// [SessionLogDao.saveDraft].
+  final DateTime? finishedAt;
+
   /// Optional free-text note taken right after finishing, e.g. "felt heavy
   /// today" - surfaced on the workout's own detail screen.
   final String? notes;
@@ -2991,6 +3208,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
     required this.id,
     this.planSessionId,
     required this.loggedAt,
+    this.finishedAt,
     this.notes,
     this.activityName,
     this.durationSec,
@@ -3004,6 +3222,9 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
       map['plan_session_id'] = Variable<int>(planSessionId);
     }
     map['logged_at'] = Variable<DateTime>(loggedAt);
+    if (!nullToAbsent || finishedAt != null) {
+      map['finished_at'] = Variable<DateTime>(finishedAt);
+    }
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
     }
@@ -3026,6 +3247,9 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
           ? const Value.absent()
           : Value(planSessionId),
       loggedAt: Value(loggedAt),
+      finishedAt: finishedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(finishedAt),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
@@ -3050,6 +3274,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
       id: serializer.fromJson<String>(json['id']),
       planSessionId: serializer.fromJson<int?>(json['planSessionId']),
       loggedAt: serializer.fromJson<DateTime>(json['loggedAt']),
+      finishedAt: serializer.fromJson<DateTime?>(json['finishedAt']),
       notes: serializer.fromJson<String?>(json['notes']),
       activityName: serializer.fromJson<String?>(json['activityName']),
       durationSec: serializer.fromJson<double?>(json['durationSec']),
@@ -3063,6 +3288,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
       'id': serializer.toJson<String>(id),
       'planSessionId': serializer.toJson<int?>(planSessionId),
       'loggedAt': serializer.toJson<DateTime>(loggedAt),
+      'finishedAt': serializer.toJson<DateTime?>(finishedAt),
       'notes': serializer.toJson<String?>(notes),
       'activityName': serializer.toJson<String?>(activityName),
       'durationSec': serializer.toJson<double?>(durationSec),
@@ -3074,6 +3300,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
     String? id,
     Value<int?> planSessionId = const Value.absent(),
     DateTime? loggedAt,
+    Value<DateTime?> finishedAt = const Value.absent(),
     Value<String?> notes = const Value.absent(),
     Value<String?> activityName = const Value.absent(),
     Value<double?> durationSec = const Value.absent(),
@@ -3084,6 +3311,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
         ? planSessionId.value
         : this.planSessionId,
     loggedAt: loggedAt ?? this.loggedAt,
+    finishedAt: finishedAt.present ? finishedAt.value : this.finishedAt,
     notes: notes.present ? notes.value : this.notes,
     activityName: activityName.present ? activityName.value : this.activityName,
     durationSec: durationSec.present ? durationSec.value : this.durationSec,
@@ -3096,6 +3324,9 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
           ? data.planSessionId.value
           : this.planSessionId,
       loggedAt: data.loggedAt.present ? data.loggedAt.value : this.loggedAt,
+      finishedAt: data.finishedAt.present
+          ? data.finishedAt.value
+          : this.finishedAt,
       notes: data.notes.present ? data.notes.value : this.notes,
       activityName: data.activityName.present
           ? data.activityName.value
@@ -3113,6 +3344,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
           ..write('id: $id, ')
           ..write('planSessionId: $planSessionId, ')
           ..write('loggedAt: $loggedAt, ')
+          ..write('finishedAt: $finishedAt, ')
           ..write('notes: $notes, ')
           ..write('activityName: $activityName, ')
           ..write('durationSec: $durationSec, ')
@@ -3126,6 +3358,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
     id,
     planSessionId,
     loggedAt,
+    finishedAt,
     notes,
     activityName,
     durationSec,
@@ -3138,6 +3371,7 @@ class SessionLog extends DataClass implements Insertable<SessionLog> {
           other.id == this.id &&
           other.planSessionId == this.planSessionId &&
           other.loggedAt == this.loggedAt &&
+          other.finishedAt == this.finishedAt &&
           other.notes == this.notes &&
           other.activityName == this.activityName &&
           other.durationSec == this.durationSec &&
@@ -3148,6 +3382,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
   final Value<String> id;
   final Value<int?> planSessionId;
   final Value<DateTime> loggedAt;
+  final Value<DateTime?> finishedAt;
   final Value<String?> notes;
   final Value<String?> activityName;
   final Value<double?> durationSec;
@@ -3157,6 +3392,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
     this.id = const Value.absent(),
     this.planSessionId = const Value.absent(),
     this.loggedAt = const Value.absent(),
+    this.finishedAt = const Value.absent(),
     this.notes = const Value.absent(),
     this.activityName = const Value.absent(),
     this.durationSec = const Value.absent(),
@@ -3167,6 +3403,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
     required String id,
     this.planSessionId = const Value.absent(),
     required DateTime loggedAt,
+    this.finishedAt = const Value.absent(),
     this.notes = const Value.absent(),
     this.activityName = const Value.absent(),
     this.durationSec = const Value.absent(),
@@ -3178,6 +3415,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
     Expression<String>? id,
     Expression<int>? planSessionId,
     Expression<DateTime>? loggedAt,
+    Expression<DateTime>? finishedAt,
     Expression<String>? notes,
     Expression<String>? activityName,
     Expression<double>? durationSec,
@@ -3188,6 +3426,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
       if (id != null) 'id': id,
       if (planSessionId != null) 'plan_session_id': planSessionId,
       if (loggedAt != null) 'logged_at': loggedAt,
+      if (finishedAt != null) 'finished_at': finishedAt,
       if (notes != null) 'notes': notes,
       if (activityName != null) 'activity_name': activityName,
       if (durationSec != null) 'duration_sec': durationSec,
@@ -3200,6 +3439,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
     Value<String>? id,
     Value<int?>? planSessionId,
     Value<DateTime>? loggedAt,
+    Value<DateTime?>? finishedAt,
     Value<String?>? notes,
     Value<String?>? activityName,
     Value<double?>? durationSec,
@@ -3210,6 +3450,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
       id: id ?? this.id,
       planSessionId: planSessionId ?? this.planSessionId,
       loggedAt: loggedAt ?? this.loggedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
       notes: notes ?? this.notes,
       activityName: activityName ?? this.activityName,
       durationSec: durationSec ?? this.durationSec,
@@ -3229,6 +3470,9 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
     }
     if (loggedAt.present) {
       map['logged_at'] = Variable<DateTime>(loggedAt.value);
+    }
+    if (finishedAt.present) {
+      map['finished_at'] = Variable<DateTime>(finishedAt.value);
     }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
@@ -3254,6 +3498,7 @@ class SessionLogsCompanion extends UpdateCompanion<SessionLog> {
           ..write('id: $id, ')
           ..write('planSessionId: $planSessionId, ')
           ..write('loggedAt: $loggedAt, ')
+          ..write('finishedAt: $finishedAt, ')
           ..write('notes: $notes, ')
           ..write('activityName: $activityName, ')
           ..write('durationSec: $durationSec, ')
@@ -4587,6 +4832,8 @@ typedef $$ExercisesTableCreateCompanionBuilder = ExercisesCompanion Function({
   Value<String?> sourcePlanName,
   Value<String?> author,
   Value<String?> imagePath,
+  Value<String?> imagePaths,
+  Value<bool> isFavorite,
   Value<int> rowid,
 });
 typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
@@ -4605,6 +4852,8 @@ typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
   Value<String?> sourcePlanName,
   Value<String?> author,
   Value<String?> imagePath,
+  Value<String?> imagePaths,
+  Value<bool> isFavorite,
   Value<int> rowid,
 });
 
@@ -4730,6 +4979,16 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<String> get imagePath => $composableBuilder(
     column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imagePaths => $composableBuilder(
+    column: $table.imagePaths,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4867,6 +5126,16 @@ class $$ExercisesTableOrderingComposer
     column: $table.imagePath,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get imagePaths => $composableBuilder(
+    column: $table.imagePaths,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -4938,6 +5207,16 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get imagePath =>
       $composableBuilder(column: $table.imagePath, builder: (column) => column);
+
+  GeneratedColumn<String> get imagePaths => $composableBuilder(
+    column: $table.imagePaths,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
+    builder: (column) => column,
+  );
 
   Expression<T> planExercisesRefs<T extends Object>(
     Expression<T> Function($$PlanExercisesTableAnnotationComposer a) f,
@@ -5033,6 +5312,8 @@ class $$ExercisesTableTableManager
                 Value<String?> sourcePlanName = const Value.absent(),
                 Value<String?> author = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
+                Value<String?> imagePaths = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
@@ -5050,6 +5331,8 @@ class $$ExercisesTableTableManager
                 sourcePlanName: sourcePlanName,
                 author: author,
                 imagePath: imagePath,
+                imagePaths: imagePaths,
+                isFavorite: isFavorite,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5069,6 +5352,8 @@ class $$ExercisesTableTableManager
                 Value<String?> sourcePlanName = const Value.absent(),
                 Value<String?> author = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
+                Value<String?> imagePaths = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
@@ -5086,12 +5371,14 @@ class $$ExercisesTableTableManager
                 sourcePlanName: sourcePlanName,
                 author: author,
                 imagePath: imagePath,
+                imagePaths: imagePaths,
+                isFavorite: isFavorite,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ExercisesTable, Exercise>(table),
                   $$ExercisesTableReferences(db, table, e),
                 ),
               )
@@ -5499,8 +5786,10 @@ class $$PlansTableTableManager
               ),
           withReferenceMapper: (p0) => p0
               .map(
-                (e) =>
-                    (e.readTable(table), $$PlansTableReferences(db, table, e)),
+                (e) => (
+                  e.readTable<$PlansTable, Plan>(table),
+                  $$PlansTableReferences(db, table, e),
+                ),
               )
               .toList(),
           prefetchHooksCallback: ({planSessionsRefs = false}) {
@@ -6008,7 +6297,7 @@ class $$PlanSessionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PlanSessionsTable, PlanSession>(table),
                   $$PlanSessionsTableReferences(db, table, e),
                 ),
               )
@@ -6365,7 +6654,7 @@ class $$PlanSessionDatesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PlanSessionDatesTable, PlanSessionDate>(table),
                   $$PlanSessionDatesTableReferences(db, table, e),
                 ),
               )
@@ -6440,6 +6729,7 @@ typedef $$PlanExercisesTableCreateCompanionBuilder =
       Value<int?> restSec,
       Value<String> notes,
       Value<String> videoUrl,
+      Value<int?> supersetGroupId,
     });
 typedef $$PlanExercisesTableUpdateCompanionBuilder =
     PlanExercisesCompanion Function({
@@ -6454,6 +6744,7 @@ typedef $$PlanExercisesTableUpdateCompanionBuilder =
       Value<int?> restSec,
       Value<String> notes,
       Value<String> videoUrl,
+      Value<int?> supersetGroupId,
     });
 
 final class $$PlanExercisesTableReferences
@@ -6550,6 +6841,11 @@ class $$PlanExercisesTableFilterComposer
 
   ColumnFilters<String> get videoUrl => $composableBuilder(
     column: $table.videoUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get supersetGroupId => $composableBuilder(
+    column: $table.supersetGroupId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6654,6 +6950,11 @@ class $$PlanExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get supersetGroupId => $composableBuilder(
+    column: $table.supersetGroupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PlanSessionsTableOrderingComposer get sessionId {
     final $$PlanSessionsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -6741,6 +7042,11 @@ class $$PlanExercisesTableAnnotationComposer
   GeneratedColumn<String> get videoUrl =>
       $composableBuilder(column: $table.videoUrl, builder: (column) => column);
 
+  GeneratedColumn<int> get supersetGroupId => $composableBuilder(
+    column: $table.supersetGroupId,
+    builder: (column) => column,
+  );
+
   $$PlanSessionsTableAnnotationComposer get sessionId {
     final $$PlanSessionsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -6827,6 +7133,7 @@ class $$PlanExercisesTableTableManager
                 Value<int?> restSec = const Value.absent(),
                 Value<String> notes = const Value.absent(),
                 Value<String> videoUrl = const Value.absent(),
+                Value<int?> supersetGroupId = const Value.absent(),
               }) => PlanExercisesCompanion(
                 id: id,
                 sessionId: sessionId,
@@ -6839,6 +7146,7 @@ class $$PlanExercisesTableTableManager
                 restSec: restSec,
                 notes: notes,
                 videoUrl: videoUrl,
+                supersetGroupId: supersetGroupId,
               ),
           createCompanionCallback:
               ({
@@ -6853,6 +7161,7 @@ class $$PlanExercisesTableTableManager
                 Value<int?> restSec = const Value.absent(),
                 Value<String> notes = const Value.absent(),
                 Value<String> videoUrl = const Value.absent(),
+                Value<int?> supersetGroupId = const Value.absent(),
               }) => PlanExercisesCompanion.insert(
                 id: id,
                 sessionId: sessionId,
@@ -6865,11 +7174,12 @@ class $$PlanExercisesTableTableManager
                 restSec: restSec,
                 notes: notes,
                 videoUrl: videoUrl,
+                supersetGroupId: supersetGroupId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PlanExercisesTable, PlanExercise>(table),
                   $$PlanExercisesTableReferences(db, table, e),
                 ),
               )
@@ -6947,6 +7257,7 @@ typedef $$SessionLogsTableCreateCompanionBuilder =
       required String id,
       Value<int?> planSessionId,
       required DateTime loggedAt,
+      Value<DateTime?> finishedAt,
       Value<String?> notes,
       Value<String?> activityName,
       Value<double?> durationSec,
@@ -6958,6 +7269,7 @@ typedef $$SessionLogsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<int?> planSessionId,
       Value<DateTime> loggedAt,
+      Value<DateTime?> finishedAt,
       Value<String?> notes,
       Value<String?> activityName,
       Value<double?> durationSec,
@@ -7022,6 +7334,11 @@ class $$SessionLogsTableFilterComposer
 
   ColumnFilters<DateTime> get loggedAt => $composableBuilder(
     column: $table.loggedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7113,6 +7430,11 @@ class $$SessionLogsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
@@ -7171,6 +7493,11 @@ class $$SessionLogsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get loggedAt =>
       $composableBuilder(column: $table.loggedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
@@ -7268,6 +7595,7 @@ class $$SessionLogsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<int?> planSessionId = const Value.absent(),
                 Value<DateTime> loggedAt = const Value.absent(),
+                Value<DateTime?> finishedAt = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<String?> activityName = const Value.absent(),
                 Value<double?> durationSec = const Value.absent(),
@@ -7277,6 +7605,7 @@ class $$SessionLogsTableTableManager
                 id: id,
                 planSessionId: planSessionId,
                 loggedAt: loggedAt,
+                finishedAt: finishedAt,
                 notes: notes,
                 activityName: activityName,
                 durationSec: durationSec,
@@ -7288,6 +7617,7 @@ class $$SessionLogsTableTableManager
                 required String id,
                 Value<int?> planSessionId = const Value.absent(),
                 required DateTime loggedAt,
+                Value<DateTime?> finishedAt = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<String?> activityName = const Value.absent(),
                 Value<double?> durationSec = const Value.absent(),
@@ -7297,6 +7627,7 @@ class $$SessionLogsTableTableManager
                 id: id,
                 planSessionId: planSessionId,
                 loggedAt: loggedAt,
+                finishedAt: finishedAt,
                 notes: notes,
                 activityName: activityName,
                 durationSec: durationSec,
@@ -7306,7 +7637,7 @@ class $$SessionLogsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$SessionLogsTable, SessionLog>(table),
                   $$SessionLogsTableReferences(db, table, e),
                 ),
               )
@@ -7807,7 +8138,7 @@ class $$LoggedSetsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$LoggedSetsTable, LoggedSet>(table),
                   $$LoggedSetsTableReferences(db, table, e),
                 ),
               )
@@ -8161,7 +8492,16 @@ class $$BodyMeasurementsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$BodyMeasurementsTable, BodyMeasurement>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $BodyMeasurementsTable,
+                    BodyMeasurement
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),

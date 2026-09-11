@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
+import '../shared/info_dialog.dart';
 import '../shared/numeric_input_formatters.dart';
 import 'exercise_prescription_form.dart';
 import 'plan_detail_screen.dart';
@@ -19,10 +21,10 @@ final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
 );
 
 /// Lets an already-created session's exercises be edited in place: change
-/// sets/reps/weight/rest/notes, reorder, or remove. Previously a plan could
-/// only be built up (via import or "Add to plan") and never adjusted, which
-/// made it awkward to evolve a plan over weeks.
-class EditSessionScreen extends ConsumerWidget {
+/// sets/reps/weight/rest/notes, reorder, remove, or group into a superset.
+/// Previously a plan could only be built up (via import or "Add to plan")
+/// and never adjusted, which made it awkward to evolve a plan over weeks.
+class EditSessionScreen extends ConsumerStatefulWidget {
   final int sessionId;
   final String planId;
 
@@ -33,11 +35,42 @@ class EditSessionScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EditSessionScreen> createState() => _EditSessionScreenState();
+}
+
+class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
+  int get sessionId => widget.sessionId;
+  String get planId => widget.planId;
+
+  bool _selecting = false;
+  final Set<int> _selectedIds = {};
+
+  @override
+  Widget build(BuildContext context) {
     final detailsAsync = ref.watch(_sessionDetailsProvider(sessionId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit session')),
+      appBar: AppBar(
+        title: const Text('Edit session'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'What is a superset?',
+            onPressed: () => showInfoDialog(
+              context,
+              title: 'What is a superset?',
+              content: supersetExplanationNote,
+            ),
+          ),
+          TextButton(
+            onPressed: () => setState(() {
+              _selecting = !_selecting;
+              _selectedIds.clear();
+            }),
+            child: Text(_selecting ? 'Cancel' : 'Group into superset'),
+          ),
+        ],
+      ),
       body: detailsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
@@ -53,6 +86,11 @@ class EditSessionScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 16),
+              if (_selecting)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text('Select 2 or more exercises to do back-to-back.'),
+                ),
               if (details.exercises.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
@@ -63,45 +101,73 @@ class EditSessionScreen extends ConsumerWidget {
                   exercise: details.exercises[i],
                   isFirst: i == 0,
                   isLast: i == details.exercises.length - 1,
-                  onEdit: () =>
-                      _edit(context, ref, details.exercises[i]),
-                  onDelete: () => _removeExercise(
-                    context,
-                    ref,
-                    details,
-                    details.exercises[i],
-                  ),
-                  onMove: (up) => _move(ref, details.exercises[i], up),
+                  selecting: _selecting,
+                  selected: _selectedIds.contains(details.exercises[i].id),
+                  onSelectedChanged: (checked) => setState(() {
+                    if (checked) {
+                      _selectedIds.add(details.exercises[i].id);
+                    } else {
+                      _selectedIds.remove(details.exercises[i].id);
+                    }
+                  }),
+                  onEdit: () => _edit(details.exercises[i]),
+                  onDelete: () => _removeExercise(details, details.exercises[i]),
+                  onMove: (up) => _move(details.exercises[i], up),
+                  onUngroup: () => _ungroup(details.exercises[i]),
                 ),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => _addExercise(context, ref, details),
-                icon: const Icon(Icons.add),
-                label: const Text('Add exercise'),
-              ),
+              if (!_selecting)
+                OutlinedButton.icon(
+                  onPressed: () => _addExercise(details),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add exercise'),
+                ),
             ],
           );
         },
       ),
+      bottomNavigationBar: _selecting
+          ? SafeArea(
+              minimum: const EdgeInsets.all(16),
+              child: FilledButton(
+                onPressed: _selectedIds.length >= 2 ? _confirmGroup : null,
+                child: Text('Group selected (${_selectedIds.length})'),
+              ),
+            )
+          : null,
     );
   }
 
-  void _invalidate(WidgetRef ref) {
+  void _invalidate() {
     ref.invalidate(_sessionDetailsProvider(sessionId));
     ref.invalidate(planDetailsProvider(planId));
   }
 
-  Future<void> _move(WidgetRef ref, PlanExercise exercise, bool up) async {
+  Future<void> _confirmGroup() async {
+    final db = ref.read(appDatabaseProvider);
+    await db.planDao.setSupersetGroup(_selectedIds.toList());
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+    });
+    _invalidate();
+  }
+
+  Future<void> _ungroup(PlanExercise exercise) async {
+    final db = ref.read(appDatabaseProvider);
+    await db.planDao.clearSupersetGroup(exercise.id);
+    _invalidate();
+  }
+
+  Future<void> _move(PlanExercise exercise, bool up) async {
     final db = ref.read(appDatabaseProvider);
     await db.planDao.movePlanExercise(planExerciseId: exercise.id, up: up);
-    _invalidate(ref);
+    _invalidate();
   }
 
   /// Removing an exercise is a structural change, like adding one (see
   /// [_addExercise]) - it forks a new plan rather than mutating this one.
   Future<void> _removeExercise(
-    BuildContext context,
-    WidgetRef ref,
     PlanSessionDetails details,
     PlanExercise exercise,
   ) async {
@@ -126,13 +192,13 @@ class EditSessionScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !mounted) return;
 
     final remaining = [
       for (final e in details.exercises)
         if (e.id != exercise.id) e.toInput(),
     ];
-    await _forkAndNavigate(context, ref, details, remaining);
+    await _forkAndNavigate(details, remaining);
   }
 
   /// Adding an exercise to an already-existing session is a structural
@@ -141,15 +207,11 @@ class EditSessionScreen extends ConsumerWidget {
   /// the Exercise Library's own "Add to plan" flow), it forks a new plan
   /// with the addition, leaving the plan actually open here untouched. See
   /// plan_fork.dart's own doc comment for the full reasoning.
-  Future<void> _addExercise(
-    BuildContext context,
-    WidgetRef ref,
-    PlanSessionDetails details,
-  ) async {
+  Future<void> _addExercise(PlanSessionDetails details) async {
     final exercise = await Navigator.of(context).push<Exercise>(
       MaterialPageRoute(builder: (context) => const ExercisePickerScreen()),
     );
-    if (exercise == null || !context.mounted) return;
+    if (exercise == null || !mounted) return;
 
     final input = await showDialog<PlanExerciseInput>(
       context: context,
@@ -158,13 +220,13 @@ class EditSessionScreen extends ConsumerWidget {
         exerciseId: exercise.id,
       ),
     );
-    if (input == null || !context.mounted) return;
+    if (input == null || !mounted) return;
 
     final updated = [
       for (final e in details.exercises) e.toInput(),
       input,
     ];
-    await _forkAndNavigate(context, ref, details, updated);
+    await _forkAndNavigate(details, updated);
   }
 
   /// Shared by [_addExercise]/[_removeExercise]: asks for the forked
@@ -172,8 +234,6 @@ class EditSessionScreen extends ConsumerWidget {
   /// to the *new* plan's detail screen - staying on this session's edit
   /// screen would be confusing once a different plan now holds the change.
   Future<void> _forkAndNavigate(
-    BuildContext context,
-    WidgetRef ref,
     PlanSessionDetails details,
     List<PlanExerciseInput> newExercises,
   ) async {
@@ -186,10 +246,10 @@ class EditSessionScreen extends ConsumerWidget {
 
     final db = ref.read(appDatabaseProvider);
     final source = await db.planDao.getPlanDetails(planId);
-    if (source == null || !context.mounted) return;
+    if (source == null || !mounted) return;
 
-    final newName = await _promptForkName(context, source.plan.name);
-    if (newName == null || !context.mounted) return;
+    final newName = await _promptForkName(source.plan.name);
+    if (newName == null || !mounted) return;
 
     final newPlanId = await forkPlanWithModifiedSession(
       db,
@@ -199,7 +259,7 @@ class EditSessionScreen extends ConsumerWidget {
       newExercisesForEditedSession: ordered,
     );
 
-    if (!context.mounted) return;
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => PlanDetailScreen(planId: newPlanId),
@@ -210,7 +270,7 @@ class EditSessionScreen extends ConsumerWidget {
     );
   }
 
-  Future<String?> _promptForkName(BuildContext context, String planName) {
+  Future<String?> _promptForkName(String planName) {
     final controller = TextEditingController(text: '$planName (edited)');
     return showDialog<String>(
       context: context,
@@ -241,11 +301,7 @@ class EditSessionScreen extends ConsumerWidget {
     });
   }
 
-  Future<void> _edit(
-    BuildContext context,
-    WidgetRef ref,
-    PlanExercise exercise,
-  ) async {
+  Future<void> _edit(PlanExercise exercise) async {
     final result = await showDialog<_EditResult>(
       context: context,
       builder: (context) => _EditExerciseDialog(exercise: exercise),
@@ -261,7 +317,7 @@ class EditSessionScreen extends ConsumerWidget {
       restSec: result.restSec,
       notes: result.notes,
     );
-    _invalidate(ref);
+    _invalidate();
   }
 }
 
@@ -269,21 +325,40 @@ class _ExerciseCard extends StatelessWidget {
   final PlanExercise exercise;
   final bool isFirst;
   final bool isLast;
+  final bool selecting;
+  final bool selected;
+  final ValueChanged<bool> onSelectedChanged;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final void Function(bool up) onMove;
+  final VoidCallback onUngroup;
 
   const _ExerciseCard({
     required this.exercise,
     required this.isFirst,
     required this.isLast,
+    required this.selecting,
+    required this.selected,
+    required this.onSelectedChanged,
     required this.onEdit,
     required this.onDelete,
     required this.onMove,
+    required this.onUngroup,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (selecting) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: CheckboxListTile(
+          value: selected,
+          onChanged: (checked) => onSelectedChanged(checked ?? false),
+          title: Text(exercise.exerciseName),
+          subtitle: Text('${exercise.sets} x ${exercise.reps}'),
+        ),
+      );
+    }
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -295,12 +370,19 @@ class _ExerciseCard extends StatelessWidget {
               '${exercise.sets} x ${exercise.reps}'
               '${exercise.weightIntensity.isEmpty ? '' : ' @ ${exercise.weightIntensity}'}'
               '${exercise.restSec == null ? '' : ' • ${exercise.restSec}s rest'}'
+              '${exercise.supersetGroupId == null ? '' : ' • Superset group ${exercise.supersetGroupId}'}'
               '${exercise.notes.isEmpty ? '' : '\n${exercise.notes}'}',
             ),
           ),
           OverflowBar(
             alignment: MainAxisAlignment.end,
             children: [
+              if (exercise.supersetGroupId != null)
+                IconButton(
+                  icon: const Icon(Icons.link_off),
+                  tooltip: 'Ungroup this exercise',
+                  onPressed: onUngroup,
+                ),
               IconButton(
                 icon: const Icon(Icons.arrow_upward),
                 tooltip: 'Move up',

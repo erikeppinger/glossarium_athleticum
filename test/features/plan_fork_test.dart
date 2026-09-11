@@ -166,4 +166,57 @@ void main() {
       reason: 'the log must still be readable via the original session id',
     );
   });
+
+  test(
+    'superset grouping on an untouched session survives the fork',
+    () async {
+      await db.planDao.createPlan(
+        id: 'plan-1',
+        name: 'Plan A',
+        sessions: [pushDay, pullDay],
+      );
+      final details = (await db.planDao.getPlanDetails('plan-1'))!;
+      final pushSessionId = details.sessions
+          .firstWhere((s) => s.session.sessionName == 'Push Day')
+          .session
+          .id;
+      final pushExercises = details.sessions
+          .firstWhere((s) => s.session.sessionName == 'Push Day')
+          .exercises;
+      final pullSessionId = details.sessions
+          .firstWhere((s) => s.session.sessionName == 'Pull Day')
+          .session
+          .id;
+      await db.planDao.setSupersetGroup(
+        pushExercises.map((e) => e.id).toList(),
+      );
+
+      // Fork edits Pull Day only - Push Day (and its grouping) should come
+      // through the fork completely untouched.
+      final newPlanId = await forkPlanWithModifiedSession(
+        db,
+        sourcePlanId: 'plan-1',
+        newPlanName: 'Plan A (edited)',
+        editedSessionId: pullSessionId,
+        newExercisesForEditedSession: const [
+          PlanExerciseInput(order: 1, exerciseName: 'Deadlift', sets: 5, reps: '5'),
+        ],
+      );
+
+      final forkedPush = (await db.planDao.getPlanDetails(
+        newPlanId,
+      ))!.sessions.firstWhere((s) => s.session.sessionName == 'Push Day');
+      expect(forkedPush.exercises[0].supersetGroupId, isNotNull);
+      expect(
+        forkedPush.exercises[0].supersetGroupId,
+        forkedPush.exercises[1].supersetGroupId,
+      );
+
+      // The original plan's own grouping is unaffected either way.
+      final originalPush = (await db.planDao.getPlanDetails(
+        'plan-1',
+      ))!.sessions.firstWhere((s) => s.session.id == pushSessionId);
+      expect(originalPush.exercises[0].supersetGroupId, isNotNull);
+    },
+  );
 }

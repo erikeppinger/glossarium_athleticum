@@ -18,7 +18,9 @@ import '../../security/backup_encryption.dart';
 import '../calendar/calendar_screen.dart';
 import '../execution/start_session_helper.dart';
 import '../notifications/reminder_coordinator.dart';
+import '../settings/app_preferences.dart';
 import '../settings/backup_dialogs.dart';
+import '../shared/app_date_picker.dart';
 import '../shared/numeric_input_formatters.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
@@ -347,8 +349,9 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     PlanSession session,
   ) async {
     final now = DateTime.now();
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
+      weekStart: ref.read(appPreferencesProvider).weekStart,
       initialDate: now,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 2),
@@ -369,8 +372,9 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     PlanSession session,
     DateTime from,
   ) async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
+      weekStart: ref.read(appPreferencesProvider).weekStart,
       initialDate: from,
       firstDate: DateTime(from.year - 1),
       lastDate: DateTime(from.year + 2),

@@ -17,11 +17,17 @@ const encryptedLibraryFileExtension = 'tlibrary';
 /// the custom exercises that one plan actually references). Neither covers
 /// "I built up a library of custom exercises and want to hand just that to
 /// someone, or back it up on its own."
+/// [exercisesOverride] exports exactly that list instead of every custom
+/// exercise on the device - the "manage libraries" screen's "export this
+/// group" action, so exporting one imported plan's exercises (or one
+/// author's) doesn't drag along everything else too.
 Future<Map<String, dynamic>> buildLibraryJson(
   AppDatabase db, {
   Directory? attachmentsDirectory,
+  List<Exercise>? exercisesOverride,
 }) async {
-  final customExercises = await db.exerciseDao.getCustomExercises();
+  final customExercises =
+      exercisesOverride ?? await db.exerciseDao.getCustomExercises();
   final exerciseJsonList = <Map<String, dynamic>>[];
   for (final e in customExercises) {
     exerciseJsonList.add(

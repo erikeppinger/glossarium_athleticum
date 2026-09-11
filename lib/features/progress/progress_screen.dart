@@ -40,6 +40,70 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
   @override
   Widget build(BuildContext context) {
     final prefs = ref.watch(appPreferencesProvider);
+
+    // Skip every other provider watch below entirely while this is on - same
+    // reasoning as the `bodyTrackingEnabled` gate further down: don't pay for
+    // a DB read for a feature that's deliberately off.
+    if (prefs.hideProgressActive) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Progress'),
+          actions: [settingsAppBarAction(context)],
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.center_focus_strong,
+                  size: 40,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Focus mode is on',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '"A work of art is never finished, only abandoned."',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontStyle: FontStyle.italic),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '— Paul Valéry',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Progress and PRs are hidden. Nothing is deleted - your '
+                  'history is all still there.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                OutlinedButton(
+                  onPressed: () => ref
+                      .read(appPreferencesProvider.notifier)
+                      .setFocusModeHideProgress(false),
+                  child: const Text('Show progress again'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final period = _period ?? prefs.summaryPeriod;
     final range = computeSummaryRange(
       period: period,

@@ -18,7 +18,6 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -36,18 +35,34 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
             <!-- Lets a plan/backup file be opened directly (e.g. tapping a
-                 Bluetooth-received file, or a WhatsApp attachment). -->
+                 Bluetooth-received file, or a WhatsApp attachment).
+                 Deliberately NOT mimeType="*/*" - that originally matched
+                 every file type system-wide (PDFs, APKs, photos, ...),
+                 reported live as Android offering this app as a handler for
+                 completely unrelated files. `handleSharedContent` only ever
+                 recognizes .csv/.json/the .tabackup backup extension anyway
+                 (anything else just shows "doesn't recognize this file"), so
+                 the manifest only needs to match what senders actually tag
+                 those as: registered types for the two with one
+                 (text/csv, application/json), and the generic fallback
+                 (application/octet-stream) most senders use for the fully
+                 custom, unregistered .tabackup/.tplan/.tlibrary extensions. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" android:scheme="content" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" />
+                <data android:scheme="content" android:mimeType="application/json" />
+                <data android:scheme="content" android:mimeType="text/csv" />
             </intent-filter>
             <!-- Lets Training App appear as a share target for a plan/backup
-                 file shared from another app (e.g. WhatsApp's forward icon). -->
+                 file shared from another app (e.g. WhatsApp's forward icon) -
+                 same narrowed mimetype set as above, same reason. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="text/csv" />
             </intent-filter>
         </activity>
         <!-- flutter_local_notifications: re-schedules pending reminders after

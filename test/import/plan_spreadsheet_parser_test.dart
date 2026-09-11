@@ -22,6 +22,30 @@ $_header
       expect(result.rows[1].videoUrl, 'https://example.com/v');
     });
 
+    test(
+      'reads an optional "Picture" column when present, blank when absent',
+      () {
+        const csv = '''
+$_header,Picture
+1,Mon,Push Day,1,Bench Press,4,8-10,60kg,90,,,bench.jpg
+''';
+        final withPicture = parsePlanCsv(csv);
+        expect(withPicture.hasErrors, isFalse);
+        expect(withPicture.rows.single.picture, 'bench.jpg');
+
+        // The plain template (no "Picture" column at all) still parses
+        // exactly as before - a plan-with-pictures zip is opt-in, not a
+        // breaking change to every other spreadsheet import.
+        const plainCsv = '''
+$_header
+1,Mon,Push Day,1,Bench Press,4,8-10,60kg,90,,
+''';
+        final withoutPicture = parsePlanCsv(plainCsv);
+        expect(withoutPicture.hasErrors, isFalse);
+        expect(withoutPicture.rows.single.picture, '');
+      },
+    );
+
     test('skips fully empty rows without reporting them as errors', () {
       const csv = '''
 $_header
@@ -131,6 +155,7 @@ $_header
           safetyNotes: '',
           videoReference: '',
           isCustom: false,
+          isFavorite: false,
         );
 
     test('matches exact names case-insensitively', () {

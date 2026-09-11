@@ -146,6 +146,7 @@ void main() {
           measurementType: 'Weight x Reps',
           isCustom: const Value(true),
           imagePath: const Value('photo.jpg'),
+          imagePaths: const Value('photo.jpg'),
         ),
       );
       await db.planDao.createPlan(
@@ -176,7 +177,7 @@ void main() {
         attachmentsDirectory: sourceDir,
       );
       expect(
-        (json['exercises'] as List).single['image_data_base64'],
+        (json['exercises'] as List).single['images_data_base64'],
         isNotNull,
       );
 
@@ -195,7 +196,7 @@ void main() {
       final restoredExercise = await db.exerciseDao.getExerciseById(
         exerciseId!,
       );
-      expect(restoredExercise!.imagePath, 'photo.jpg');
+      expect(restoredExercise!.imagePaths, 'photo.jpg');
       expect(
         await File('${restoredDir.path}/photo.jpg').readAsBytes(),
         [9, 8, 7],

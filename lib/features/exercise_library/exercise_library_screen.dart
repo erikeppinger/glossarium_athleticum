@@ -22,12 +22,27 @@ import '../history/history_screen.dart';
 import '../settings/app_preferences.dart';
 import '../settings/backup_dialogs.dart';
 import '../shared/muscle_area_stripe.dart';
+import '../tools/plate_calculator_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
+import '../plans/random_workout_screen.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_detail_screen.dart';
 import 'exercise_library_import_screen.dart';
 import 'exercise_library_providers.dart';
+import 'library_management_screen.dart';
+
+/// Flips [value]'s membership in [provider]'s set - in on an unselected
+/// chip, out on an already-selected one (a second tap on "Back" deselects
+/// it, rather than needing a separate tap on "All" to get back to no
+/// filter). Always builds a *new* Set rather than mutating in place, so
+/// Riverpod's StateProvider actually notices the change.
+void _toggle<T>(WidgetRef ref, StateProvider<Set<T>> provider, T value) {
+  final current = ref.read(provider);
+  final next = Set<T>.of(current);
+  if (!next.remove(value)) next.add(value);
+  ref.read(provider.notifier).state = next;
+}
 
 class ExerciseLibraryScreen extends ConsumerStatefulWidget {
   const ExerciseLibraryScreen({super.key});
@@ -62,62 +77,112 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
   Widget build(BuildContext context) {
     final exercisesAsync = ref.watch(filteredExercisesProvider);
     final categoriesAsync = ref.watch(exerciseCategoriesProvider);
-    final selectedCategory = ref.watch(exerciseCategoryFilterProvider);
+    final selectedCategories = ref.watch(exerciseCategoryFilterProvider);
     final creatorOptionsAsync = ref.watch(creatorFilterOptionsProvider);
     final selectedCreator = ref.watch(exerciseCreatorFilterProvider);
-    final selectedArea = ref.watch(exerciseAreaFilterProvider);
+    final selectedAreas = ref.watch(exerciseAreaFilterProvider);
     final availableEquipment = ref.watch(
       appPreferencesProvider.select((p) => p.availableEquipment),
     );
+    final libraryEquipmentTags = ref.watch(libraryEquipmentTagsProvider);
     final equipmentFilterEnabled = ref.watch(
       exerciseEquipmentFilterEnabledProvider,
     );
+    final favoritesOnly = ref.watch(exerciseFavoritesOnlyFilterProvider);
     final palette = ref.watch(appPreferencesProvider).colorPalette;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Exercise Library'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Create exercise',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const CreateExerciseScreen(),
+        actions: [settingsAppBarAction(context)],
+        // Previously all five of these (the four below, plus Settings) sat
+        // in `actions`, crowding the title down to "Exercise Libr..." and
+        // packing the icons tightly enough that the row looked broken -
+        // reported live (2026-09-09). Settings alone stays in `actions`
+        // (matching every other tab's app bar); the library-management
+        // actions move to their own row directly underneath instead of
+        // fighting the title for space.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Create exercise',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const CreateExerciseScreen(),
+                  ),
+                ),
               ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_download_outlined),
-            tooltip: 'Import library',
-            onPressed: () => _showImportOptions(context, ref),
-          ),
-          PopupMenuButton<_LibraryExportAction>(
-            icon: const Icon(Icons.file_upload_outlined),
-            tooltip: 'Export library',
-            onSelected: (action) => _handleExportAction(context, ref, action),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _LibraryExportAction.shareJson,
-                child: Text('Share library (.json)'),
+              IconButton(
+                icon: const Icon(Icons.file_download_outlined),
+                tooltip: 'Import library',
+                onPressed: () => _showImportOptions(context, ref),
               ),
-              PopupMenuItem(
-                value: _LibraryExportAction.shareEncrypted,
-                child: Text('Share encrypted library (.tlibrary)'),
+              PopupMenuButton<_LibraryExportAction>(
+                icon: const Icon(Icons.file_upload_outlined),
+                tooltip: 'Export library',
+                onSelected: (action) =>
+                    _handleExportAction(context, ref, action),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _LibraryExportAction.shareJson,
+                    child: Text('Share library (.json)'),
+                  ),
+                  PopupMenuItem(
+                    value: _LibraryExportAction.shareEncrypted,
+                    child: Text('Share encrypted library (.tlibrary)'),
+                  ),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: _LibraryExportAction.saveJson,
+                    child: Text('Save library (.json)'),
+                  ),
+                  PopupMenuItem(
+                    value: _LibraryExportAction.saveEncrypted,
+                    child: Text('Save encrypted library (.tlibrary)'),
+                  ),
+                ],
               ),
-              PopupMenuDivider(),
-              PopupMenuItem(
-                value: _LibraryExportAction.saveJson,
-                child: Text('Save library (.json)'),
+              IconButton(
+                icon: const Icon(Icons.folder_outlined),
+                tooltip: 'Manage libraries',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const LibraryManagementScreen(),
+                  ),
+                ),
               ),
-              PopupMenuItem(
-                value: _LibraryExportAction.saveEncrypted,
-                child: Text('Save encrypted library (.tlibrary)'),
+              // Previously buried in the Plans tab's "New plan" bottom
+              // sheet, grouped with ways to author a *plan* - reported live
+              // (2026-09-10) as a confusing, easy-to-miss home for it: a
+              // random workout is built from the exercise library, not
+              // authored as a plan (even though it happens to save as one
+              // under the hood via PlanDao.createPlan - see
+              // random_workout_screen.dart). Belongs here instead.
+              IconButton(
+                icon: const Icon(Icons.shuffle),
+                tooltip: 'Random workout',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const RandomWorkoutScreen(),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.calculate),
+                tooltip: 'Plate calculator',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PlateCalculatorScreen(),
+                  ),
+                ),
               ),
             ],
           ),
-          settingsAppBarAction(context),
-        ],
+        ),
       ),
       body: Column(
         children: [
@@ -125,10 +190,29 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
             padding: const EdgeInsets.all(12),
             child: TextField(
               key: const Key('exerciseSearchField'),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Search exercises',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                // Previously its own "Favorites only" chip in the filter
+                // row below - reported live as sitting oddly on its own
+                // whenever "My equipment" wasn't also showing (the common
+                // case, since equipment is opt-in). A star here saves that
+                // whole row instead.
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    favoritesOnly ? Icons.star : Icons.star_border,
+                  ),
+                  color: favoritesOnly
+                      ? Colors.amber.shade700
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  tooltip: favoritesOnly
+                      ? 'Show all exercises'
+                      : 'Show favorites only',
+                  onPressed: () => ref
+                      .read(exerciseFavoritesOnlyFilterProvider.notifier)
+                      .state = !favoritesOnly,
+                ),
               ),
               onChanged: (value) =>
                   ref.read(exerciseSearchQueryProvider.notifier).state = value,
@@ -141,6 +225,18 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
             child: !_filtersExpanded
                 ? const SizedBox(width: double.infinity)
                 : Column(
+                    // The category/area/creator rows above are horizontally
+                    // scrolling ListViews, which fill the available width
+                    // regardless of alignment - but the "My equipment"/
+                    // "Favorites only" row below is a plain Wrap, which
+                    // shrink-wraps to its content. With no explicit
+                    // alignment here, Column's own default (center) left
+                    // that Wrap floating in the horizontal middle of the
+                    // screen instead of lining up with everything else,
+                    // most noticeably when only one of the two chips shows
+                    // (e.g. equipment not configured, so just "Favorites
+                    // only" appears alone) - reported live (2026-09-10).
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       categoriesAsync.when(
                         data: (categories) => Padding(
@@ -152,18 +248,21 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                               children: [
                                 _CategoryChip(
                                   label: 'All',
-                                  selected: selectedCategory == null,
+                                  selected: selectedCategories.isEmpty,
                                   onSelected: () => ref
                                       .read(exerciseCategoryFilterProvider.notifier)
-                                      .state = null,
+                                      .state = {},
                                 ),
                                 for (final category in categories)
                                   _CategoryChip(
                                     label: category,
-                                    selected: selectedCategory == category,
-                                    onSelected: () => ref
-                                        .read(exerciseCategoryFilterProvider.notifier)
-                                        .state = category,
+                                    selected: selectedCategories.contains(category),
+                                    swatch: colorForCategoryValue(category, palette),
+                                    onSelected: () => _toggle(
+                                      ref,
+                                      exerciseCategoryFilterProvider,
+                                      category,
+                                    ),
                                   ),
                               ],
                             ),
@@ -183,21 +282,21 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                               children: [
                                 _CategoryChip(
                                   label: 'All areas',
-                                  selected: selectedArea == null,
+                                  selected: selectedAreas.isEmpty,
                                   onSelected: () => ref
                                       .read(exerciseAreaFilterProvider.notifier)
-                                      .state = null,
+                                      .state = {},
                                 ),
                                 for (final area in MuscleArea.values)
                                   _CategoryChip(
                                     label: area.label,
-                                    selected: selectedArea == area,
+                                    selected: selectedAreas.contains(area),
                                     swatch: colorForArea(area, palette),
-                                    onSelected: () =>
-                                        ref
-                                                .read(exerciseAreaFilterProvider.notifier)
-                                                .state =
-                                            area,
+                                    onSelected: () => _toggle(
+                                      ref,
+                                      exerciseAreaFilterProvider,
+                                      area,
+                                    ),
                                   ),
                               ],
                             ),
@@ -217,14 +316,20 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                                   _CategoryChip(
                                     label: 'All creators',
                                     selected: selectedCreator == null,
+                                    compact: true,
                                     onSelected: () => ref
                                         .read(exerciseCreatorFilterProvider.notifier)
                                         .state = null,
                                   ),
                                   _CategoryChip(
-                                    label: 'Own',
+                                    // Not "Own" - this bucket is "isCustom
+                                    // with no author/plan attached", which
+                                    // includes bulk spreadsheet imports as
+                                    // often as anything hand-typed in the
+                                    // app.
+                                    label: 'Not in library',
                                     selected: selectedCreator == ownExercisesFilter,
-                                    swatch: colorForProvenance(ExerciseProvenance.own),
+                                    compact: true,
                                     onSelected: () => ref
                                         .read(exerciseCreatorFilterProvider.notifier)
                                         .state = ownExercisesFilter,
@@ -235,14 +340,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                                           ? 'Plan: ${option.substring(5)}'
                                           : 'By: ${option.substring(7)}',
                                       selected: selectedCreator == option,
-                                      // Per-value, not colorForProvenance's
-                                      // fixed per-category colour - every
-                                      // "Plan: ..." chip would otherwise
-                                      // share the same green regardless of
-                                      // which plan it is, defeating the
-                                      // point of colour-coding a row meant
-                                      // to distinguish them.
-                                      swatch: colorForCreatorValue(option),
+                                      compact: true,
                                       onSelected: () => ref
                                           .read(exerciseCreatorFilterProvider.notifier)
                                           .state = option,
@@ -255,23 +353,46 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                         loading: () => const SizedBox.shrink(),
                         error: (_, _) => const SizedBox.shrink(),
                       ),
-                      // Hidden entirely until equipment has actually been
-                      // configured (Settings or onboarding) - same "opt-in
-                      // feature invisible until there's data for it" shape
-                      // as the body-tracking card, since an empty
-                      // owned-equipment set isn't itself a meaningful filter.
-                      if (availableEquipment.isNotEmpty)
+                      // Hidden until equipment has actually been configured
+                      // (Settings or onboarding) *and* the library still has
+                      // exercises tagged with real equipment info right now -
+                      // same "opt-in feature invisible until there's data for
+                      // it" shape as the body-tracking card. The second half
+                      // guards against a stale "my equipment" preference
+                      // lingering as a dead filter after the library's own
+                      // equipment data changes (e.g. every tagged exercise
+                      // gets deleted) - without it the chip would still show
+                      // but could never actually filter anything. Favorites
+                      // used to live here too as its own "Favorites only"
+                      // chip, but with equipment usually unconfigured it was
+                      // the only chip in this row and ended up looking
+                      // stray - moved to a star toggle on the search field
+                      // instead (see below), which also saves a whole row
+                      // for the common case where equipment isn't set up at
+                      // all, since this row now hides completely in that
+                      // case rather than sitting empty.
+                      if (availableEquipment.isNotEmpty &&
+                          (libraryEquipmentTags.valueOrNull?.isNotEmpty ??
+                              false))
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FilterChip(
-                              label: const Text('My equipment'),
-                              selected: equipmentFilterEnabled,
-                              onSelected: (selected) => ref
-                                  .read(exerciseEquipmentFilterEnabledProvider.notifier)
-                                  .state = selected,
-                            ),
+                          child: Wrap(
+                            spacing: 8,
+                            children: [
+                              FilterChip(
+                                label: const Text('My equipment'),
+                                labelStyle: Theme.of(
+                                  context,
+                                ).textTheme.labelSmall,
+                                selected: equipmentFilterEnabled,
+                                onSelected: (selected) => ref
+                                    .read(
+                                      exerciseEquipmentFilterEnabledProvider
+                                          .notifier,
+                                    )
+                                    .state = selected,
+                              ),
+                            ],
                           ),
                         ),
                       const SizedBox(height: 8),
@@ -498,33 +619,41 @@ class _CategoryChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onSelected;
   // Mirrors the library list's own colour coding onto the filter that picks
-  // it out - null for the category row, which doesn't map onto a single
-  // muscle area or provenance and so has nothing meaningful to swatch.
+  // it out - null for a row with nothing meaningful to swatch.
   final Color? swatch;
+  // The creator and equipment rows are complementary information (who made
+  // it, what you can do it with) next to the category/area rows the list's
+  // own colour stripes are now tied to - a smaller label keeps them visually
+  // secondary rather than competing for the same weight.
+  final bool compact;
 
   const _CategoryChip({
     required this.label,
     required this.selected,
     required this.onSelected,
     this.swatch,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final labelStyle = compact ? Theme.of(context).textTheme.labelSmall : null;
+
     if (swatch == null) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: ChoiceChip(
           label: Text(label),
           selected: selected,
+          labelStyle: labelStyle,
           onSelected: (_) => onSelected(),
         ),
       );
     }
 
-    // Filled with the area/provenance's own colour rather than a small
-    // leading dot - reads at a glance without a separate swatch+label pair
-    // taking up width, so the chip itself can be narrower. Selected vs.
+    // Filled with the category/area/provenance's own colour rather than a
+    // small leading dot - reads at a glance without a separate swatch+label
+    // pair taking up width, so the chip itself can be narrower. Selected vs.
     // unselected is shown as full-strength vs. faded fill (with a matching
     // border either way) rather than a checkmark, which would eat back the
     // width just saved by dropping the dot.
@@ -541,7 +670,7 @@ class _CategoryChip extends StatelessWidget {
         backgroundColor: swatch!.withValues(alpha: 0.35),
         selectedColor: swatch,
         side: BorderSide(color: swatch!, width: selected ? 1.5 : 1),
-        labelStyle: TextStyle(
+        labelStyle: (labelStyle ?? const TextStyle()).copyWith(
           color: selected ? fg : null,
           fontWeight: selected ? FontWeight.bold : FontWeight.normal,
         ),
@@ -550,35 +679,34 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-class _ExerciseTile extends StatelessWidget {
+class _ExerciseTile extends ConsumerWidget {
   final Exercise exercise;
   final AppColorPalette palette;
 
   const _ExerciseTile({required this.exercise, required this.palette});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final area = areaForExercise(
       muscleGroups: exercise.muscleGroups,
       category: exercise.category,
       movementPattern: exercise.movementPattern,
     );
 
-    final provenance = provenanceForExercise(exercise);
-
     return ListTile(
-      // Two independent colour stripes rather than a filled row: one for
-      // what the exercise trains, one for who made it - they read at a
-      // glance when scanning, without tinting the text behind them or
-      // forcing one bar to encode two different kinds of information.
+      // Two colour stripes mirroring the two colour-coded filter rows above
+      // the list, in the same order: category first, muscle area second -
+      // tying the per-row list colouring directly to the rows it comes from
+      // reads more intuitively than a third, independent "who made this"
+      // colour that didn't correspond to anything above it.
       leading: SizedBox(
         width: 16,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            MuscleAreaStripe(area: area, palette: palette),
+            CategoryStripe(category: exercise.category, palette: palette),
             const SizedBox(width: 4),
-            ProvenanceStripe(provenance: provenance),
+            MuscleAreaStripe(area: area, palette: palette),
           ],
         ),
       ),
@@ -593,7 +721,29 @@ class _ExerciseTile extends StatelessWidget {
           exercise.difficulty,
         ].where((part) => part.isNotEmpty).join(' • '),
       ),
-      trailing: Text(exercise.measurementType),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(exercise.measurementType),
+          IconButton(
+            icon: Icon(
+              exercise.isFavorite ? Icons.star : Icons.star_border,
+            ),
+            color: exercise.isFavorite ? Colors.amber.shade700 : null,
+            tooltip: exercise.isFavorite
+                ? 'Remove from favorites'
+                : 'Add to favorites',
+            onPressed: () async {
+              await ref
+                  .read(appDatabaseProvider)
+                  .exerciseDao
+                  .setFavorite(exercise.id, !exercise.isFavorite);
+              // One-shot FutureProvider - won't notice this write on its own.
+              ref.invalidate(filteredExercisesProvider);
+            },
+          ),
+        ],
+      ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => ExerciseDetailScreen(exercise: exercise),

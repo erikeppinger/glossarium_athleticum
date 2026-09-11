@@ -13,6 +13,12 @@ final exerciseEquipmentFilterEnabledProvider = StateProvider<bool>(
   (ref) => false,
 );
 
+/// Same shape - opt-in per session, not gated on whether any exercise has
+/// ever been favorited.
+final exerciseFavoritesOnlyFilterProvider = StateProvider<bool>(
+  (ref) => false,
+);
+
 /// Every distinct equipment tag mentioned anywhere in the library (see
 /// `lib/logic/equipment_matching.dart`), for the onboarding equipment
 /// picker and the Settings "Available equipment" editor - derived from the
@@ -32,14 +38,23 @@ final libraryEquipmentTagsProvider = FutureProvider<List<String>>((
 });
 
 final exerciseSearchQueryProvider = StateProvider<String>((ref) => '');
-final exerciseCategoryFilterProvider = StateProvider<String?>((ref) => null);
+
+/// Reported live: picking one category/area to narrow a long list, then
+/// wanting to scroll "legs and back" together, meant either accepting one
+/// filter at a time or re-tapping "All" and squinting through everything.
+/// Both filter rows are multi-select now (empty set = "All"/no filter) - see
+/// `exercise_library_screen.dart`'s `_toggle` helper, which every chip's
+/// `onSelected` goes through so tapping an already-selected chip again
+/// deselects it instead of requiring a separate tap on "All".
+final exerciseCategoryFilterProvider = StateProvider<Set<String>>((ref) => {});
 final exerciseCreatorFilterProvider = StateProvider<String?>((ref) => null);
 
 /// Filters by the same [MuscleArea] the library list's own colour stripe
 /// already derives per exercise (`areaForExercise`) - not a stored column,
 /// so this is applied as a plain Dart filter after the DB query rather than
 /// a WHERE clause, matching how [MuscleAreaStripe] itself gets its value.
-final exerciseAreaFilterProvider = StateProvider<MuscleArea?>((ref) => null);
+/// Multi-select, same shape and reasoning as [exerciseCategoryFilterProvider].
+final exerciseAreaFilterProvider = StateProvider<Set<MuscleArea>>((ref) => {});
 
 final exerciseCategoriesProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(appDatabaseProvider);
@@ -58,24 +73,27 @@ final creatorFilterOptionsProvider = FutureProvider<List<String>>((ref) {
 final filteredExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
   final db = ref.watch(appDatabaseProvider);
   final query = ref.watch(exerciseSearchQueryProvider);
-  final category = ref.watch(exerciseCategoryFilterProvider);
+  final categories = ref.watch(exerciseCategoryFilterProvider);
   final creator = ref.watch(exerciseCreatorFilterProvider);
-  final area = ref.watch(exerciseAreaFilterProvider);
-  var results = await db.exerciseDao.search(
-    query: query,
-    category: category,
-    creator: creator,
-  );
-  if (area != null) {
+  final areas = ref.watch(exerciseAreaFilterProvider);
+  // Category filtering moved from `search()`'s SQL WHERE (which only ever
+  // supported one exact value) to a plain Dart filter here, matching how
+  // area filtering already worked - needed now that either can be a set of
+  // several values rather than one.
+  var results = await db.exerciseDao.search(query: query, creator: creator);
+  if (categories.isNotEmpty) {
+    results = results.where((e) => categories.contains(e.category)).toList();
+  }
+  if (areas.isNotEmpty) {
     results = results
         .where(
-          (e) =>
-              areaForExercise(
-                muscleGroups: e.muscleGroups,
-                category: e.category,
-                movementPattern: e.movementPattern,
-              ) ==
-              area,
+          (e) => areas.contains(
+            areaForExercise(
+              muscleGroups: e.muscleGroups,
+              category: e.category,
+              movementPattern: e.movementPattern,
+            ),
+          ),
         )
         .toList();
   }
@@ -87,6 +105,9 @@ final filteredExercisesProvider = FutureProvider<List<Exercise>>((ref) async {
     results = results
         .where((e) => isDoableWithEquipment(e.equipment, owned))
         .toList();
+  }
+  if (ref.watch(exerciseFavoritesOnlyFilterProvider)) {
+    results = results.where((e) => e.isFavorite).toList();
   }
   return results;
 });

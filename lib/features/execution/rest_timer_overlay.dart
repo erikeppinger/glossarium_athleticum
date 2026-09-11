@@ -2,58 +2,80 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../logic/rest_timer.dart';
+import '../../main.dart' show navigatorKey;
 import '../shared/pulsing_highlight.dart';
 import 'execution_screen.dart';
 import 'rest_timer_controller.dart';
 
-/// A small floating chip, shown above [HomeScreen]'s bottom nav bar, that
-/// covers two related but distinct cases: a running/just-finished rest
-/// timer (with its own countdown/alarming state), or - when no timer is
-/// currently running at all - a plain "session in progress" reminder for a
-/// session that was left mid-training via [_LeaveChoice.leave] rather than
-/// finished or discarded. Before the second case existed, the *only* way
-/// back to a left-but-unfinished session was a running rest timer - leaving
-/// between sets (nothing resting right then) meant no indicator anywhere
-/// pointed back to it at all. Since neither underlying provider is
-/// autoDispose and this widget lives below where `ExecutionScreen` gets
-/// pushed on the same Navigator, it's naturally hidden while the execution
-/// screen (which has its own inline banner) is on top, and reappears the
-/// moment the user navigates back to it - e.g. after checking something on
-/// another tab mid-rest.
+/// A small floating chip, shown above every screen (see `main.dart`'s
+/// `MaterialApp.builder`), for a running/just-finished rest timer (with its
+/// own countdown/alarming state). Previously also covered a "session in
+/// progress" case for when a session was left mid-training with no rest
+/// timer running - removed (2026-09-11) as reported clutter, since it and
+/// the rest timer's own notification could both be showing at once, and the
+/// rest timer chip alone was judged enough of an "you're mid-workout"
+/// signal; a session left with no timer running is still resumable from
+/// Calendar/Plan Detail exactly as it always was.
+///
+/// Previously lived inside `HomeScreen`'s own build instead of floating over
+/// the whole app - which happened to also hide it while `ExecutionScreen`
+/// was on top (pushed on the same Navigator, so it covered the overlay
+/// along with everything else), but as a side effect also hid it on *every*
+/// other pushed screen, including Settings (reported live) and anything
+/// else reached from a tab. [executionScreenVisibleProvider] now does that
+/// exclusion explicitly.
 class RestTimerOverlay extends ConsumerWidget {
   const RestTimerOverlay({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(restTimerControllerProvider);
-    final inProgressSessionId = ref.watch(activeInProgressSessionIdProvider);
-
-    final Widget chip;
-    if (state.isVisible) {
-      chip = _RestTimerChip(state: state);
-    } else if (inProgressSessionId != null) {
-      chip = _ResumeSessionChip(planSessionId: inProgressSessionId);
-    } else {
+    if (ref.watch(executionScreenVisibleProvider)) {
       return const SizedBox.shrink();
     }
+    final state = ref.watch(restTimerControllerProvider);
 
-    return SafeArea(
-      child: Padding(
-        // Several tabs (Calendar's "Log activity", Plans' "Import plan")
-        // have their own FloatingActionButton in this same bottom-right
-        // corner - a plain 8px clearance sat the chip right on top of it,
-        // blocking taps to the FAB underneath whenever it was showing.
-        // A standard FAB is 56 logical pixels tall with a 16px margin from
-        // the screen edge, so 84 clears it with a small gap to spare.
-        padding: const EdgeInsets.only(right: 16, bottom: 84),
-        child: Align(alignment: Alignment.bottomRight, child: chip),
-      ),
-    );
+    if (state.isVisible) {
+      return SafeArea(
+        child: Padding(
+          // Several tabs (Calendar's "Log activity", Plans' "Import plan")
+          // have their own FloatingActionButton in this same bottom-right
+          // corner - a plain 8px clearance sat the chip right on top of it,
+          // blocking taps to the FAB underneath whenever it was showing. A
+          // standard FAB is 56 logical pixels tall with a 16px margin from
+          // the screen edge, so 84 clears it with a small gap to spare.
+          // Since this overlay moved into `MaterialApp.builder` (floating
+          // above every route), this Stack's own coordinate space is now the
+          // *entire* screen - including `home_screen.dart`'s own bottom
+          // `NavigationBar` (Material 3 default height 80) - rather than
+          // just a tab's `Scaffold.body`, as it was when the overlay lived
+          // inside `HomeScreen`'s own Stack. Without adding that back in,
+          // "bottom: 84" now sits inside/behind the nav bar itself,
+          // overlapping the FAB again exactly like the original report this
+          // was first built to fix (reported live, again, 2026-09-09).
+          padding: const EdgeInsets.only(right: 16, bottom: 84 + 80),
+          child: Align(
+            alignment: Alignment.bottomRight,
+            child: _RestTimerChip(state: state),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }
 
-void _openSession(BuildContext context, int planSessionId) {
-  Navigator.of(context).push(
+// Uses main.dart's global navigatorKey rather than Navigator.of(context) -
+// both callers (_RestTimerChip and _ResumeSessionBanner) live inside
+// RestTimerOverlay, itself a *sibling* of the app's actual routed content
+// within MaterialApp.builder's own Stack (see main.dart), not a descendant
+// of it. Navigator.of(context) from either widget's own context has no
+// Navigator ancestor to find - confirmed live via a full flutter run log,
+// where it crashed with "Null check operator used on a null value" inside
+// Navigator.of every time either was tapped (a release APK's own on-device
+// log only showed a terse, unhelpful "Another exception was thrown").
+void _openSession(int planSessionId) {
+  navigatorKey.currentState?.push(
     MaterialPageRoute(
       builder: (context) => ExecutionScreen(planSessionId: planSessionId),
     ),
@@ -88,7 +110,7 @@ class _RestTimerChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           onTap: () {
             final planSessionId = state.planSessionId;
-            if (planSessionId != null) _openSession(context, planSessionId);
+            if (planSessionId != null) _openSession(planSessionId);
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -125,43 +147,6 @@ class _RestTimerChip extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Shown instead of [_RestTimerChip] when a session was left mid-training
-/// but no rest timer happens to be running right now - a plain, non-alarming
-/// pointer back to it, since there's nothing time-sensitive about it the way
-/// a running rest period is.
-class _ResumeSessionChip extends StatelessWidget {
-  final int planSessionId;
-
-  const _ResumeSessionChip({required this.planSessionId});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.secondaryContainer,
-      elevation: 4,
-      borderRadius: BorderRadius.circular(28),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(28),
-        onTap: () => _openSession(context, planSessionId),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.fitness_center, size: 20),
-              const SizedBox(width: 10),
-              Text(
-                'Session in progress',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ],
           ),
         ),
       ),

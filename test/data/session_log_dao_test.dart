@@ -458,6 +458,77 @@ void main() {
       );
       expect(await db.sessionLogDao.getProgressionHistory('EX_BP'), isEmpty);
     });
+
+    test(
+      'when multiple sets tie for the top weight, uses the fewest reps '
+      'among them (the hardest set), not an arbitrary one',
+      () async {
+        // Reported live: progression suggestions used to key off whichever
+        // set happened to tie for the top weight first, which could pick an
+        // easy 8-rep set over a grinding 5-rep set done at the exact same
+        // weight in the same session - overstating how well the session
+        // actually went.
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 13),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 6, weight: 60),
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 3, reps: 7, weight: 60),
+          ],
+        );
+
+        final history = await db.sessionLogDao.getProgressionHistory('EX_BP');
+        expect(history, hasLength(1));
+        expect(history.single.weight, 60.0);
+        expect(history.single.reps, 6);
+      },
+    );
+
+    test(
+      'uses the highest RPE among the sets at the top weight, when recorded',
+      () async {
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 13),
+          entries: const [
+            LoggedSetInput(
+              exerciseId: 'EX_BP',
+              setNumber: 1,
+              reps: 8,
+              weight: 60,
+              rpe: 7.5,
+            ),
+            LoggedSetInput(
+              exerciseId: 'EX_BP',
+              setNumber: 2,
+              reps: 8,
+              weight: 60,
+              rpe: 9.5,
+            ),
+          ],
+        );
+
+        final history = await db.sessionLogDao.getProgressionHistory('EX_BP');
+        expect(history.single.rpe, 9.5);
+      },
+    );
+
+    test('RPE is null when no set at the top weight recorded one', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      final history = await db.sessionLogDao.getProgressionHistory('EX_BP');
+      expect(history.single.rpe, isNull);
+    });
   });
 
   group('getAllLoggedDays', () {
@@ -625,6 +696,96 @@ void main() {
 
     test('is empty when the exercise has never been logged', () async {
       expect(await db.sessionLogDao.getLastLoggedSets('EX_BP'), isEmpty);
+    });
+  });
+
+  group('getActiveDraftPlanSessionId', () {
+    test('is null when there is no draft at all', () async {
+      expect(await db.sessionLogDao.getActiveDraftPlanSessionId(), isNull);
+    });
+
+    test('returns the draft\'s plan session id', () async {
+      await db.sessionLogDao.saveDraft(
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      expect(
+        await db.sessionLogDao.getActiveDraftPlanSessionId(),
+        sessionId,
+      );
+    });
+
+    test('is null once the draft is cleared', () async {
+      await db.sessionLogDao.saveDraft(
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.deleteDraft(sessionId);
+      expect(await db.sessionLogDao.getActiveDraftPlanSessionId(), isNull);
+    });
+
+    test('a real finished log is not mistaken for a draft', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      expect(await db.sessionLogDao.getActiveDraftPlanSessionId(), isNull);
+    });
+
+    test('picks the most recently autosaved draft when more than one lingers', () async {
+      await db.planDao.createPlan(
+        id: 'plan-2',
+        name: 'Plan B',
+        sessions: [
+          const PlanSessionInput(
+            weekNumber: 1,
+            day: 'Wed',
+            sessionName: 'Pull Day',
+            exercises: [
+              PlanExerciseInput(
+                order: 1,
+                exerciseId: 'EX_BP',
+                exerciseName: 'Bench Press',
+                sets: 1,
+                reps: '8',
+              ),
+            ],
+          ),
+        ],
+      );
+      final otherSessionId = (await db.planDao.getPlanDetails(
+        'plan-2',
+      ))!.sessions.single.session.id;
+
+      await db.sessionLogDao.saveDraft(
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.saveDraft(
+        planSessionId: otherSessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 5, weight: 40),
+        ],
+      );
+
+      expect(
+        await db.sessionLogDao.getActiveDraftPlanSessionId(),
+        otherSessionId,
+      );
     });
   });
 }

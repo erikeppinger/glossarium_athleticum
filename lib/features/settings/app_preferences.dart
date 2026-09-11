@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../logic/muscle_group_colors.dart' show AppColorPalette;
+import '../../logic/plate_calculator.dart'
+    show standardPlatesKg, standardPlatesLbs;
 import '../../logic/progression.dart' show ExperienceLevel;
 import '../../logic/summary_period.dart' show WeekStart, SummaryPeriod;
 import '../../logic/units.dart';
@@ -27,6 +29,11 @@ const _clockFormatKey = 'clock_format';
 const _experienceLevelKey = 'experience_level';
 const _availableEquipmentKey = 'available_equipment';
 const _progressionSuggestionsEnabledKey = 'progression_suggestions_enabled';
+const _availablePlatesKgKey = 'available_plates_kg';
+const _availablePlatesLbsKey = 'available_plates_lbs';
+const _focusModeEnabledKey = 'focus_mode_enabled';
+const _focusModeHideProgressKey = 'focus_mode_hide_progress';
+const _focusModeHideStreaksKey = 'focus_mode_hide_streaks';
 
 /// How times of day (currently just the reminder-time setting) are
 /// displayed and entered. [system] follows the device's own 24-hour setting
@@ -145,6 +152,48 @@ class AppPreferences {
   /// to on, matching the feature's existing always-on behavior.
   final bool progressionSuggestionsEnabled;
 
+  /// Which plate sizes the plate calculator should actually use, per unit,
+  /// heaviest first (the order `calculatePlateLoad`'s greedy algorithm
+  /// relies on - see `lib/logic/plate_calculator.dart`) - not every gym
+  /// stocks every standard size (a 25kg-less gym, or one with unusual sizes
+  /// like 40kg), so this is user-editable rather than always the fixed
+  /// `standardPlatesKg`/`standardPlatesLbs` lists. A `List`, not a `Set` -
+  /// Dart's `double` can't be a const set element (it overrides `==`, which
+  /// a const set element must not do), and a `const` constructor needs a
+  /// const default; membership/dedup is still enforced wherever this is
+  /// edited (`plate_calculator_screen.dart`), just not by the type itself.
+  /// Defaults below duplicate `standardPlatesKg`/`standardPlatesLbs`'s own
+  /// values (a `const` constructor can't call `.toList()` on them either,
+  /// since that isn't a const expression) so an existing user sees identical
+  /// behavior until they actually change something on the plate calculator
+  /// screen - keep in sync if those standard lists ever change.
+  final List<double> availablePlatesKg;
+  final List<double> availablePlatesLbs;
+
+  /// The master "just let me train" switch - requested directly by a user
+  /// who wanted a way to train without being shown progress reports,
+  /// summaries, or suggestions at all, not just individually-mutable ones.
+  /// The two sub-toggles below only take effect while this is also on, via
+  /// [hideProgressActive]/[hideStreaksActive] - so turning the master switch
+  /// off always restores everything regardless of their own state, and
+  /// turning it back on defaults to hiding both again (both sub-toggles
+  /// default to `true`) rather than silently remembering a half-off state
+  /// from months ago.
+  final bool focusModeEnabled;
+
+  /// Whether Focus Mode hides the Progress tab's own content (replaced with
+  /// a plain "Focus mode is on" screen) and the trophy icon shown when
+  /// logging a new personal record mid-session. Deliberately does not affect
+  /// `history_screen.dart`'s own PR badge on already-logged sets - that's a
+  /// factual record looked up on purpose, not a proactive nudge, which is
+  /// the specific thing Focus Mode is for.
+  final bool focusModeHideProgress;
+
+  /// Whether Focus Mode hides the Today tab's streak card and "this week"
+  /// summary card - kept independent of [focusModeHideProgress] since some
+  /// people want to lose the PR-chasing but still like seeing their streak.
+  final bool focusModeHideStreaks;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -163,10 +212,24 @@ class AppPreferences {
     this.experienceLevel = ExperienceLevel.intermediate,
     this.availableEquipment = const {},
     this.progressionSuggestionsEnabled = true,
+    this.availablePlatesKg = const [25.0, 20.0, 15.0, 10.0, 5.0, 2.5, 1.25],
+    this.availablePlatesLbs = const [45.0, 35.0, 25.0, 10.0, 5.0, 2.5],
+    this.focusModeEnabled = false,
+    this.focusModeHideProgress = true,
+    this.focusModeHideStreaks = true,
   });
 
   /// Whether the body-measurement UI should be visible at all.
   bool get bodyTrackingEnabled => bodyTracking == BodyTracking.enabled;
+
+  /// Whether Progress-tab content and the in-session PR trophy should
+  /// actually be hidden right now - both the master switch and this specific
+  /// sub-toggle have to be on.
+  bool get hideProgressActive => focusModeEnabled && focusModeHideProgress;
+
+  /// Whether Today's streak/"this week" cards should actually be hidden
+  /// right now - see [hideProgressActive].
+  bool get hideStreaksActive => focusModeEnabled && focusModeHideStreaks;
 
   AppPreferences copyWith({
     WeightUnit? weightUnit,
@@ -186,6 +249,11 @@ class AppPreferences {
     ExperienceLevel? experienceLevel,
     Set<String>? availableEquipment,
     bool? progressionSuggestionsEnabled,
+    List<double>? availablePlatesKg,
+    List<double>? availablePlatesLbs,
+    bool? focusModeEnabled,
+    bool? focusModeHideProgress,
+    bool? focusModeHideStreaks,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -206,6 +274,12 @@ class AppPreferences {
     availableEquipment: availableEquipment ?? this.availableEquipment,
     progressionSuggestionsEnabled:
         progressionSuggestionsEnabled ?? this.progressionSuggestionsEnabled,
+    availablePlatesKg: availablePlatesKg ?? this.availablePlatesKg,
+    availablePlatesLbs: availablePlatesLbs ?? this.availablePlatesLbs,
+    focusModeEnabled: focusModeEnabled ?? this.focusModeEnabled,
+    focusModeHideProgress:
+        focusModeHideProgress ?? this.focusModeHideProgress,
+    focusModeHideStreaks: focusModeHideStreaks ?? this.focusModeHideStreaks,
   );
 }
 
@@ -262,6 +336,16 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
           prefs.getStringList(_availableEquipmentKey)?.toSet() ?? const {},
       progressionSuggestionsEnabled:
           prefs.getBool(_progressionSuggestionsEnabledKey) ?? true,
+      availablePlatesKg:
+          prefs.getStringList(_availablePlatesKgKey)?.map(double.parse).toList() ??
+          standardPlatesKg,
+      availablePlatesLbs:
+          prefs.getStringList(_availablePlatesLbsKey)?.map(double.parse).toList() ??
+          standardPlatesLbs,
+      focusModeEnabled: prefs.getBool(_focusModeEnabledKey) ?? false,
+      focusModeHideProgress:
+          prefs.getBool(_focusModeHideProgressKey) ?? true,
+      focusModeHideStreaks: prefs.getBool(_focusModeHideStreaksKey) ?? true,
     );
   }
 
@@ -365,6 +449,42 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(progressionSuggestionsEnabled: enabled);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_progressionSuggestionsEnabledKey, enabled);
+  }
+
+  Future<void> setAvailablePlatesKg(List<double> value) async {
+    state = state.copyWith(availablePlatesKg: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _availablePlatesKgKey,
+      value.map((p) => p.toString()).toList(),
+    );
+  }
+
+  Future<void> setAvailablePlatesLbs(List<double> value) async {
+    state = state.copyWith(availablePlatesLbs: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _availablePlatesLbsKey,
+      value.map((p) => p.toString()).toList(),
+    );
+  }
+
+  Future<void> setFocusModeEnabled(bool enabled) async {
+    state = state.copyWith(focusModeEnabled: enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_focusModeEnabledKey, enabled);
+  }
+
+  Future<void> setFocusModeHideProgress(bool hide) async {
+    state = state.copyWith(focusModeHideProgress: hide);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_focusModeHideProgressKey, hide);
+  }
+
+  Future<void> setFocusModeHideStreaks(bool hide) async {
+    state = state.copyWith(focusModeHideStreaks: hide);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_focusModeHideStreaksKey, hide);
   }
 }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +9,6 @@ import 'features/calendar/calendar_screen.dart';
 import 'features/exercise_library/exercise_library_screen.dart';
 import 'features/execution/execution_screen.dart';
 import 'features/execution/rest_timer_controller.dart';
-import 'features/execution/rest_timer_overlay.dart';
 import 'features/notifications/notification_service.dart' show restTimerSkipActionId;
 import 'features/notifications/reminder_coordinator.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -17,7 +17,14 @@ import 'features/settings/app_preferences.dart';
 import 'features/progress/progress_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/sharing/incoming_share_handler.dart';
+import 'features/today/today_screen.dart';
 import 'logic/reminder_payload.dart';
+
+/// Which bottom-nav tab is showing - a provider (not just `HomeScreen`'s own
+/// local state) so a screen nested inside one tab (e.g. `TodayScreen`'s
+/// "This week" card) can switch to a different tab without needing a
+/// callback threaded all the way down from `HomeScreen` itself.
+final homeTabIndexProvider = StateProvider<int>((ref) => 0);
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -26,17 +33,24 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _index = 0;
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with WidgetsBindingObserver {
   StreamSubscription<List<SharedMediaFile>>? _sharedFilesSub;
   StreamSubscription<String>? _notificationTapSub;
   StreamSubscription<String>? _notificationActionSub;
 
   // Settings deliberately isn't one of these - it's a rarely-used
   // destination, so it lives behind a gear action in each tab's app bar
-  // (see settingsAppBarAction) rather than taking up a fifth of the
+  // (see settingsAppBarAction) rather than taking up a slot of the
   // bottom bar's width.
+  //
+  // Today is the app's default landing screen (index 0) rather than
+  // Exercise Library - "what do I do right now" is a more useful first
+  // thing to see than a browsable list. Every other index shifted down
+  // one when this was added (2026-09-10) - see _handleNotificationPayload
+  // below, which hardcodes the Progress tab's index and had to move with it.
   static const _screens = [
+    TodayScreen(),
     ExerciseLibraryScreen(),
     PlanListScreen(),
     CalendarScreen(),
@@ -46,13 +60,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _sharedFilesSub = ReceiveSharingIntent.instance.getMediaStream().listen(
-      _onSharedFiles,
-    );
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-      _onSharedFiles(files);
-      ReceiveSharingIntent.instance.reset();
-    });
+    WidgetsBinding.instance.addObserver(this);
+    // receive_sharing_intent only has an Android/iOS implementation - calling
+    // it on desktop (Windows) would hit a MissingPluginException, since no
+    // platform channel handler is registered there at all.
+    if (Platform.isAndroid || Platform.isIOS) {
+      _sharedFilesSub = ReceiveSharingIntent.instance.getMediaStream().listen(
+        _onSharedFiles,
+      );
+      ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+        _onSharedFiles(files);
+        ReceiveSharingIntent.instance.reset();
+      });
+    }
     final notificationService = ref.read(notificationServiceProvider);
     _notificationTapSub = notificationService.onNotificationTap.listen(
       _handleNotificationPayload,
@@ -103,7 +123,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           );
         case WeeklyDigestPayload():
         case PlanReportPayload():
-          setState(() => _index = 3);
+          // Progress moved from index 3 to 4 when the Today tab was
+          // inserted at index 0 (2026-09-10) - update this if the tab
+          // order ever changes again.
+          ref.read(homeTabIndexProvider.notifier).state = 4;
         case null:
           break;
       }
@@ -122,25 +145,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sharedFilesSub?.cancel();
     _notificationTapSub?.cancel();
     _notificationActionSub?.cancel();
     super.dispose();
   }
 
+  // Reported live (2026-09-09): leaving an in-progress session via "Leave"
+  // (switching to a different tab, the session's own screen popped but its
+  // in-memory state deliberately kept alive - see execution_screen.dart's
+  // _InProgressSession doc comment) and then backgrounding/killing the app
+  // from there lost all progress anyway, even though the exact same scenario
+  // while ExecutionScreen was still the visible screen was already fixed.
+  // That earlier fix put the autosave-on-backgrounding hook on
+  // ExecutionScreen's own WidgetsBindingObserver, which stops receiving
+  // lifecycle callbacks the instant that screen's route is popped - so a
+  // session left and then killed from elsewhere was never actually
+  // autosaved. Centralizing the hook here instead - HomeScreen is mounted
+  // for the entire life of the app - means the safety net follows whichever
+  // session activeInProgressSessionIdProvider currently points to,
+  // regardless of whether that session's own screen happens to still be on
+  // screen, still be pushed-but-hidden, or already popped.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      final sessionId = ref.read(activeInProgressSessionIdProvider);
+      if (sessionId != null) {
+        unawaited(autosaveInProgressSessionDraft(ref, sessionId));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final index = ref.watch(homeTabIndexProvider);
     return Scaffold(
-      body: Stack(
-        children: [
-          IndexedStack(index: _index, children: _screens),
-          const RestTimerOverlay(),
-        ],
-      ),
+      // RestTimerOverlay now floats above the whole app instead (see
+      // main.dart's MaterialApp.builder), so it isn't hidden on every
+      // screen reached by pushing a route on top of this one.
+      body: IndexedStack(index: index, children: _screens),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (index) => setState(() => _index = index),
+        selectedIndex: index,
+        onDestinationSelected: (i) =>
+            ref.read(homeTabIndexProvider.notifier).state = i,
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.today),
+            label: 'Today',
+          ),
           NavigationDestination(
             icon: Icon(Icons.fitness_center),
             label: 'Exercises',

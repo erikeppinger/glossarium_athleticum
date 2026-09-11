@@ -52,6 +52,15 @@ class PlanImportRow {
   final String videoUrl;
   final String? matchedExerciseId;
 
+  /// Filename of a photo for this exercise, from an optional "Picture"
+  /// column - not one of `_requiredColumns`, so a spreadsheet without it
+  /// parses exactly as before (every row's `picture` just comes back
+  /// empty). Only meaningful alongside a zip import (see
+  /// `plan_zip_bundle.dart`): the plain CSV/xlsx importers have no image
+  /// bytes to resolve this filename against, so it's carried through
+  /// unused in that path.
+  final String picture;
+
   const PlanImportRow({
     required this.rowNumber,
     required this.week,
@@ -66,6 +75,7 @@ class PlanImportRow {
     this.notes = '',
     this.videoUrl = '',
     this.matchedExerciseId,
+    this.picture = '',
   });
 
   PlanImportRow withMatchedExerciseId(String? id) => PlanImportRow(
@@ -82,6 +92,7 @@ class PlanImportRow {
         notes: notes,
         videoUrl: videoUrl,
         matchedExerciseId: id,
+        picture: picture,
       );
 }
 
@@ -234,6 +245,7 @@ PlanImportResult _parsePlanRows(List<List<dynamic>> rawRows) {
         restSec: restSec,
         notes: cell('Notes'),
         videoUrl: cell('Video URL'),
+        picture: cell('Picture'),
       ),
     );
   }

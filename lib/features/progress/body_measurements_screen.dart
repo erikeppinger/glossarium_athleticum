@@ -8,6 +8,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../logic/units.dart';
 import '../settings/app_preferences.dart';
+import '../shared/app_date_picker.dart';
 import '../shared/numeric_input_formatters.dart';
 
 final bodyMeasurementsProvider = FutureProvider<List<BodyMeasurement>>((ref) {
@@ -91,10 +92,14 @@ class BodyMeasurementsScreen extends ConsumerWidget {
     BodyMeasurement? existing,
   ) async {
     final unit = ref.read(appPreferencesProvider).weightUnit;
+    final weekStart = ref.read(appPreferencesProvider).weekStart;
     final result = await showDialog<_MeasurementInput>(
       context: context,
-      builder: (context) =>
-          _RecordMeasurementDialog(existing: existing, unit: unit),
+      builder: (context) => _RecordMeasurementDialog(
+        existing: existing,
+        unit: unit,
+        weekStart: weekStart,
+      ),
     );
     if (result == null) return;
 
@@ -286,8 +291,13 @@ class _MeasurementInput {
 class _RecordMeasurementDialog extends StatefulWidget {
   final BodyMeasurement? existing;
   final WeightUnit unit;
+  final WeekStart weekStart;
 
-  const _RecordMeasurementDialog({required this.existing, required this.unit});
+  const _RecordMeasurementDialog({
+    required this.existing,
+    required this.unit,
+    required this.weekStart,
+  });
 
   @override
   State<_RecordMeasurementDialog> createState() =>
@@ -438,8 +448,9 @@ class _RecordMeasurementDialogState extends State<_RecordMeasurementDialog> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
+      weekStart: widget.weekStart,
       initialDate: _date,
       firstDate: DateTime(now.year - 5),
       lastDate: now,

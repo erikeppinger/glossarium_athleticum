@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -104,6 +104,41 @@ class AppDatabase extends _$AppDatabase {
           'WHERE assigned_date IS NOT NULL',
         );
         await m.alterTable(TableMigration(planSessions));
+      }
+      if (from < 11) {
+        // Every row that exists before this migration was created by
+        // createSessionLog/createAdHocActivity - the only two ways a real
+        // log has ever been written - so all of them are "finished" the
+        // instant they were created; backfill finishedAt to loggedAt rather
+        // than leaving it null (which would now read as an abandoned draft
+        // and vanish from Progress/History/Calendar/backup export).
+        await m.addColumn(sessionLogs, sessionLogs.finishedAt);
+        await customStatement(
+          'UPDATE session_logs SET finished_at = logged_at',
+        );
+      }
+      if (from < 12) {
+        // A single imagePath becomes a comma-separated imagePaths list (up
+        // to maxExerciseImages photos per exercise, see
+        // lib/logic/exercise_images.dart) - carry every existing single
+        // image forward as that exercise's one-element list. imagePath
+        // itself is left in place but unused from here on (see its own
+        // doc comment) rather than dropped, matching this migration's
+        // usual "additive, no TableMigration needed" shape.
+        await m.addColumn(exercises, exercises.imagePaths);
+        await customStatement(
+          'UPDATE exercises SET image_paths = image_path '
+          'WHERE image_path IS NOT NULL',
+        );
+      }
+      if (from < 13) {
+        // Two unrelated additive columns for two separate features
+        // (favorite exercises, superset/circuit grouping), combined into
+        // one migration step since neither needs a TableMigration (no
+        // nullability change, no drop) and both are trivial addColumns
+        // that can't conflict with each other.
+        await m.addColumn(exercises, exercises.isFavorite);
+        await m.addColumn(planExercises, planExercises.supersetGroupId);
       }
     },
   );

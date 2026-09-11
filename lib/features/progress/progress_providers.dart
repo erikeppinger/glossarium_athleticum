@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database_provider.dart';
 import '../../data/daos/session_log_dao.dart';
+import '../../logic/one_rep_max.dart';
+import '../../logic/progression.dart';
 import '../../logic/streaks.dart';
 import '../../logic/summary_period.dart';
 
@@ -24,6 +26,38 @@ final dailyTotalsProvider = FutureProvider.family<List<DailyTotals>, PeriodRange
     return db.sessionLogDao.getDailyTotals(start: range.start, end: range.end);
   },
 );
+
+/// One exercise's progression history (reduced session-by-session results,
+/// see `SessionLogDao.getProgressionHistory`'s own doc comment) - backs the
+/// "Suggested next session" card on the History screen and the "Best: ..."
+/// line in execution mode. Both screens used to define their own private,
+/// near-identical copy of this provider, and neither was ever invalidated
+/// after a session was logged - the suggestion/best-weight only updated
+/// after a full app restart, the same one-shot-FutureProvider gotcha this
+/// file's own [invalidateProgressProviders] already exists to fix for the
+/// Progress tab. One shared, invalidated provider fixes both at once.
+final exerciseProgressionHistoryProvider =
+    FutureProvider.family<List<ProgressionHistoryEntry>, String>((
+      ref,
+      exerciseId,
+    ) {
+      final db = ref.watch(appDatabaseProvider);
+      return db.sessionLogDao.getProgressionHistory(exerciseId);
+    });
+
+/// Derived from [exerciseProgressionHistoryProvider] via `.future` rather
+/// than its own DAO query - stays fresh automatically whenever that
+/// provider is invalidated (see [invalidateProgressProviders] below), so
+/// this needs no new invalidation call site of its own.
+final estimatedOneRepMaxProvider = FutureProvider.family<double?, String>((
+  ref,
+  exerciseId,
+) async {
+  final history = await ref.watch(
+    exerciseProgressionHistoryProvider(exerciseId).future,
+  );
+  return bestEstimatedOneRepMax(history);
+});
 
 /// Period-independent (a streak isn't scoped to the selected week/month) -
 /// both derive from the same logged-days query, so this is one provider
@@ -60,4 +94,5 @@ void invalidateProgressProviders(WidgetRef ref) {
   ref.invalidate(_loggedDaysProvider);
   ref.invalidate(currentStreakProvider);
   ref.invalidate(longestStreakProvider);
+  ref.invalidate(exerciseProgressionHistoryProvider);
 }

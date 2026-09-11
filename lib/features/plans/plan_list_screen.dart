@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../export/plan_export.dart' show encryptedPlanFileExtension;
 import '../../home_screen.dart' show settingsAppBarAction;
+import '../../import/plan_zip_bundle.dart';
 import '../../security/backup_encryption.dart';
 import '../settings/backup_dialogs.dart';
 import '../settings/templates_screen.dart';
@@ -39,64 +40,121 @@ class PlanListScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView(
+          final query = ref
+              .watch(planSearchQueryProvider)
+              .trim()
+              .toLowerCase();
+          final filteredPlans = query.isEmpty
+              ? plans
+              : plans
+                    .where((p) => p.name.toLowerCase().contains(query))
+                    .toList();
+          final filteredArchived = query.isEmpty
+              ? archived
+              : archived
+                    .where((p) => p.name.toLowerCase().contains(query))
+                    .toList();
+          final noMatches =
+              query.isNotEmpty &&
+              filteredPlans.isEmpty &&
+              filteredArchived.isEmpty;
+          return Column(
             children: [
-              if (plans.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    'No active plans. Restore one below, or import a new one.',
-                    textAlign: TextAlign.center,
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: TextField(
+                  key: const Key('planSearchField'),
+                  decoration: const InputDecoration(
+                    labelText: 'Search plans',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
                   ),
+                  onChanged: (value) =>
+                      ref.read(planSearchQueryProvider.notifier).state =
+                          value,
                 ),
-              for (final plan in plans)
-                ListTile(
-                  title: Text(plan.name),
-                  // Notes aren't shown here at all, even as a preview - the
-                  // plan list is a flat scan-down list of names, not a place
-                  // to read free text, and a per-plan note (however short)
-                  // read as visual noise between rows. The full text has its
-                  // own dedicated, readable home on the plan detail screen.
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => PlanDetailScreen(planId: plan.id),
-                    ),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.more_vert),
-                    tooltip: 'Plan options',
-                    onPressed: () => showPlanActions(context, ref, plan),
-                  ),
-                ),
-              if (archived.isNotEmpty) ...[
-                const Divider(height: 32),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Text(
-                    'Archived',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                  ),
-                ),
-                for (final plan in archived)
-                  ListTile(
-                    leading: const Icon(Icons.archive_outlined),
-                    title: Text(plan.name),
-                    subtitle: const Text('Archived - nothing was deleted'),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => PlanDetailScreen(planId: plan.id),
+              ),
+              Expanded(
+                child: noMatches
+                    ? Center(child: Text('No plans match "$query".'))
+                    : ListView(
+                        children: [
+                          if (query.isEmpty && plans.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Text(
+                                'No active plans. Restore one below, or '
+                                'import a new one.',
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          for (final plan in filteredPlans)
+                            ListTile(
+                              title: Text(plan.name),
+                              // Notes aren't shown here at all, even as a
+                              // preview - the plan list is a flat scan-down
+                              // list of names, not a place to read free
+                              // text, and a per-plan note (however short)
+                              // read as visual noise between rows. The full
+                              // text has its own dedicated, readable home
+                              // on the plan detail screen.
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      PlanDetailScreen(planId: plan.id),
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.more_vert),
+                                tooltip: 'Plan options',
+                                onPressed: () =>
+                                    showPlanActions(context, ref, plan),
+                              ),
+                            ),
+                          if (filteredArchived.isNotEmpty) ...[
+                            const Divider(height: 32),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                0,
+                                16,
+                                8,
+                              ),
+                              child: Text(
+                                'Archived',
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outline,
+                                    ),
+                              ),
+                            ),
+                            for (final plan in filteredArchived)
+                              ListTile(
+                                leading: const Icon(Icons.archive_outlined),
+                                title: Text(plan.name),
+                                subtitle: const Text(
+                                  'Archived - nothing was deleted',
+                                ),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        PlanDetailScreen(planId: plan.id),
+                                  ),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.more_vert),
+                                  tooltip: 'Plan options',
+                                  onPressed: () =>
+                                      showPlanActions(context, ref, plan),
+                                ),
+                              ),
+                          ],
+                          const SizedBox(height: 88),
+                        ],
                       ),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.more_vert),
-                      tooltip: 'Plan options',
-                      onPressed: () => showPlanActions(context, ref, plan),
-                    ),
-                  ),
-              ],
-              const SizedBox(height: 88),
+              ),
             ],
           );
         },
@@ -130,6 +188,16 @@ class PlanListScreen extends ConsumerWidget {
               title: const Text('From spreadsheet (.csv or .xlsx)'),
               subtitle: const Text('Excel/Sheets export, or the plan template'),
               onTap: () => Navigator.of(context).pop(_ImportSource.spreadsheet),
+            ),
+            ListTile(
+              leading: const Icon(Icons.perm_media_outlined),
+              title: const Text('From spreadsheet + pictures (.zip)'),
+              subtitle: const Text(
+                "A .csv/.xlsx with a \"Picture\" column, zipped up with the "
+                'image files it names',
+              ),
+              onTap: () =>
+                  Navigator.of(context).pop(_ImportSource.spreadsheetWithPictures),
             ),
             ListTile(
               leading: const Icon(Icons.description),
@@ -168,6 +236,8 @@ class PlanListScreen extends ConsumerWidget {
         );
       case _ImportSource.spreadsheet:
         await _importFromSpreadsheet(context);
+      case _ImportSource.spreadsheetWithPictures:
+        await _importFromZipBundle(context);
       case _ImportSource.json:
         await _importFromJson(context, ref);
       case _ImportSource.encryptedJson:
@@ -197,6 +267,43 @@ class PlanListScreen extends ConsumerWidget {
             : PlanImportScreen(
                 csvContent: utf8.decode(bytes),
                 suggestedPlanName: suggestedName,
+              ),
+      ),
+    );
+  }
+
+  Future<void> _importFromZipBundle(BuildContext context) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['zip'],
+    );
+    if (file == null) return;
+
+    final suggestedName = file.name.replaceAll(RegExp(r'\.zip$'), '');
+    final PlanZipBundle bundle;
+    try {
+      bundle = readPlanZipBundle(await file.readAsBytes());
+    } on PlanZipBundleException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => bundle.xlsxBytes != null
+            ? PlanImportScreen(
+                xlsxBytes: bundle.xlsxBytes,
+                suggestedPlanName: suggestedName,
+                imagesByFileName: bundle.imagesByFileName,
+              )
+            : PlanImportScreen(
+                csvContent: bundle.csvContent,
+                suggestedPlanName: suggestedName,
+                imagesByFileName: bundle.imagesByFileName,
               ),
       ),
     );
@@ -250,4 +357,11 @@ class PlanListScreen extends ConsumerWidget {
   }
 }
 
-enum _ImportSource { build, spreadsheet, json, encryptedJson, template }
+enum _ImportSource {
+  build,
+  spreadsheet,
+  spreadsheetWithPictures,
+  json,
+  encryptedJson,
+  template,
+}

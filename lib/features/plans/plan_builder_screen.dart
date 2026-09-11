@@ -5,7 +5,9 @@ import 'package:uuid/uuid.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
+import '../shared/info_dialog.dart';
 import '../shared/numeric_input_formatters.dart';
 import 'exercise_prescription_form.dart';
 
@@ -154,6 +156,8 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
             onRemoveExercise: (input) =>
                 setState(() => session.exercises.remove(input)),
             onRemoveSession: () => setState(() => _sessions.remove(session)),
+            onGroupExercises: () => _groupExercisesIn(session),
+            onUngroupExercise: (input) => _ungroupExercise(session, input),
           ),
         ],
       ),
@@ -202,6 +206,38 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
     setState(() => session.exercises.add(input));
   }
 
+  Future<void> _groupExercisesIn(_SessionDraft session) async {
+    final selected = await showDialog<List<PlanExerciseInput>>(
+      context: context,
+      builder: (context) => _GroupExercisesDialog(exercises: session.exercises),
+    );
+    if (selected == null || selected.length < 2) return;
+
+    final usedGroupIds = session.exercises
+        .where((e) => !selected.contains(e))
+        .map((e) => e.supersetGroupId)
+        .whereType<int>()
+        .toSet();
+    var newGroupId = 1;
+    while (usedGroupIds.contains(newGroupId)) {
+      newGroupId++;
+    }
+
+    setState(() {
+      for (final exercise in selected) {
+        final index = session.exercises.indexOf(exercise);
+        session.exercises[index] = exercise.withSupersetGroupId(newGroupId);
+      }
+    });
+  }
+
+  void _ungroupExercise(_SessionDraft session, PlanExerciseInput exercise) {
+    setState(() {
+      final index = session.exercises.indexOf(exercise);
+      session.exercises[index] = exercise.withSupersetGroupId(null);
+    });
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     final db = ref.read(appDatabaseProvider);
@@ -240,12 +276,16 @@ class _SessionDraftCard extends StatelessWidget {
   final VoidCallback onAddExercise;
   final ValueChanged<PlanExerciseInput> onRemoveExercise;
   final VoidCallback onRemoveSession;
+  final VoidCallback onGroupExercises;
+  final ValueChanged<PlanExerciseInput> onUngroupExercise;
 
   const _SessionDraftCard({
     required this.session,
     required this.onAddExercise,
     required this.onRemoveExercise,
     required this.onRemoveSession,
+    required this.onGroupExercises,
+    required this.onUngroupExercise,
   });
 
   @override
@@ -281,19 +321,53 @@ class _SessionDraftCard extends StatelessWidget {
                 title: Text(exercise.exerciseName),
                 subtitle: Text(
                   '${exercise.sets} x ${exercise.reps}'
-                  '${exercise.weightIntensity.isEmpty ? '' : ' @ ${exercise.weightIntensity}'}',
+                  '${exercise.weightIntensity.isEmpty ? '' : ' @ ${exercise.weightIntensity}'}'
+                  '${exercise.supersetGroupId == null ? '' : ' • Superset group ${exercise.supersetGroupId}'}',
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  tooltip: 'Remove this exercise',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => onRemoveExercise(exercise),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (exercise.supersetGroupId != null)
+                      IconButton(
+                        icon: const Icon(Icons.link_off, size: 18),
+                        tooltip: 'Ungroup this exercise',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => onUngroupExercise(exercise),
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: 'Remove this exercise',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onRemoveExercise(exercise),
+                    ),
+                  ],
                 ),
               ),
-            TextButton.icon(
-              onPressed: onAddExercise,
-              icon: const Icon(Icons.add),
-              label: const Text('Add exercise'),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: onAddExercise,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add exercise'),
+                ),
+                if (session.exercises.length >= 2) ...[
+                  TextButton.icon(
+                    onPressed: onGroupExercises,
+                    icon: const Icon(Icons.link),
+                    label: const Text('Group exercises'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.info_outline, size: 18),
+                    tooltip: 'What is a superset?',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => showInfoDialog(
+                      context,
+                      title: 'What is a superset?',
+                      content: supersetExplanationNote,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -432,3 +506,70 @@ class _AddSessionDialogState extends State<_AddSessionDialog> {
   }
 }
 
+/// A checkbox list picking 2+ of a session's exercises to group into a
+/// superset - selecting an already-grouped exercise moves it into the new
+/// group instead of leaving it in its old one.
+class _GroupExercisesDialog extends StatefulWidget {
+  final List<PlanExerciseInput> exercises;
+
+  const _GroupExercisesDialog({required this.exercises});
+
+  @override
+  State<_GroupExercisesDialog> createState() => _GroupExercisesDialogState();
+}
+
+class _GroupExercisesDialogState extends State<_GroupExercisesDialog> {
+  final Set<PlanExerciseInput> _selected = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Group into a superset'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Choose 2 or more exercises to do back-to-back.'),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final exercise in widget.exercises)
+                    CheckboxListTile(
+                      value: _selected.contains(exercise),
+                      title: Text(exercise.exerciseName),
+                      subtitle: exercise.supersetGroupId == null
+                          ? null
+                          : Text('Currently in group ${exercise.supersetGroupId}'),
+                      onChanged: (checked) => setState(() {
+                        if (checked ?? false) {
+                          _selected.add(exercise);
+                        } else {
+                          _selected.remove(exercise);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _selected.length < 2
+              ? null
+              : () => Navigator.of(context).pop(_selected.toList()),
+          child: const Text('Group'),
+        ),
+      ],
+    );
+  }
+}

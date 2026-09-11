@@ -33,16 +33,25 @@ void main() {
       day: 'Mon',
       sessionName: 'Push Day',
     );
-    // Hit the 8-rep target, so suggestNextSet's "try <last + increment>"
-    // branch fires - the branch whose suggested weight actually depends on
-    // ExperienceLevel (see lib/logic/progression.dart's increments: 5.0 /
-    // 2.5 / 1.25 kg for beginner / intermediate / advanced).
+    // Beat the 8-rep target on two consecutive sessions at the same weight,
+    // so suggestNextSet's "try <last + percentage increase>" branch fires -
+    // the branch whose suggested weight actually depends on ExperienceLevel
+    // (see lib/logic/progression.dart's per-level percentages: 7.5% / 5% /
+    // 2.5% for beginner / intermediate / advanced).
     await db.sessionLogDao.createSessionLog(
       id: 'log-1',
       planSessionId: sessionId,
+      loggedAt: DateTime.now().subtract(const Duration(days: 5)),
+      entries: const [
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 10, weight: 100),
+      ],
+    );
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-2',
+      planSessionId: sessionId,
       loggedAt: DateTime.now().subtract(const Duration(days: 1)),
       entries: const [
-        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 100),
+        LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 10, weight: 100),
       ],
     );
     return db;
@@ -75,9 +84,9 @@ void main() {
     (tester) async {
       final db = await seedDb();
 
-      // beginner: +5.0kg increment (lib/logic/progression.dart).
+      // beginner: 100kg * 7.5% = +7.5kg (lib/logic/progression.dart).
       await pumpWithLevel(tester, db, ExperienceLevel.beginner);
-      expect(find.textContaining('105kg'), findsOneWidget);
+      expect(find.textContaining('107.5kg'), findsOneWidget);
 
       // Unmount before repumping with a different ProviderScope - otherwise
       // Flutter's element diffing can reuse the existing ProviderScope
@@ -87,11 +96,11 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
 
-      // intermediate: +2.5kg increment - a different, smaller suggestion for
-      // the exact same logged history, proving the preference (not just the
-      // history) drives the number.
+      // intermediate: 100kg * 5% = +5kg - a different, smaller suggestion
+      // for the exact same logged history, proving the preference (not just
+      // the history) drives the number.
       await pumpWithLevel(tester, db, ExperienceLevel.intermediate);
-      expect(find.textContaining('102.5kg'), findsOneWidget);
+      expect(find.textContaining('105kg'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();

@@ -25,6 +25,22 @@ class SessionLogs extends Table {
     onDelete: KeyAction.cascade,
   )();
   DateTimeColumn get loggedAt => dateTime()();
+
+  /// Null means this row is a **draft** - an in-progress execution-mode
+  /// session autosaved (see `execution_screen.dart`'s app-lifecycle
+  /// observer) so a set already checked off survives the app process being
+  /// killed while backgrounded, without ever showing up anywhere a real,
+  /// finished workout would (Progress, History, Calendar, backup export -
+  /// every one of `SessionLogDao`'s read queries filters on
+  /// `finishedAt.isNotNull()`). Set the instant a row is created for
+  /// [SessionLogDao.createSessionLog]/[SessionLogDao.createAdHocActivity] -
+  /// those two are the only ways a *real* log has ever been created, so
+  /// existing rows predating this column are backfilled to `loggedAt` in the
+  /// schema 10->11 migration. A draft row is replaced wholesale (delete +
+  /// reinsert) on every autosave rather than diffed/updated in place - see
+  /// [SessionLogDao.saveDraft].
+  DateTimeColumn get finishedAt => dateTime().nullable()();
+
   /// Optional free-text note taken right after finishing, e.g. "felt heavy
   /// today" - surfaced on the workout's own detail screen.
   TextColumn get notes => text().nullable()();

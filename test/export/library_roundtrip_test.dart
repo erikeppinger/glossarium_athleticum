@@ -115,6 +115,7 @@ void main() {
         measurementType: 'Weight x Reps',
         isCustom: const Value(true),
         imagePath: const Value('photo.jpg'),
+        imagePaths: const Value('photo.jpg'),
       ),
     );
 
@@ -123,7 +124,7 @@ void main() {
     await importLibraryJson(json, db, attachmentsDirectory: restoredDir);
 
     final restored = await db.exerciseDao.getExerciseById('CUSTOM1');
-    expect(restored!.imagePath, 'photo.jpg');
+    expect(restored!.imagePaths, 'photo.jpg');
     expect(await File('${restoredDir.path}/photo.jpg').readAsBytes(), [1, 2, 3]);
 
     await tempRoot.delete(recursive: true);

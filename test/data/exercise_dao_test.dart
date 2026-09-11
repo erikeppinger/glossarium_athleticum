@@ -51,6 +51,34 @@ void main() {
     expect(await db.exerciseDao.getAllExercises(), isEmpty);
   });
 
+  group('setFavorite', () {
+    test('defaults to false', () async {
+      await db.exerciseDao.upsertExercise(exercise('EX001', 'Squat'));
+      final row = await db.exerciseDao.getExerciseById('EX001');
+      expect(row!.isFavorite, isFalse);
+    });
+
+    test('toggles and persists', () async {
+      await db.exerciseDao.upsertExercise(exercise('EX001', 'Squat'));
+
+      await db.exerciseDao.setFavorite('EX001', true);
+      expect((await db.exerciseDao.getExerciseById('EX001'))!.isFavorite, isTrue);
+
+      await db.exerciseDao.setFavorite('EX001', false);
+      expect((await db.exerciseDao.getExerciseById('EX001'))!.isFavorite, isFalse);
+    });
+
+    test('only affects the targeted exercise', () async {
+      await db.exerciseDao.upsertExercise(exercise('EX001', 'Squat'));
+      await db.exerciseDao.upsertExercise(exercise('EX002', 'Bench Press'));
+
+      await db.exerciseDao.setFavorite('EX001', true);
+
+      expect((await db.exerciseDao.getExerciseById('EX001'))!.isFavorite, isTrue);
+      expect((await db.exerciseDao.getExerciseById('EX002'))!.isFavorite, isFalse);
+    });
+  });
+
   group('search', () {
     setUp(() async {
       await db.exerciseDao.upsertExercises([
@@ -146,6 +174,69 @@ void main() {
         'author:Coach Erik',
         'plan:Nine-Block Strength Program',
       ]);
+    });
+  });
+
+  // "Manage libraries" screen support - bulk operations on a whole
+  // sourcePlanName/author group at once, rather than one exercise at a time.
+  group('library management bulk operations', () {
+    setUp(() async {
+      await db.exerciseDao.upsertExercise(
+        exercise('EX1', 'Ex 1').copyWith(
+          isCustom: const Value(true),
+          sourcePlanName: const Value('Old Plan Name'),
+        ),
+      );
+      await db.exerciseDao.upsertExercise(
+        exercise('EX2', 'Ex 2').copyWith(
+          isCustom: const Value(true),
+          sourcePlanName: const Value('Old Plan Name'),
+        ),
+      );
+      await db.exerciseDao.upsertExercise(
+        exercise('EX3', 'Ex 3').copyWith(
+          isCustom: const Value(true),
+          author: const Value('Old Author'),
+        ),
+      );
+    });
+
+    test('renameSourcePlanName relabels every exercise in that group', () async {
+      await db.exerciseDao.renameSourcePlanName(
+        oldName: 'Old Plan Name',
+        newName: 'New Plan Name',
+      );
+      final all = await db.exerciseDao.getAllExercises();
+      expect(
+        all.where((e) => e.sourcePlanName == 'New Plan Name').map((e) => e.id),
+        ['EX1', 'EX2'],
+      );
+      // The author-tagged exercise is a different group - untouched.
+      expect(
+        all.firstWhere((e) => e.id == 'EX3').author,
+        'Old Author',
+      );
+    });
+
+    test('renameAuthor relabels every exercise in that group', () async {
+      await db.exerciseDao.renameAuthor(
+        oldName: 'Old Author',
+        newName: 'New Author',
+      );
+      final ex3 = await db.exerciseDao.getExerciseById('EX3');
+      expect(ex3!.author, 'New Author');
+    });
+
+    test('deleteExercisesKeepingHistory removes every exercise in the group', () async {
+      await db.exerciseDao.deleteExercisesKeepingHistory(['EX1', 'EX2']);
+      final all = await db.exerciseDao.getAllExercises();
+      expect(all.map((e) => e.id), ['EX3']);
+    });
+
+    test('deleteExercisesKeepingHistory with an empty list is a no-op', () async {
+      await db.exerciseDao.deleteExercisesKeepingHistory([]);
+      final all = await db.exerciseDao.getAllExercises();
+      expect(all, hasLength(3));
     });
   });
 }

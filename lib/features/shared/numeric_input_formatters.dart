@@ -21,6 +21,18 @@ final integerInputFormatters = <TextInputFormatter>[
 /// whole edit whenever it would produce something that doesn't match
 /// (e.g. a second '.' or a letter), rather than only filtering per-character
 /// (which can't enforce "only one dot total" on its own).
+///
+/// Comma is normalized to a period before that check runs - reported live
+/// (2026-09-11, Android and Windows both): many European keyboards/OS locales
+/// send ',' for the numeric keypad's decimal key, which the regex above
+/// doesn't accept - the whole edit was rejected and reverted, corrupting
+/// whatever had already been typed (e.g. typing "12,5" silently produced
+/// "125" once the rejected comma was dropped, reading as data loss). Comma
+/// and period are the same length so this can't shift the cursor either.
 final decimalInputFormatters = <TextInputFormatter>[
+  TextInputFormatter.withFunction(
+    (oldValue, newValue) =>
+        newValue.copyWith(text: newValue.text.replaceAll(',', '.')),
+  ),
   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
 ];

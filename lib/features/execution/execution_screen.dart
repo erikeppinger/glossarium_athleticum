@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -6,35 +8,24 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../data/daos/session_log_dao.dart';
+import '../../logic/percentage_prescription.dart';
 import '../../logic/progression.dart';
 import '../../logic/rest_timer.dart';
 import '../../logic/muscle_group_colors.dart';
+import '../../logic/superset_info.dart';
 import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart';
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
+import '../shared/info_dialog.dart';
 import '../shared/muscle_area_stripe.dart';
 import '../shared/numeric_input_formatters.dart';
 import '../shared/pulsing_highlight.dart';
 import 'rest_timer_controller.dart';
 
-/// Every top set ever logged for one exercise, most recent first - backs the
-/// "Best: ..." half of the "Last: ... / Best: ..." line shown while logging
-/// that exercise, and reuses [SessionLogDao.getProgressionHistory] rather
-/// than a bespoke query since it's already exactly "one row per session,
-/// reduced to the top set".
-final _exerciseHistoryProvider =
-    FutureProvider.family<List<ProgressionHistoryEntry>, String>((
-      ref,
-      exerciseId,
-    ) {
-      final db = ref.watch(appDatabaseProvider);
-      return db.sessionLogDao.getProgressionHistory(exerciseId);
-    });
-
 /// The full "Last: ..." half - every set from only the most recent session,
-/// not reduced to one number the way [_exerciseHistoryProvider] is. Someone
-/// re-doing an exercise wants to see what they actually did last time
+/// not reduced to one number the way [exerciseProgressionHistoryProvider] is.
+/// Someone re-doing an exercise wants to see what they actually did last time
 /// (every set), not just its heaviest one.
 final _lastSessionSetsProvider =
     FutureProvider.family<List<LoggedSet>, String>((ref, exerciseId) {
@@ -147,11 +138,137 @@ final _inProgressSessionProvider = Provider.family<_InProgressSession, int>(
   (ref, planSessionId) => _InProgressSession(),
 );
 
+List<PlanExercise> _allExercisesFor(
+  _InProgressSession session,
+  PlanSessionDetails details,
+) => [...details.exercises, ...session.adHocExercises];
+
+/// One item to render in execution mode's exercise list - either a plain
+/// solo exercise, or a superset/circuit of 2+ exercises sharing a
+/// `supersetGroupId` (see [_groupedExercisesFor]).
+sealed class _RenderUnit {}
+
+class _SoloUnit extends _RenderUnit {
+  final PlanExercise exercise;
+  _SoloUnit(this.exercise);
+}
+
+class _SupersetUnit extends _RenderUnit {
+  /// Sorted by `order` - determines both round-robin display order and
+  /// which member is "last" in a given round for the rest-timer trigger.
+  final List<PlanExercise> members;
+  _SupersetUnit(this.members);
+}
+
+/// Clusters [exercises] by `supersetGroupId`, preserving each item's
+/// original position for anything not (or no longer meaningfully) grouped.
+/// A group is emitted once, at the position of its first member in
+/// [exercises] - a group that's shrunk to a single remaining member (e.g.
+/// after ungrouping the others) renders as a plain solo card, matching
+/// execution mode having no "one-exercise superset" concept. Ad-hoc
+/// mid-session additions are never grouped (their `supersetGroupId` is
+/// always null), so they always come through as solo units.
+List<_RenderUnit> _groupedExercisesFor(List<PlanExercise> exercises) {
+  final membersByGroup = <int, List<PlanExercise>>{};
+  for (final exercise in exercises) {
+    final groupId = exercise.supersetGroupId;
+    if (groupId != null) {
+      membersByGroup.putIfAbsent(groupId, () => []).add(exercise);
+    }
+  }
+
+  final emittedGroups = <int>{};
+  final result = <_RenderUnit>[];
+  for (final exercise in exercises) {
+    final groupId = exercise.supersetGroupId;
+    if (groupId == null) {
+      result.add(_SoloUnit(exercise));
+      continue;
+    }
+    if (!emittedGroups.add(groupId)) continue;
+    final members = membersByGroup[groupId]!
+      ..sort((a, b) => a.order.compareTo(b.order));
+    result.add(
+      members.length < 2 ? _SoloUnit(members.single) : _SupersetUnit(members),
+    );
+  }
+  return result;
+}
+
+/// Every set actually checked off so far in [session], in the shape both
+/// [autosaveInProgressSessionDraft] and `_ExecutionScreenState._finishSession`
+/// need. Ad-hoc exercises added mid-session are deliberately excluded from
+/// drafts (though they still count normally at a real Finish) - restoring
+/// them after a cold start would mean reconstructing a whole synthetic
+/// `PlanExercise` with guessed sets/reps, not just refilling forms that
+/// already exist from the plan.
+List<LoggedSetInput> _loggedEntriesFor(
+  _InProgressSession session,
+  PlanSessionDetails details,
+  WeightUnit unit,
+) {
+  final entries = <LoggedSetInput>[];
+  for (final exercise in _allExercisesFor(session, details)) {
+    if (exercise.exerciseId == null) continue;
+    final forms = session.formsByExerciseRowId[exercise.id];
+    if (forms == null) continue;
+    for (var i = 0; i < forms.length; i++) {
+      final form = forms[i];
+      if (!form.logged) continue;
+      final typedWeight = double.tryParse(form.weight.text);
+      entries.add(
+        LoggedSetInput(
+          exerciseId: exercise.exerciseId!,
+          setNumber: i + 1,
+          reps: int.tryParse(form.reps.text),
+          weight: typedWeight == null
+              ? null
+              : displayToKg(typedWeight, unit),
+          rpe: double.tryParse(form.rpe.text),
+          isPr: form.isPr,
+        ),
+      );
+    }
+  }
+  return entries;
+}
+
+/// Autosaves whatever's been checked off so far for [planSessionId]'s
+/// in-progress session, if there is one - called from `home_screen.dart`'s
+/// own always-mounted app-lifecycle observer rather than from
+/// `ExecutionScreen` itself (see that observer's doc comment for why: a
+/// session left via `_LeaveChoice.leave` needs exactly the same safety net
+/// while sitting on a different tab, and `ExecutionScreen`'s own lifecycle
+/// observer stops receiving callbacks the instant its route is popped, even
+/// though the in-memory `_InProgressSession` deliberately survives being
+/// left). Reads `_inProgressSessionProvider` directly rather than via
+/// `_sessionDetailsProvider`'s cache, since this can run long after
+/// `ExecutionScreen` itself has unmounted.
+Future<void> autosaveInProgressSessionDraft(
+  WidgetRef ref,
+  int planSessionId,
+) async {
+  final db = ref.read(appDatabaseProvider);
+  final details = await db.planDao.getSessionDetails(planSessionId);
+  if (details == null) return;
+  final session = ref.read(_inProgressSessionProvider(planSessionId));
+  final unit = ref.read(appPreferencesProvider).weightUnit;
+  await db.sessionLogDao.saveDraft(
+    planSessionId: planSessionId,
+    loggedAt: DateTime.now(),
+    entries: _loggedEntriesFor(session, details, unit),
+  );
+}
+
 enum _LeaveChoice { keepTraining, leave, discard }
 
 class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   _InProgressSession get _session =>
       ref.read(_inProgressSessionProvider(widget.planSessionId));
+
+  // Guards _restoreDraftIfAny so it only ever runs once per screen instance,
+  // the first time session details resolve - see its own doc comment.
+  bool _draftRestoreAttempted = false;
 
   @override
   void initState() {
@@ -163,13 +280,171 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       if (!mounted) return;
       ref.read(activeInProgressSessionIdProvider.notifier).state =
           widget.planSessionId;
+      ref.read(executionScreenVisibleProvider.notifier).state = true;
+      ref.read(executionScreenCloseGuardProvider.notifier).state =
+          _handleCloseRequest;
     });
   }
 
-  List<PlanExercise> _allExercises(PlanSessionDetails details) => [
-    ...details.exercises,
-    ..._session.adHocExercises,
-  ];
+  /// Clears [executionScreenVisibleProvider] the instant this screen's route
+  /// actually pops - called from `build()`'s `PopScope.onPopInvokedWithResult`
+  /// (every removal path - system back with `canPop` true, `_confirmDiscard`'s
+  /// Leave/Discard, and `_finishSession`'s own pop - routes through popping
+  /// this same PopScope's route) rather than from `dispose()`: Riverpod
+  /// throws "Cannot use ref after the widget was disposed" from inside
+  /// `dispose()` unconditionally in this version, confirmed live - there's no
+  /// safe way to read/write a provider there at all, not just during a bulk
+  /// tree teardown. `onPopInvokedWithResult` fires while the widget is still
+  /// fully mounted, before disposal, so `ref` is fine here.
+  void _clearExecutionScreenVisible() {
+    ref.read(executionScreenVisibleProvider.notifier).state = false;
+    // Guarded the same way _confirmDiscard's own cleanup is: a *different*
+    // ExecutionScreen could conceivably have been pushed and registered its
+    // own guard in between (e.g. tapping the rest-timer chip to jump into a
+    // different session before this one's pop callback ran) - only clear the
+    // guard if it's still this screen's own closure.
+    if (ref.read(executionScreenCloseGuardProvider) == _handleCloseRequest) {
+      ref.read(executionScreenCloseGuardProvider.notifier).state = null;
+    }
+  }
+
+  // Backgrounding-triggered draft autosaving now happens in
+  // home_screen.dart's own always-mounted app-lifecycle observer instead of
+  // here - see autosaveInProgressSessionDraft's doc comment for why a
+  // per-screen observer isn't enough (it stops receiving callbacks the
+  // instant this screen is popped via "Leave," even though the in-memory
+  // session it would have autosaved deliberately survives that).
+
+  /// Every set actually checked off so far, in the shape [_finishSession]
+  /// needs (see [_loggedEntriesFor], shared with
+  /// [autosaveInProgressSessionDraft]).
+  List<LoggedSetInput> _loggedEntries(
+    PlanSessionDetails details,
+    WeightUnit unit,
+  ) => _loggedEntriesFor(_session, details, unit);
+
+  /// Restores a previously autosaved draft's checked-off sets (see
+  /// autosaveInProgressSessionDraft above) - only relevant after a cold start
+  /// following a process kill, where _inProgressSessionProvider itself is
+  /// gone along with everything else in memory. A no-op whenever forms are
+  /// already populated (the normal case: reopening a screen whose
+  /// _InProgressSession survived, or a session with no draft at all), so
+  /// this can never clobber live in-progress work.
+  Future<void> _restoreDraftIfAny(
+    PlanSessionDetails details,
+    WeightUnit unit,
+  ) async {
+    // Not `formsByExerciseRowId.isEmpty`, and not the forms' text fields
+    // either - by the time this postFrameCallback runs, build() has already
+    // called _formsFor for every exercise on the same frame, which lazily
+    // creates a form for each one purely to render the screen, *pre-filled*
+    // with a hint straight from the exercise's own prescription (see
+    // _formsFor's repsHint/weightHint) - not something the user typed. The
+    // only reliable signs of genuine, worth-preserving in-progress activity
+    // (from a *live* session that survived normal in-app navigation, e.g.
+    // choosing "Leave" and reopening the same screen) are an actually
+    // logged set, a skipped exercise, or a mid-session addition.
+    final hasRealActivity =
+        _session.formsByExerciseRowId.values.any(
+          (forms) => forms.any((f) => f.logged),
+        ) ||
+        _session.skippedExerciseRowIds.isNotEmpty ||
+        _session.adHocExercises.isNotEmpty;
+    if (hasRealActivity) return;
+    final db = ref.read(appDatabaseProvider);
+    final draftSets = await db.sessionLogDao.getDraftSets(
+      widget.planSessionId,
+    );
+    if (draftSets.isEmpty || !mounted) return;
+
+    final bySetKey = <String, LoggedSet>{
+      for (final s in draftSets) '${s.exerciseId}#${s.setNumber}': s,
+    };
+    setState(() {
+      for (final exercise in details.exercises) {
+        if (exercise.exerciseId == null) continue;
+        final forms = _formsFor(exercise, unit);
+        // _formsFor only ever creates as many forms as the plan's own
+        // prescription (exercise.sets) - a set added manually via "+ Add
+        // set" beyond that, if checked off before the process was killed,
+        // has a draft entry with a setNumber past forms.length, which the
+        // restore loop below would silently never reach at all. Reported
+        // live (2026-09-10): a manually-added 4th set that had been logged
+        // vanished entirely on restore instead of coming back checked off.
+        final maxDraftedSetNumber = draftSets
+            .where((s) => s.exerciseId == exercise.exerciseId)
+            .fold(0, (max, s) => s.setNumber > max ? s.setNumber : max);
+        while (forms.length < maxDraftedSetNumber) {
+          forms.add(_LoggedSetForm());
+        }
+        for (var i = 0; i < forms.length; i++) {
+          final match = bySetKey['${exercise.exerciseId}#${i + 1}'];
+          if (match == null) continue;
+          final form = forms[i];
+          if (match.reps != null) form.reps.text = match.reps.toString();
+          if (match.weight != null) {
+            form.weight.text = formatWeightNumber(
+              kgToDisplay(match.weight!, unit),
+            );
+          }
+          if (match.rpe != null) form.rpe.text = match.rpe.toString();
+          form.logged = true;
+          form.isPr = match.isPr;
+        }
+      }
+    });
+  }
+
+  List<PlanExercise> _allExercises(PlanSessionDetails details) =>
+      _allExercisesFor(_session, details);
+
+  /// A percentage prescription ("70%") resolved against the exercise's
+  /// current best estimated 1RM - null when this isn't a percentage
+  /// prescription, or when there's no logged history to resolve against
+  /// yet (see `_ExerciseCard._weightIntensitySuffix`'s fallback text for
+  /// the latter case).
+  double? _resolvedPercentageWeightKg(PlanExercise exercise) {
+    final exerciseId = exercise.exerciseId;
+    if (exerciseId == null ||
+        !isPercentagePrescription(exercise.weightIntensity)) {
+      return null;
+    }
+    final percent = parsePercentage(exercise.weightIntensity);
+    if (percent == null) return null;
+    final estimatedOneRepMaxKg = ref
+        .watch(estimatedOneRepMaxProvider(exerciseId))
+        .valueOrNull;
+    return resolvePercentageWeight(
+      percent: percent,
+      estimatedOneRepMaxKg: estimatedOneRepMaxKg,
+    );
+  }
+
+  /// Bundles one superset member's data/callbacks for [_SupersetCard],
+  /// mirroring the same per-exercise wiring the solo `_ExerciseCard` gets
+  /// directly in `build()`'s loop.
+  _SupersetMember _memberFor(PlanExercise exercise, WeightUnit unit) {
+    final resolvedWeightKg = _resolvedPercentageWeightKg(exercise);
+    return _SupersetMember(
+      exercise: exercise,
+      forms: _formsFor(
+        exercise,
+        unit,
+        percentageResolvedWeightKg: resolvedWeightKg,
+      ),
+      resolvedWeightKg: resolvedWeightKg,
+      libraryExercise: ref
+          .watch(exerciseLookupProvider)
+          .valueOrNull?[exercise.exerciseId],
+      skipped: _session.skippedExerciseRowIds.contains(exercise.id),
+      onSetLogged: (form, {required startTimer}) =>
+          _logSet(exercise, form, unit, startTimer: startTimer),
+      onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
+      onAddSet: () => _addSet(exercise, unit),
+      onRemoveSet: (index) => _removeSet(exercise, unit, index),
+      onToggleSkip: () => _toggleSkip(exercise.id),
+    );
+  }
 
   // No dispose() override here anymore - the forms' TextEditingControllers
   // are now owned by _InProgressSession, which outlives this State on
@@ -177,11 +452,20 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   // the only thing that ever disposes them, called from _finishSession and
   // from choosing "Discard" in _confirmDiscard.
 
-  List<_LoggedSetForm> _formsFor(PlanExercise exercise, WeightUnit unit) {
+  List<_LoggedSetForm> _formsFor(
+    PlanExercise exercise,
+    WeightUnit unit, {
+    double? percentageResolvedWeightKg,
+  }) {
     return _session.formsByExerciseRowId.putIfAbsent(exercise.id, () {
-      final weightHintKg = double.tryParse(
-        RegExp(r'[\d.]+').stringMatch(exercise.weightIntensity) ?? '',
-      );
+      // A percentage prescription (e.g. "70%") would otherwise be
+      // misparsed by the regex below as a flat "70kg" hint - resolve it
+      // against the exercise's estimated 1RM instead when available.
+      final weightHintKg = isPercentagePrescription(exercise.weightIntensity)
+          ? percentageResolvedWeightKg
+          : double.tryParse(
+              RegExp(r'[\d.]+').stringMatch(exercise.weightIntensity) ?? '',
+            );
       final weightHint = weightHintKg == null
           ? ''
           : formatWeightNumber(kgToDisplay(weightHintKg, unit));
@@ -262,7 +546,11 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       // which now actively encourages leaving the screen mid-session.
       canPop: !_hasUnsavedSets,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmDiscard();
+        if (!didPop) {
+          _confirmDiscard();
+        } else {
+          _clearExecutionScreenVisible();
+        }
       },
       child: Scaffold(
       appBar: AppBar(title: const Text('Log session')),
@@ -270,6 +558,12 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         data: (details) {
           if (details == null) {
             return const Center(child: Text('Session not found.'));
+          }
+          if (!_draftRestoreAttempted) {
+            _draftRestoreAttempted = true;
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _restoreDraftIfAny(details, unit),
+            );
           }
           return Column(
             children: [
@@ -283,23 +577,50 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
-                    for (final exercise in _allExercises(details))
-                      _ExerciseCard(
-                        exercise: exercise,
-                        forms: _formsFor(exercise, unit),
-                        unit: unit,
-                        palette: ref.watch(appPreferencesProvider).colorPalette,
-                        libraryExercise: ref
-                            .watch(exerciseLookupProvider)
-                            .valueOrNull?[exercise.exerciseId],
-                        skipped: _session.skippedExerciseRowIds.contains(exercise.id),
-                        onSetLogged: (form) => _logSet(exercise, form, unit),
-                        onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
-                        onAddSet: () => _addSet(exercise, unit),
-                        onRemoveSet: (index) =>
-                            _removeSet(exercise, unit, index),
-                        onToggleSkip: () => _toggleSkip(exercise.id),
-                      ),
+                    for (final renderUnit
+                        in _groupedExercisesFor(_allExercises(details)))
+                      if (renderUnit is _SoloUnit)
+                        _ExerciseCard(
+                          exercise: renderUnit.exercise,
+                          forms: _formsFor(
+                            renderUnit.exercise,
+                            unit,
+                            percentageResolvedWeightKg:
+                                _resolvedPercentageWeightKg(renderUnit.exercise),
+                          ),
+                          unit: unit,
+                          palette: ref.watch(appPreferencesProvider).colorPalette,
+                          resolvedWeightKg: _resolvedPercentageWeightKg(
+                            renderUnit.exercise,
+                          ),
+                          libraryExercise: ref
+                              .watch(exerciseLookupProvider)
+                              .valueOrNull?[renderUnit.exercise.exerciseId],
+                          skipped: _session.skippedExerciseRowIds.contains(
+                            renderUnit.exercise.id,
+                          ),
+                          onSetLogged: (form) =>
+                              _logSet(renderUnit.exercise, form, unit),
+                          onSetUnlogged: (form) =>
+                              _unlogSet(renderUnit.exercise, form, unit),
+                          onAddSet: () => _addSet(renderUnit.exercise, unit),
+                          onRemoveSet: (index) =>
+                              _removeSet(renderUnit.exercise, unit, index),
+                          onToggleSkip: () =>
+                              _toggleSkip(renderUnit.exercise.id),
+                        )
+                      else if (renderUnit is _SupersetUnit)
+                        _SupersetCard(
+                          members: [
+                            for (final member in renderUnit.members)
+                              _memberFor(member, unit),
+                          ],
+                          unit: unit,
+                          palette: ref.watch(appPreferencesProvider).colorPalette,
+                          showPrCelebration: !ref
+                              .watch(appPreferencesProvider)
+                              .hideProgressActive,
+                        ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: () =>
@@ -367,7 +688,14 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
           )
           .toList();
 
-  Future<void> _confirmDiscard() async {
+  /// Shows the same "Leave without finishing?" dialog [_confirmDiscard] (a
+  /// blocked back-navigation) and [_handleCloseRequest] (a Windows window-
+  /// close request - see that method's own doc comment) both need, and does
+  /// the "Discard" cleanup common to both. Deliberately doesn't touch
+  /// navigation itself - callers differ on what should happen afterwards (a
+  /// blocked pop needs to actually pop; a close request just needs a yes/no
+  /// answer, since the whole app is about to exit regardless).
+  Future<_LeaveChoice> _promptLeaveChoice() async {
     final loggedCount = _session.formsByExerciseRowId.values
         .expand((forms) => forms)
         .where((f) => f.logged)
@@ -411,6 +739,11 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     if (choice == _LeaveChoice.discard) {
       _session.disposeAll();
       ref.invalidate(_inProgressSessionProvider(widget.planSessionId));
+      unawaited(
+        ref.read(appDatabaseProvider).sessionLogDao.deleteDraft(
+          widget.planSessionId,
+        ),
+      );
       // Guarded the same way the rest timer's own skip() is: a *different*
       // session could legitimately have been started elsewhere (via its own
       // "Leave") while this one sat unfinished, so only clear the marker if
@@ -418,11 +751,37 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       if (ref.read(activeInProgressSessionIdProvider) == widget.planSessionId) {
         ref.read(activeInProgressSessionIdProvider.notifier).state = null;
       }
+      // Discarding erases the whole session, so a rest timer still counting
+      // down for it makes no sense left running - same guard as above, in
+      // case a *different* session's own timer is currently active instead.
+      final restTimer = ref.read(restTimerControllerProvider);
+      if (restTimer.planSessionId == widget.planSessionId) {
+        ref.read(restTimerControllerProvider.notifier).skip();
+      }
     }
+    return choice ?? _LeaveChoice.keepTraining;
+  }
+
+  Future<void> _confirmDiscard() async {
+    final choice = await _promptLeaveChoice();
     if ((choice == _LeaveChoice.discard || choice == _LeaveChoice.leave) &&
         mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  /// Registered on [executionScreenCloseGuardProvider] while this screen is
+  /// mounted (see `initState`/`_clearExecutionScreenVisible`) - the Windows-
+  /// only answer to "is it safe to close the whole app window right now?"
+  /// (see `main.dart`'s `AppLifecycleListener`). Reuses the exact same
+  /// dialog and Discard cleanup as a blocked back-navigation, but never
+  /// navigates itself: the app is about to fully exit either way once this
+  /// returns true, and if it returns false the window simply stays open with
+  /// this screen exactly as the user left it.
+  Future<bool> _handleCloseRequest() async {
+    if (!_hasUnsavedSets) return true;
+    final choice = await _promptLeaveChoice();
+    return choice == _LeaveChoice.discard || choice == _LeaveChoice.leave;
   }
 
   Future<void> _logSet(
@@ -460,6 +819,23 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       form.pending = false;
     });
 
+    // Persists this checked-off set to the drafts table right away, not only
+    // when the app is later backgrounded. Reported live (2026-09-10): log a
+    // set, "Leave" the session, then press back enough times to fully exit
+    // the app - on a real device (and reproduced here via adb/logcat), that
+    // sequence can carry the Activity straight from `paused` into `detached`
+    // within milliseconds, tearing down the Flutter engine before the
+    // fire-and-forget autosave that only fires *on* backgrounding (see
+    // autosaveInProgressSessionDraft, still called from home_screen.dart's
+    // lifecycle observer as a backup) has any real chance to finish its own
+    // DB round-trip - confirmed via logcat: `paused` and `detached` fired
+    // 11ms apart, with "autosave completed" never printing for either.
+    // Saving synchronously here, the moment a set is actually logged, means
+    // the draft is already correct well before any subsequent navigation
+    // could plausibly close the app, regardless of how that lifecycle race
+    // plays out.
+    await autosaveInProgressSessionDraft(ref, widget.planSessionId);
+
     if (!startTimer) return;
     final restSec = exercise.restSec ?? 90;
     ref.read(restTimerControllerProvider.notifier).start(
@@ -469,11 +845,17 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   }
 
   /// Reverts a mis-tapped or mis-typed set back to editable, before
-  /// "Finish session" writes anything - nothing's persisted yet, so this is
-  /// purely in-memory. Also un-counts it from this session's own PR
-  /// tracking, so a later set of the same exercise isn't compared against a
-  /// PR that got undone.
-  void _unlogSet(PlanExercise exercise, _LoggedSetForm form, WeightUnit unit) {
+  /// "Finish session" writes anything for real - only the autosaved draft
+  /// (see _logSet's own doc comment) reflects it in the meantime, so this
+  /// re-syncs that draft too once the set is unchecked, or a stale draft
+  /// could otherwise restore a set that was actually undone. Also un-counts
+  /// it from this session's own PR tracking, so a later set of the same
+  /// exercise isn't compared against a PR that got undone.
+  Future<void> _unlogSet(
+    PlanExercise exercise,
+    _LoggedSetForm form,
+    WeightUnit unit,
+  ) async {
     if (form.isPr) {
       final typedWeight = double.tryParse(form.weight.text);
       if (typedWeight != null) {
@@ -486,6 +868,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       form.logged = false;
       form.isPr = false;
     });
+    await autosaveInProgressSessionDraft(ref, widget.planSessionId);
   }
 
   Future<void> _finishSession(
@@ -538,29 +921,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
 
     setState(() => _session.finishing = true);
     final db = ref.read(appDatabaseProvider);
-    final entries = <LoggedSetInput>[];
-
-    for (final exercise in _allExercises(details)) {
-      if (exercise.exerciseId == null) continue;
-      final forms = _formsFor(exercise, unit);
-      for (var i = 0; i < forms.length; i++) {
-        final form = forms[i];
-        if (!form.logged) continue;
-        final typedWeight = double.tryParse(form.weight.text);
-        entries.add(
-          LoggedSetInput(
-            exerciseId: exercise.exerciseId!,
-            setNumber: i + 1,
-            reps: int.tryParse(form.reps.text),
-            weight: typedWeight == null
-                ? null
-                : displayToKg(typedWeight, unit),
-            rpe: double.tryParse(form.rpe.text),
-            isPr: form.isPr,
-          ),
-        );
-      }
-    }
+    final entries = _loggedEntries(details, unit);
 
     if (entries.isNotEmpty) {
       final note = await _promptForNote();
@@ -575,6 +936,13 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       // One-shot FutureProviders - won't notice this write on their own.
       ref.invalidate(loggedPlanSessionIdsProvider);
       invalidateProgressProviders(ref);
+    } else {
+      // createSessionLog (above) already clears any autosaved draft as part
+      // of writing the real log - but finishing with nothing logged never
+      // reaches that call, so a draft from earlier in this same session
+      // (e.g. a set was autosaved, then undone before Finish) needs its own
+      // explicit cleanup here instead.
+      await db.sessionLogDao.deleteDraft(widget.planSessionId);
     }
 
     // The rest timer is meant to survive leaving this screen unfinished
@@ -797,6 +1165,13 @@ class _ExerciseCard extends ConsumerWidget {
   final void Function(int index) onRemoveSet;
   final VoidCallback onToggleSkip;
 
+  /// A percentage prescription (e.g. "70%") resolved against the
+  /// exercise's current best estimated 1RM, in kg - null either because
+  /// this isn't a percentage prescription or because there's no logged
+  /// history to resolve it against yet (see the "Target: ..." line below
+  /// for the graceful fallback text in the latter case).
+  final double? resolvedWeightKg;
+
   const _ExerciseCard({
     required this.exercise,
     required this.forms,
@@ -809,6 +1184,7 @@ class _ExerciseCard extends ConsumerWidget {
     required this.onAddSet,
     required this.onRemoveSet,
     required this.onToggleSkip,
+    this.resolvedWeightKg,
   });
 
   @override
@@ -818,6 +1194,8 @@ class _ExerciseCard extends ConsumerWidget {
       category: libraryExercise?.category ?? '',
       movementPattern: libraryExercise?.movementPattern ?? '',
     );
+    final showPrCelebration =
+        !ref.watch(appPreferencesProvider).hideProgressActive;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -853,7 +1231,7 @@ class _ExerciseCard extends ConsumerWidget {
             ),
             Text(
               'Target: ${exercise.sets} x ${exercise.reps}'
-              '${exercise.weightIntensity.isEmpty ? '' : ' @ ${exercise.weightIntensity}'}',
+              '${_weightIntensitySuffix()}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             // A negative id marks an exercise added via "Add exercise"
@@ -869,6 +1247,14 @@ class _ExerciseCard extends ConsumerWidget {
               ),
             if (exercise.exerciseId != null)
               _LastAndBestLine(exerciseId: exercise.exerciseId!, unit: unit),
+            if (exercise.notes.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  exercise.notes,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
             if (skipped)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -890,6 +1276,7 @@ class _ExerciseCard extends ConsumerWidget {
                   onLog: () => onSetLogged(forms[i]),
                   onUnlog: () => onSetUnlogged(forms[i]),
                   onRemove: () => onRemoveSet(i),
+                  showPrCelebration: showPrCelebration,
                 ),
               Align(
                 alignment: Alignment.centerLeft,
@@ -902,6 +1289,293 @@ class _ExerciseCard extends ConsumerWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// " @ 70% (≈52.5kg)" once resolved, " @ 70% (no history yet)" when the
+  /// exercise has never been logged, or the plain " @ 60kg" flat-weight
+  /// text unchanged for a non-percentage prescription.
+  String _weightIntensitySuffix() {
+    final weightIntensity = exercise.weightIntensity;
+    if (weightIntensity.isEmpty) return '';
+    if (!isPercentagePrescription(weightIntensity)) {
+      return ' @ $weightIntensity';
+    }
+    final resolved = resolvedWeightKg;
+    final resolvedText = resolved == null
+        ? 'no history yet'
+        : '≈${formatWeightInUnit(resolved, unit)}';
+    return ' @ $weightIntensity ($resolvedText)';
+  }
+}
+
+/// One superset member's data and bound callbacks, prepared by
+/// `_ExecutionScreenState._memberFor` the same way the solo `_ExerciseCard`
+/// gets its properties directly in `build()`'s loop.
+class _SupersetMember {
+  final PlanExercise exercise;
+  final List<_LoggedSetForm> forms;
+  final double? resolvedWeightKg;
+  final Exercise? libraryExercise;
+  final bool skipped;
+  final void Function(_LoggedSetForm form, {required bool startTimer})
+  onSetLogged;
+  final void Function(_LoggedSetForm form) onSetUnlogged;
+  final VoidCallback onAddSet;
+  final void Function(int index) onRemoveSet;
+  final VoidCallback onToggleSkip;
+
+  _SupersetMember({
+    required this.exercise,
+    required this.forms,
+    required this.resolvedWeightKg,
+    required this.libraryExercise,
+    required this.skipped,
+    required this.onSetLogged,
+    required this.onSetUnlogged,
+    required this.onAddSet,
+    required this.onRemoveSet,
+    required this.onToggleSkip,
+  });
+}
+
+/// A superset/circuit card: 2+ exercises done back-to-back in round-robin
+/// order, with one shared rest only after each round rather than after
+/// every individual exercise. Members can have different set counts - a
+/// round simply omits whichever member has already run out of sets, no
+/// forced-equal-sets rule.
+class _SupersetCard extends StatelessWidget {
+  final List<_SupersetMember> members;
+  final WeightUnit unit;
+  final AppColorPalette palette;
+  final bool showPrCelebration;
+
+  const _SupersetCard({
+    required this.members,
+    required this.unit,
+    required this.palette,
+    this.showPrCelebration = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeMembers = members.where((m) => !m.skipped).toList();
+    final maxRounds = activeMembers.isEmpty
+        ? 0
+        : activeMembers.map((m) => m.forms.length).reduce(
+            (a, b) => a > b ? a : b,
+          );
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.link, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Superset',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline, size: 18),
+                  tooltip: 'What is a superset?',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => showInfoDialog(
+                    context,
+                    title: 'What is a superset?',
+                    content: supersetExplanationNote,
+                  ),
+                ),
+              ],
+            ),
+            for (final member in members) _SupersetMemberHeader(
+              member: member,
+              unit: unit,
+              palette: palette,
+            ),
+            const Divider(),
+            for (var round = 0; round < maxRounds; round++)
+              // Keyed so a round's contents can be located as a subtree in
+              // tests (e.g. asserting a shorter-count member is absent from
+              // a later round) without relying on flat sibling ordering.
+              Column(
+                key: ValueKey('superset_round_$round'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      'Round ${round + 1}',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ),
+                  for (final member in activeMembers)
+                    if (round < member.forms.length)
+                      _SupersetSetRow(
+                        member: member,
+                        unit: unit,
+                        round: round,
+                        showPrCelebration: showPrCelebration,
+                        // Only the last still-active member in this round
+                        // triggers the rest timer, using its own restSec -
+                        // once a shorter-count member runs out of sets, the
+                        // remaining member simply becomes "last" every
+                        // round and gets normal solo-style rest.
+                        isLastActiveInRound: identical(
+                          member,
+                          activeMembers.lastWhere(
+                            (m) => round < m.forms.length,
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SupersetMemberHeader extends StatelessWidget {
+  final _SupersetMember member;
+  final WeightUnit unit;
+  final AppColorPalette palette;
+
+  const _SupersetMemberHeader({
+    required this.member,
+    required this.unit,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final exercise = member.exercise;
+    final area = areaForExercise(
+      muscleGroups: member.libraryExercise?.muscleGroups ?? '',
+      category: member.libraryExercise?.category ?? '',
+      movementPattern: member.libraryExercise?.movementPattern ?? '',
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              MuscleAreaStripe(area: area, palette: palette, height: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  exercise.exerciseName,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    decoration: member.skipped
+                        ? TextDecoration.lineThrough
+                        : null,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: member.onToggleSkip,
+                tooltip: member.skipped
+                    ? 'Include this exercise again'
+                    : 'Skip this exercise',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  member.skipped ? Icons.replay : Icons.remove_circle_outline,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            '${exercise.sets} x ${exercise.reps}'
+            '${exercise.weightIntensity.isEmpty ? '' : ' @ ${exercise.weightIntensity}'}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (member.skipped)
+            Text(
+              'Skipped for this session.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontStyle: FontStyle.italic,
+              ),
+            )
+          else if (exercise.exerciseId != null)
+            _LastAndBestLine(exerciseId: exercise.exerciseId!, unit: unit),
+          if (exercise.notes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                exercise.notes,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          if (!member.skipped)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: member.onAddSet,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add set'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupersetSetRow extends StatelessWidget {
+  final _SupersetMember member;
+  final WeightUnit unit;
+  final int round;
+  final bool isLastActiveInRound;
+  final bool showPrCelebration;
+
+  const _SupersetSetRow({
+    required this.member,
+    required this.unit,
+    required this.round,
+    required this.isLastActiveInRound,
+    this.showPrCelebration = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final form = member.forms[round];
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            member.exercise.exerciseName,
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+          _SetRow(
+            setNumber: round + 1,
+            form: form,
+            unit: unit,
+            canRemove: member.forms.length > 1,
+            onLog: () =>
+                member.onSetLogged(form, startTimer: isLastActiveInRound),
+            onUnlog: () => member.onSetUnlogged(form),
+            onRemove: () => member.onRemoveSet(round),
+            showPrCelebration: showPrCelebration,
+          ),
+        ],
       ),
     );
   }
@@ -921,7 +1595,11 @@ class _LastAndBestLine extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lastSets = ref.watch(_lastSessionSetsProvider(exerciseId)).valueOrNull;
-    final history = ref.watch(_exerciseHistoryProvider(exerciseId)).valueOrNull;
+    final history =
+        ref.watch(exerciseProgressionHistoryProvider(exerciseId)).valueOrNull;
+    final estimatedOneRepMax = ref
+        .watch(estimatedOneRepMaxProvider(exerciseId))
+        .valueOrNull;
 
     final weightedLastSets =
         lastSets?.where((s) => s.weight != null && s.reps != null).toList() ??
@@ -941,10 +1619,14 @@ class _LastAndBestLine extends ConsumerWidget {
         ? null
         : 'Best: ${formatWeightInUnit(best.weight, unit)}';
 
+    final oneRepMaxText = estimatedOneRepMax == null
+        ? null
+        : 'Est. 1RM: ${formatWeightInUnit(estimatedOneRepMax, unit)}';
+
     return Padding(
       padding: const EdgeInsets.only(top: 2),
       child: Text(
-        [?lastText, ?bestText].join('  •  '),
+        [?lastText, ?bestText, ?oneRepMaxText].join('  •  '),
         style: Theme.of(
           context,
         ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
@@ -962,6 +1644,14 @@ class _SetRow extends StatelessWidget {
   final VoidCallback onUnlog;
   final VoidCallback onRemove;
 
+  /// Whether a new PR should actually show as a trophy icon - false while
+  /// Focus Mode is hiding progress, in which case a logged set always shows
+  /// the plain checkmark regardless of `form.isPr`. Detection itself
+  /// (`isPersonalRecord`, set elsewhere) is untouched either way, so nothing
+  /// here affects the underlying data - only whether this one icon
+  /// celebrates it.
+  final bool showPrCelebration;
+
   const _SetRow({
     required this.setNumber,
     required this.form,
@@ -970,6 +1660,7 @@ class _SetRow extends StatelessWidget {
     required this.onLog,
     required this.onUnlog,
     required this.onRemove,
+    this.showPrCelebration = true,
   });
 
   @override
@@ -1020,8 +1711,12 @@ class _SetRow extends StatelessWidget {
               onPressed: onUnlog,
               tooltip: 'Undo - edit this set again',
               icon: Icon(
-                form.isPr ? Icons.emoji_events : Icons.check_circle,
-                color: form.isPr ? Colors.amber.shade700 : Colors.green,
+                form.isPr && showPrCelebration
+                    ? Icons.emoji_events
+                    : Icons.check_circle,
+                color: form.isPr && showPrCelebration
+                    ? Colors.amber.shade700
+                    : Colors.green,
               ),
             )
           else if (form.pending)

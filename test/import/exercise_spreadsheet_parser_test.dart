@@ -159,6 +159,7 @@ Atlas Stone to Platform,Odd Object Lift,Squat/Hinge,Full Body,Atlas Stones,Advan
       safetyNotes: '',
       videoReference: '',
       isCustom: false,
+      isFavorite: false,
     );
 
     test('counts rows matching an existing name case/punctuation-insensitively', () {

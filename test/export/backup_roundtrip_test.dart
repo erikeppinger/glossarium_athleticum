@@ -292,12 +292,13 @@ void main() {
         author: const Value('Coach Erik'),
         sourcePlanName: const Value('Nine-Block Strength Program'),
         imagePath: const Value('12345.jpg'),
+        imagePaths: const Value('12345.jpg'),
       ),
     );
 
     final backup = await buildBackupJson(db, attachmentsDirectory: sourceDir);
     expect(
-      (backup['exercises'] as List).single['image_data_base64'],
+      (backup['exercises'] as List).single['images_data_base64'],
       isNotNull,
       reason: 'the image bytes should be embedded in the backup itself',
     );
@@ -312,7 +313,7 @@ void main() {
     expect(restored, isNotNull);
     expect(restored!.author, 'Coach Erik');
     expect(restored.sourcePlanName, 'Nine-Block Strength Program');
-    expect(restored.imagePath, '12345.jpg');
+    expect(restored.imagePaths, '12345.jpg');
     expect(
       await File('${restoredDir.path}/12345.jpg').readAsBytes(),
       [1, 2, 3, 4, 5],

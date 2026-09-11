@@ -79,6 +79,23 @@ Future<String> saveAttachment(
   return name;
 }
 
+/// Same as [saveAttachment], but for bytes already in memory (e.g. an image
+/// pulled out of a zip bundle - see `plan_zip_bundle.dart`) rather than a
+/// file already on disk. Generates the same kind of collision-proof name
+/// [saveAttachment] does, rather than trusting the bundle's own filename to
+/// be unique against whatever's already in this device's attachments
+/// directory (a previous import of the same or a similarly-named bundle).
+Future<String> saveAttachmentFromBytes(
+  List<int> bytes, {
+  String extension = '',
+  Directory? directory,
+}) async {
+  final name =
+      '${DateTime.now().microsecondsSinceEpoch}_${_random.nextInt(1 << 32)}$extension';
+  await saveAttachmentBytes(bytes, name, directory: directory);
+  return name;
+}
+
 /// Turns a stored attachment filename back into an absolute path for display.
 Future<String> resolveAttachmentPath(
   String fileName, {

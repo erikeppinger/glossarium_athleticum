@@ -71,6 +71,16 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.5
   build_runner: ^2.16.0
+  # Packages the Windows build as a real MSIX with package identity - the
+  # unpackaged .exe this project shipped up to now can't retrieve/cancel its
+  # own already-shown notifications (flutter_local_notifications_windows'
+  # own documented limitation) and, more seriously, can't be relaunched by
+  # tapping a notification at all once fully closed - reported live
+  # (2026-09-11): closing the window with a rest timer running left no way
+  # back to the session short of finding the .exe again manually. Windows
+  # only grants that a real "app identity" (a package, not a bare .exe) can
+  # register for.
+  msix: ^3.16.11
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -126,3 +136,29 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Packages the Windows build as an MSIX with real package identity - see the
+# `msix` dev_dependency's own comment above for why this was added
+# (2026-09-11): an unpackaged .exe can't be relaunched by tapping its own
+# toast notification once fully closed, and can't cancel/query its own
+# already-shown notifications either. `toast_activator.clsid` is
+# deliberately the exact same GUID already used as
+# `WindowsInitializationSettings.guid` in notification_service.dart -
+# msix registers this as the packaged app's COM notification activator, and
+# the plugin uses it at runtime to identify itself; the two have to match or
+# activation silently fails. Not published to the Microsoft Store (`store`
+# left at its default `false`) - this is signed with the tool's own
+# auto-generated self-signed test certificate for informal (Dropbox)
+# distribution, per its own default behavior. Anyone installing this on a
+# machine other than the one that built it needs to trust that certificate
+# first (see CLAUDE.md's Windows build/ship notes) - Add-AppxPackage will
+# otherwise refuse to install it.
+msix_config:
+  display_name: Training App
+  publisher_display_name: Erik Eppinger
+  identity_name: TrainingApp.Local
+  logo_path: windows\runner\resources\app_icon.ico
+  toast_activator:
+    clsid: "9de9e982-6bf6-4a1b-9aab-b8b4c2f0e3a3"
+    arguments: "----AppNotificationActivationServer"
+    display_name: "Training App"

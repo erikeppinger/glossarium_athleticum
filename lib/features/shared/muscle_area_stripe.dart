@@ -37,30 +37,36 @@ class MuscleAreaStripe extends StatelessWidget {
   }
 }
 
-/// A second, independent colour bar naming who an exercise came from -
-/// library / own / imported-from-a-plan / credited-to-an-author. Meant to
-/// sit right next to [MuscleAreaStripe]: the two answer different questions
-/// (what does this train vs who made it) and shouldn't be conflated into one
-/// bar's colour.
-class ProvenanceStripe extends StatelessWidget {
-  final ExerciseProvenance provenance;
+/// A second, independent colour bar naming an exercise's `category` (e.g.
+/// "Accessory", "Conditioning", "Main Lift") - meant to sit right next to
+/// [MuscleAreaStripe] and mirror the exercise library's own two colour-coded
+/// filter rows (category, then muscle area) directly onto the list: first
+/// bar = first row, second bar = second row. This used to instead show who
+/// created the exercise (library/own/plan/author) - reported live as less
+/// intuitive than tying the two bars to the two colour-coded filter rows
+/// actually above the list; creator/provenance is still filterable, just no
+/// longer duplicated as a third piece of per-row colour.
+class CategoryStripe extends StatelessWidget {
+  final String category;
+  final AppColorPalette palette;
   final double height;
 
-  const ProvenanceStripe({
+  const CategoryStripe({
     super.key,
-    required this.provenance,
+    required this.category,
+    required this.palette,
     this.height = 40,
   });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: provenance.label,
+      label: '$category exercise',
       child: Container(
         width: 6,
         height: height,
         decoration: BoxDecoration(
-          color: colorForProvenance(provenance),
+          color: colorForCategoryValue(category, palette),
           borderRadius: BorderRadius.circular(3),
         ),
       ),

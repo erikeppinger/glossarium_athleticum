@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' show Value;
 
 import '../data/app_database.dart';
 import '../data/local_storage.dart';
+import '../logic/exercise_images.dart';
 
 /// Custom (non-seed) exercise, in schema/exercise.schema.json shape. Shared
 /// by both the full-device backup (every custom exercise) and a single-plan
@@ -34,7 +35,13 @@ Map<String, dynamic> exerciseToJson(Exercise exercise) {
     if (exercise.sourcePlanName != null)
       'source_plan_name': exercise.sourcePlanName,
     if (exercise.author != null) 'author': exercise.author,
+    // 'image_path' (singular) is kept alongside the new list purely so a
+    // file exported by an older version of this app - or read by one, since
+    // this key predates 'image_paths' - still finds a photo, not because
+    // anything here still treats it as the source of truth.
     if (exercise.imagePath != null) 'image_path': exercise.imagePath,
+    if (parseImagePaths(exercise.imagePaths).isNotEmpty)
+      'image_paths': parseImagePaths(exercise.imagePaths),
   };
 }
 
@@ -66,6 +73,17 @@ ExercisesCompanion exerciseFromJson(Map<String, dynamic> json) {
     sourcePlanName: Value(json['source_plan_name'] as String?),
     author: Value(json['author'] as String?),
     imagePath: Value(json['image_path'] as String?),
+    // Prefer the current list field; fall back to the older single
+    // 'image_path' (as a one-element list) for a file exported before
+    // multi-photo support existed.
+    imagePaths: Value(
+      joinImagePaths(
+        (json['image_paths'] as List?)?.cast<String>() ??
+            (json['image_path'] != null
+                ? [json['image_path'] as String]
+                : const []),
+      ),
+    ),
   );
 }
 
@@ -84,24 +102,46 @@ Future<Map<String, dynamic>> exerciseToJsonWithImage(
   Directory? directory,
 }) async {
   final json = exerciseToJson(exercise);
-  final imagePath = exercise.imagePath;
-  if (imagePath == null) return json;
+  final paths = parseImagePaths(exercise.imagePaths);
+  if (paths.isEmpty) return json;
 
-  final bytes = await readAttachmentBytes(imagePath, directory: directory);
-  if (bytes == null) return json;
-
-  return {...json, 'image_data_base64': base64Encode(bytes)};
+  // Keyed by filename rather than a parallel-indexed list, so restoring
+  // never has to assume the two lists stayed in lockstep - and a file
+  // that's gone missing on disk is just silently absent from the map,
+  // exactly like the single-image version's own "missing isn't an error"
+  // behaviour.
+  final imagesBase64 = <String, String>{};
+  for (final path in paths) {
+    final bytes = await readAttachmentBytes(path, directory: directory);
+    if (bytes != null) imagesBase64[path] = base64Encode(bytes);
+  }
+  if (imagesBase64.isEmpty) return json;
+  return {...json, 'images_data_base64': imagesBase64};
 }
 
-/// Writes back the image embedded in an [exerciseToJsonWithImage]-shaped
-/// entry, if present. A no-op when the entry has no `image_data_base64` -
-/// either it never had an image, or it came from a backup/plan export taken
-/// before this existed (in which case `image_path` alone still restores,
-/// just pointing at a file that isn't there, rendered as a placeholder).
+/// Writes back the images embedded in an [exerciseToJsonWithImage]-shaped
+/// entry, if present. A no-op when the entry has no `images_data_base64` -
+/// either it never had any images, or it came from a backup/plan export
+/// taken before multi-photo support existed (in which case `image_path`/
+/// `image_paths` alone still restore, just pointing at files that aren't
+/// there, rendered as placeholders). Also handles the older single-image
+/// `image_data_base64` shape, for a file exported before this existed.
 Future<void> restoreExerciseImage(
   Map<String, dynamic> json, {
   Directory? directory,
 }) async {
+  final imagesBase64 = json['images_data_base64'] as Map<String, dynamic>?;
+  if (imagesBase64 != null) {
+    for (final entry in imagesBase64.entries) {
+      await saveAttachmentBytes(
+        base64Decode(entry.value as String),
+        entry.key,
+        directory: directory,
+      );
+    }
+    return;
+  }
+
   final imagePath = json['image_path'] as String?;
   final dataBase64 = json['image_data_base64'] as String?;
   if (imagePath == null || dataBase64 == null) return;

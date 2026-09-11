@@ -16,6 +16,14 @@ final archivedPlansProvider = StreamProvider<List<Plan>>((ref) {
   return db.planDao.watchArchivedPlans();
 });
 
+/// Mirrors exercise_library_providers.dart's exerciseSearchQueryProvider -
+/// a plain StateProvider written to on every keystroke by an uncontrolled
+/// TextField, filtered in Dart against whatever plansListProvider/
+/// archivedPlansProvider already streamed (both StreamProviders, so there's
+/// no stale-cache gotcha to invalidate around, unlike the Exercise
+/// Library's FutureProviders).
+final planSearchQueryProvider = StateProvider<String>((ref) => '');
+
 final allExercisesForMatchingProvider = FutureProvider<List<Exercise>>((
   ref,
 ) {
