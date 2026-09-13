@@ -1,5 +1,12 @@
 flutter/ephemeral/
 
+# Local MSIX signing identity (see build_msix.ps1's header comment) - a
+# throwaway self-signed test certificate generated once per
+# machine/checkout and reused across builds. Never commit a private key,
+# even a disposable local-only one.
+test_cert.pfx
+test_cert.cer
+
 # Visual Studio user-specific files.
 *.suo
 *.user
