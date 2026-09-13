@@ -21,6 +21,7 @@ const _weeklyDigestKey = 'weekly_digest_enabled';
 const _reminderMinutesKey = 'reminder_time_minutes';
 const _digestWeekdayKey = 'digest_weekday';
 const _hasSeenOnboardingKey = 'has_seen_onboarding';
+const _lastSeenWhatsNewRevisionKey = 'last_seen_whats_new_revision';
 const _showProgressChartsKey = 'show_progress_charts';
 const _colorPaletteKey = 'color_palette';
 const _bodyTrackingKey = 'body_tracking';
@@ -111,6 +112,18 @@ class AppPreferences {
 
   /// Whether the first-launch tour has been completed or skipped.
   final bool hasSeenOnboarding;
+
+  /// The highest "What's new" revision (see `whats_new_content.dart`'s
+  /// `currentWhatsNewRevision`) this device has already been shown. Defaults
+  /// to 0, same as a never-set int always would - deliberately NOT defaulted
+  /// to "already caught up," because that default has to serve two very
+  /// different devices identically: a brand-new install (which finishes
+  /// onboarding - see its own `_finish()` - and stamps this to the current
+  /// revision right then, since the tour just covered everything in it) and
+  /// an *existing* device that had the app before this feature shipped at
+  /// all (which has never had this key set either, and should see the sheet
+  /// at least once to catch up - 0 makes that happen automatically).
+  final int lastSeenWhatsNewRevision;
 
   /// Whether the Progress tab shows its swipeable trend charts above the
   /// numeric summary. On for people who read shapes faster than numbers;
@@ -204,6 +217,7 @@ class AppPreferences {
     this.reminderTimeMinutes = 8 * 60,
     this.digestWeekday = DateTime.monday,
     this.hasSeenOnboarding = false,
+    this.lastSeenWhatsNewRevision = 0,
     this.showProgressCharts = true,
     this.colorPalette = AppColorPalette.pastel,
     this.bodyTracking = BodyTracking.notAsked,
@@ -241,6 +255,7 @@ class AppPreferences {
     int? reminderTimeMinutes,
     int? digestWeekday,
     bool? hasSeenOnboarding,
+    int? lastSeenWhatsNewRevision,
     bool? showProgressCharts,
     AppColorPalette? colorPalette,
     BodyTracking? bodyTracking,
@@ -265,6 +280,8 @@ class AppPreferences {
     reminderTimeMinutes: reminderTimeMinutes ?? this.reminderTimeMinutes,
     digestWeekday: digestWeekday ?? this.digestWeekday,
     hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
+    lastSeenWhatsNewRevision:
+        lastSeenWhatsNewRevision ?? this.lastSeenWhatsNewRevision,
     showProgressCharts: showProgressCharts ?? this.showProgressCharts,
     colorPalette: colorPalette ?? this.colorPalette,
     bodyTracking: bodyTracking ?? this.bodyTracking,
@@ -311,6 +328,8 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       reminderTimeMinutes: prefs.getInt(_reminderMinutesKey) ?? 8 * 60,
       digestWeekday: prefs.getInt(_digestWeekdayKey) ?? DateTime.monday,
       hasSeenOnboarding: prefs.getBool(_hasSeenOnboardingKey) ?? false,
+      lastSeenWhatsNewRevision:
+          prefs.getInt(_lastSeenWhatsNewRevisionKey) ?? 0,
       showProgressCharts: prefs.getBool(_showProgressChartsKey) ?? true,
       colorPalette: AppColorPalette.values.firstWhere(
         (p) => p.name == prefs.getString(_colorPaletteKey),
@@ -401,6 +420,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(hasSeenOnboarding: seen);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hasSeenOnboardingKey, seen);
+  }
+
+  Future<void> setLastSeenWhatsNewRevision(int revision) async {
+    state = state.copyWith(lastSeenWhatsNewRevision: revision);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_lastSeenWhatsNewRevisionKey, revision);
   }
 
   Future<void> setShowProgressCharts(bool show) async {

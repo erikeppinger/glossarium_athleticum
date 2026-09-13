@@ -12,6 +12,8 @@ import 'features/execution/rest_timer_controller.dart';
 import 'features/notifications/notification_service.dart' show restTimerSkipActionId;
 import 'features/notifications/reminder_coordinator.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'features/onboarding/whats_new_content.dart';
+import 'features/onboarding/whats_new_screen.dart';
 import 'features/plans/plan_list_screen.dart';
 import 'features/settings/app_preferences.dart';
 import 'features/progress/progress_screen.dart';
@@ -98,11 +100,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       resyncReminders(ref);
-      if (!ref.read(appPreferencesProvider).hasSeenOnboarding) {
+      final prefs = ref.read(appPreferencesProvider);
+      if (!prefs.hasSeenOnboarding) {
         Navigator.of(context).push(
           MaterialPageRoute(
             fullscreenDialog: true,
             builder: (context) => const OnboardingScreen(),
+          ),
+        );
+      } else if (prefs.lastSeenWhatsNewRevision < currentWhatsNewRevision) {
+        // Deliberately `else if`, not a second independent check - a
+        // brand-new install's own onboarding tour already covers everything
+        // currently in whatsNewItems, and its own _finish() stamps this
+        // revision immediately for exactly that reason, so this branch is
+        // only ever reached by an *existing* device that's been updated to
+        // a build with new entries.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (context) => const WhatsNewScreen(),
           ),
         );
       }

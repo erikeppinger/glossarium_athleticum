@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../exercise_library/exercise_library_providers.dart';
 import '../settings/app_preferences.dart';
+import 'whats_new_content.dart' show currentWhatsNewRevision;
 
 /// The one interactive step in an otherwise static tour - lets the app feed
 /// a real experience level into `suggestNextSet` (see
@@ -222,7 +223,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Future<void> _finish() async {
-    await ref.read(appPreferencesProvider.notifier).setHasSeenOnboarding(true);
+    final notifier = ref.read(appPreferencesProvider.notifier);
+    await notifier.setHasSeenOnboarding(true);
+    // The tour just covered everything currently in whatsNewItems, so a
+    // brand-new device shouldn't immediately see a redundant "what's new"
+    // sheet the next time home_screen.dart's own check runs - see that
+    // check's own comment for the other half of this.
+    await notifier.setLastSeenWhatsNewRevision(currentWhatsNewRevision);
     if (mounted) Navigator.of(context).pop();
   }
 

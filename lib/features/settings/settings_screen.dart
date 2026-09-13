@@ -18,6 +18,7 @@ import '../exercise_library/exercise_library_providers.dart';
 import '../../logic/muscle_group_colors.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../onboarding/whats_new_screen.dart';
 import '../../l10n/app_localizations.dart';
 import 'app_preferences.dart';
 import 'color_palette_screen.dart';
@@ -333,7 +334,7 @@ class SettingsScreen extends ConsumerWidget {
           _Section(
             title: 'About',
             icon: Icons.info_outline,
-            summary: 'Tour, feedback',
+            summary: "Tour, what's new, feedback",
             children: [
           ListTile(
             leading: const Icon(Icons.explore_outlined),
@@ -343,6 +344,17 @@ class SettingsScreen extends ConsumerWidget {
               MaterialPageRoute(
                 fullscreenDialog: true,
                 builder: (context) => const OnboardingScreen(),
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.new_releases_outlined),
+            title: const Text("What's new"),
+            subtitle: const Text('Recently added features.'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (context) => const WhatsNewScreen(),
               ),
             ),
           ),

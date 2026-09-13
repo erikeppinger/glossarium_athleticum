@@ -212,4 +212,23 @@ void main() {
     await reloaded.load();
     expect(reloaded.state.themeMode, ThemeMode.dark);
   });
+
+  group('lastSeenWhatsNewRevision', () {
+    test('defaults to 0 - an existing device predating this feature should '
+        'see the "What\'s new" sheet at least once, not be treated as '
+        'already caught up', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.lastSeenWhatsNewRevision, 0);
+    });
+
+    test('setLastSeenWhatsNewRevision updates state and persists', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setLastSeenWhatsNewRevision(3);
+      expect(notifier.state.lastSeenWhatsNewRevision, 3);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.lastSeenWhatsNewRevision, 3);
+    });
+  });
 }
