@@ -107,6 +107,26 @@ void main() {
       final results = await db.exerciseDao.search(query: 'carry', category: 'Loaded Carry');
       expect(results.map((e) => e.id), ['EX003']);
     });
+
+    test(
+      'a capitalized accented query matches a stored exact-case name '
+      '(regression: SQL LOWER() is ASCII-only, Dart toLowerCase() is not)',
+      () async {
+        await db.exerciseDao.upsertExercise(
+          exercise('EX004', 'Überkopfdrücken', category: 'Main Lift'),
+        );
+        final results = await db.exerciseDao.search(query: 'Überkopf');
+        expect(results.map((e) => e.id), ['EX004']);
+      },
+    );
+
+    test('a plain "ss" query finds a stored eszett', () async {
+      await db.exerciseDao.upsertExercise(
+        exercise('EX005', 'Straßenlauf Sprint', category: 'Conditioning'),
+      );
+      final results = await db.exerciseDao.search(query: 'Strassenlauf');
+      expect(results.map((e) => e.id), ['EX005']);
+    });
   });
 
   group('creator filter', () {

@@ -414,12 +414,10 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
       directory: widget.attachmentsDirectory,
     );
     final db = ref.read(appDatabaseProvider);
-    await db.exerciseDao.upsertExercise(
-      ExercisesCompanion(
-        id: Value(exerciseId),
-        imagePath: Value(savedName),
-        imagePaths: Value(joinImagePaths([savedName])),
-      ),
+    await db.exerciseDao.attachImages(
+      exerciseId,
+      imagePath: savedName,
+      imagePaths: joinImagePaths([savedName]),
     );
   }
 

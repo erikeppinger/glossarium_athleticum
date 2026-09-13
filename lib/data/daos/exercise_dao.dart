@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../logic/exercise_name_matching.dart';
 import '../app_database.dart';
 import '../tables/exercises_table.dart';
 
@@ -32,6 +33,23 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
         ExercisesCompanion(isFavorite: Value(isFavorite)),
       );
 
+  /// Partial update for just the image columns of an already-existing
+  /// exercise - deliberately not `upsertExercise`, whose
+  /// `insertOnConflictUpdate` validates the companion as if it might need to
+  /// perform a real INSERT (requiring every non-nullable column, e.g. name/
+  /// category, to be present) even though the row is always known to already
+  /// exist at every call site.
+  Future<void> attachImages(
+    String exerciseId, {
+    required String imagePath,
+    required String? imagePaths,
+  }) => (update(exercises)..where((e) => e.id.equals(exerciseId))).write(
+    ExercisesCompanion(
+      imagePath: Value(imagePath),
+      imagePaths: Value(imagePaths),
+    ),
+  );
+
   /// Custom (user-created) exercises only - what a full backup needs to
   /// round-trip; seed-library exercises are reseeded on import instead of
   /// being duplicated into every backup.
@@ -39,7 +57,21 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
       (select(exercises)..where((e) => e.isCustom.equals(true))).get();
 
   /// Search/filter over the library. All filters are optional and AND-ed
-  /// together; [query] matches against name (case-insensitive substring).
+  /// together; [query] matches against name (case-insensitive, diacritic-
+  /// insensitive substring).
+  ///
+  /// [query] is deliberately matched in Dart, not via SQL's `LOWER()` -
+  /// SQLite's built-in `LOWER()` only case-folds ASCII, so a query like
+  /// "Überkopf" (capitalized, non-ASCII) would never match a stored
+  /// "Überkopfdrücken" even though Dart's own `toLowerCase()` on the query
+  /// side already lowercases it correctly - the two sides silently disagreed
+  /// on what "lowercase" means. Folding both sides through [foldDiacritics]
+  /// here also fixes the same-family gap where a plain "ss" spelling
+  /// wouldn't find a stored "ß" (e.g. "Strassenlauf" now finds
+  /// "Straßenlauf"). The library is small (tens to low hundreds of rows), so
+  /// filtering the query in Dart after the other, exact-value SQL filters
+  /// run is not a real cost - the same tradeoff this DAO already made for
+  /// the multi-select category/area filters.
   ///
   /// [creator] encodes which creator-filter the user picked: `ownExercisesFilter`
   /// for custom exercises with no plan/author attribution, `'plan:<name>'`
@@ -51,11 +83,8 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
     String? equipment,
     String? difficulty,
     String? creator,
-  }) {
+  }) async {
     final q = select(exercises);
-    if (query != null && query.trim().isNotEmpty) {
-      q.where((e) => e.name.lower().contains(query.trim().toLowerCase()));
-    }
     if (category != null) {
       q.where((e) => e.category.equals(category));
     }
@@ -77,7 +106,12 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
     } else if (creator != null && creator.startsWith('author:')) {
       q.where((e) => e.author.equals(creator.substring(7)));
     }
-    return q.get();
+    final rows = await q.get();
+    if (query == null || query.trim().isEmpty) return rows;
+    final needle = foldDiacritics(query.trim().toLowerCase());
+    return rows
+        .where((e) => foldDiacritics(e.name.toLowerCase()).contains(needle))
+        .toList();
   }
 
   /// Where an exercise is currently referenced, so deleting it can say what
