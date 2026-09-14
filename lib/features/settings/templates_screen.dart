@@ -94,13 +94,19 @@ class TemplatesScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              'Exercise photos: the spreadsheet/text templates can\'t carry '
-              'an image the way an exported plan file can (there\'s no '
-              'reliable way on every device to point a spreadsheet cell at '
-              'a photo file and have the app find it). Add photos to an '
-              'exercise after importing, from the exercise\'s own screen, '
-              'or use a JSON plan export instead - see the Plan screen\'s '
-              'share menu.',
+              'Exercise photos for a plan: add a "Picture" column to your '
+              'spreadsheet naming an image file (e.g. "bench_press.jpg" - '
+              'already in the plan template above), then zip the '
+              'spreadsheet together with those image files and use "From '
+              'spreadsheet + pictures (.zip)" when importing from Plans - '
+              'the photo attaches to the resulting exercise. A plain '
+              '.csv/.xlsx import by itself can\'t carry the image.\n\n'
+              'The exercise library\'s own spreadsheet import doesn\'t have '
+              'an equivalent zip option - add a photo to an exercise after '
+              'importing, from the exercise\'s own screen, or bring '
+              'existing photos along by exporting/importing a library file '
+              '(.json or the encrypted .tlibrary) instead, which does keep '
+              'them - see the Exercise Library\'s own share menu.',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
