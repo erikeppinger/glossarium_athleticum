@@ -19,11 +19,11 @@ void main() {
   testWidgets(
     'shows every whatsNewItems entry and stamps the current revision on "Got it"',
     (tester) async {
-      // Seven cards (icon + title + multi-line body each) don't all fit in
+      // Eleven cards (icon + title + multi-line body each) don't all fit in
       // the default small test viewport - ListView.separated only mounts
       // what's actually visible, so a later item's Text isn't in the tree
       // at all until scrolled into view. Same fix as create_exercise_screen_test.dart's.
-      tester.view.physicalSize = const Size(1080, 3000);
+      tester.view.physicalSize = const Size(1080, 4600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);

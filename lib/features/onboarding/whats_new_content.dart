@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 /// not app-store releases with a disciplined version bump per release), so
 /// a separate, hand-maintained counter is the honest thing to gate on
 /// rather than pretending a version number means something it doesn't here.
-const currentWhatsNewRevision = 1;
+const currentWhatsNewRevision = 2;
 
 class WhatsNewItem {
   final IconData icon;
@@ -81,5 +81,43 @@ const whatsNewItems = [
     body:
         'Training App now runs on Windows too, with the same rest timer, '
         'notifications, and data as the phone app.',
+  ),
+  WhatsNewItem(
+    // Reuses the icon above rather than Icons.minimize - confirmed live
+    // that this Flutter SDK's bundled icon font has no glyph for it (a
+    // blank circle, not a crash) despite IconData existing for it in code -
+    // same gap hit for Icons.compare_arrows/picture_as_pdf_outlined below.
+    // Stick to icons already directly `Icon(Icons.x)`-referenced elsewhere
+    // in this codebase (confirmed rendering) for any future entry.
+    icon: Icons.desktop_windows_outlined,
+    title: 'Closing the Windows app keeps it running',
+    body:
+        "Closing the window now tucks the app into the system tray instead "
+        "of quitting - left-click the tray icon to bring it back, or "
+        "right-click for Exit. Nothing is lost either way.",
+  ),
+  WhatsNewItem(
+    icon: Icons.directions_walk,
+    title: 'Tap into your logged activities',
+    body:
+        'The Activities/Active time/Distance cards on the Progress tab are '
+        "tappable now - see exactly which walks, runs, or rides they're "
+        'counting for that period.',
+  ),
+  WhatsNewItem(
+    icon: Icons.date_range,
+    title: 'Compare periods, or pick your own',
+    body:
+        'Progress now shows how this week or month compares to the last '
+        'one, and a new Custom option lets you pick any date range for a '
+        'summary of exactly that window.',
+  ),
+  WhatsNewItem(
+    icon: Icons.description_outlined,
+    title: 'A full training log to share with a coach',
+    body:
+        'Export a detailed PDF of every session and activity - full '
+        'set-by-set detail, not just a summary - for whatever period '
+        "you're looking at, alongside the existing summary report.",
   ),
 ];
