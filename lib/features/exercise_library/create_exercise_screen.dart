@@ -714,16 +714,46 @@ class _ImageGalleryFieldState extends State<_ImageGalleryField> {
   bool _picking = false;
 
   Future<void> _addPhoto() async {
+    final remaining = maxExerciseImages - widget.fileNames.length;
+    if (remaining <= 0) return;
+
     setState(() => _picking = true);
     try {
-      final file = await FilePicker.pickFile(type: FileType.image);
-      final path = file?.path;
-      if (path == null) return;
+      // pickFiles (plural) - reported live as only ever accepting one image
+      // per tap despite the tile's own "Add photos"/"up to 5" wording;
+      // file_picker's allowMultiple defaults to true here (the single-file
+      // pickFile used for _replace below is the right call there, since
+      // that's deliberately a one-for-one swap).
+      final files = await FilePicker.pickFiles(type: FileType.image);
+      if (files.isEmpty || !mounted) return;
+
+      // Silently picking more than fit would just as silently drop the
+      // extras with no explanation - a fit count from a single pick action
+      // is common (e.g. selecting a whole camera-roll range), so this is
+      // worth telling the user about rather than leaving them to notice a
+      // photo missing later.
+      final toAdd = files.take(remaining);
+      if (files.length > remaining) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Only added $remaining of ${files.length} - up to '
+              '$maxExerciseImages photos per exercise.',
+            ),
+          ),
+        );
+      }
+
       // Copied into the app's own attachments directory so the image
       // survives the source being moved or deleted, and so "delete all data"
       // can reliably wipe it.
-      final name = await saveAttachment(path);
-      widget.onChanged([...widget.fileNames, name]);
+      final names = <String>[];
+      for (final file in toAdd) {
+        final path = file.path;
+        if (path == null) continue;
+        names.add(await saveAttachment(path));
+      }
+      widget.onChanged([...widget.fileNames, ...names]);
     } finally {
       if (mounted) setState(() => _picking = false);
     }

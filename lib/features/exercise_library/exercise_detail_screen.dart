@@ -10,6 +10,7 @@ import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import '../history/history_screen.dart';
 import '../shared/attachment_image.dart';
+import '../shared/photo_viewer_screen.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_library_providers.dart';
 
@@ -265,16 +266,36 @@ class _ImageGalleryState extends State<_ImageGallery> {
     super.dispose();
   }
 
+  // Reported live: the gallery's fixed-height, BoxFit.cover thumbnails crop
+  // the photo to fill their box, with no way to see the whole original -
+  // tapping one now pushes PhotoViewerScreen (pinch-zoom, BoxFit.contain)
+  // landing on whichever photo was actually tapped.
+  void _openViewer(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PhotoViewerScreen(
+          fileNames: widget.fileNames,
+          initialIndex: index,
+          title: widget.exerciseName,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.fileNames.length == 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: AttachmentImage(
-          fileName: widget.fileNames.first,
-          width: double.infinity,
-          height: 200,
-          semanticLabel: 'Photo of ${widget.exerciseName}',
+      return GestureDetector(
+        key: const Key('galleryPhotoTap'),
+        onTap: () => _openViewer(0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: AttachmentImage(
+            fileName: widget.fileNames.first,
+            width: double.infinity,
+            height: 200,
+            semanticLabel: 'Photo of ${widget.exerciseName}',
+          ),
         ),
       );
     }
@@ -290,13 +311,17 @@ class _ImageGalleryState extends State<_ImageGallery> {
               onPageChanged: (i) => setState(() => _page = i),
               children: [
                 for (var i = 0; i < widget.fileNames.length; i++)
-                  AttachmentImage(
-                    fileName: widget.fileNames[i],
-                    width: double.infinity,
-                    height: 200,
-                    semanticLabel:
-                        'Photo ${i + 1} of ${widget.fileNames.length} of '
-                        '${widget.exerciseName}',
+                  GestureDetector(
+                    key: Key('galleryPhotoTap_$i'),
+                    onTap: () => _openViewer(i),
+                    child: AttachmentImage(
+                      fileName: widget.fileNames[i],
+                      width: double.infinity,
+                      height: 200,
+                      semanticLabel:
+                          'Photo ${i + 1} of ${widget.fileNames.length} of '
+                          '${widget.exerciseName}',
+                    ),
                   ),
               ],
             ),

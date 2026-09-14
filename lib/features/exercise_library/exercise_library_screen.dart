@@ -60,6 +60,21 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
   // space back to the list without removing the filters outright.
   bool _filtersExpanded = true;
 
+  // Reported live: exporting was all-or-nothing (the whole library, or a
+  // whole named group in library_management_screen.dart) - no way to hand a
+  // buddy just the one or two exercises they actually want without also
+  // sending everything else. Entered via a menu item on the existing export
+  // button rather than a new toolbar icon (already a crowded five-icon row -
+  // see its own comment) or hijacking long-press (already opens each tile's
+  // own quick-actions sheet).
+  bool _selectingForExport = false;
+  final Set<String> _selectedExerciseIds = {};
+
+  void _cancelSelection() => setState(() {
+    _selectingForExport = false;
+    _selectedExerciseIds.clear();
+  });
+
   bool _handleScrollNotification(UserScrollNotification notification) {
     if (notification.metrics.pixels <= 0) {
       if (!_filtersExpanded) setState(() => _filtersExpanded = true);
@@ -92,7 +107,29 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
     final palette = ref.watch(appPreferencesProvider).colorPalette;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: _selectingForExport
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Cancel selection',
+                onPressed: _cancelSelection,
+              ),
+              title: Text(
+                _selectedExerciseIds.isEmpty
+                    ? 'Select exercises to export'
+                    : '${_selectedExerciseIds.length} selected',
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.file_upload_outlined),
+                  tooltip: 'Export selected',
+                  onPressed: _selectedExerciseIds.isEmpty
+                      ? null
+                      : () => _showSelectedExportMenu(context, ref),
+                ),
+              ],
+            )
+          : AppBar(
         title: const Text('Exercise Library'),
         actions: [settingsAppBarAction(context)],
         // Previously all five of these (the four below, plus Settings) sat
@@ -124,8 +161,13 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
               PopupMenuButton<_LibraryExportAction>(
                 icon: const Icon(Icons.file_upload_outlined),
                 tooltip: 'Export library',
-                onSelected: (action) =>
-                    _handleExportAction(context, ref, action),
+                onSelected: (action) {
+                  if (action == _LibraryExportAction.selectExercises) {
+                    setState(() => _selectingForExport = true);
+                    return;
+                  }
+                  _handleExportAction(context, ref, action);
+                },
                 itemBuilder: (context) => const [
                   PopupMenuItem(
                     value: _LibraryExportAction.shareJson,
@@ -143,6 +185,14 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                   PopupMenuItem(
                     value: _LibraryExportAction.saveEncrypted,
                     child: Text('Save encrypted library (.tlibrary)'),
+                  ),
+                  PopupMenuDivider(),
+                  // Reported live: exporting was all-or-nothing (this whole
+                  // library, or a whole named group in "Manage libraries") -
+                  // this is the "just these one or two exercises" path.
+                  PopupMenuItem(
+                    value: _LibraryExportAction.selectExercises,
+                    child: Text('Select exercises to export...'),
                   ),
                 ],
               ),
@@ -412,10 +462,24 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                   onNotification: _handleScrollNotification,
                   child: ListView.builder(
                     itemCount: exercises.length,
-                    itemBuilder: (context, index) => _ExerciseTile(
-                      exercise: exercises[index],
-                      palette: palette,
-                    ),
+                    itemBuilder: (context, index) {
+                      final tileExercise = exercises[index];
+                      return _ExerciseTile(
+                        exercise: tileExercise,
+                        palette: palette,
+                        selecting: _selectingForExport,
+                        selected: _selectedExerciseIds.contains(
+                          tileExercise.id,
+                        ),
+                        onSelectedChanged: (value) => setState(() {
+                          if (value) {
+                            _selectedExerciseIds.add(tileExercise.id);
+                          } else {
+                            _selectedExerciseIds.remove(tileExercise.id);
+                          }
+                        }),
+                      );
+                    },
                   ),
                 );
               },
@@ -554,15 +618,90 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
     }
   }
 
+  /// Opens the export-action sheet for whatever the user has checked so
+  /// far in selection mode, then hands the chosen action + that exact
+  /// list to [_handleExportAction] via [exercisesOverride] - `buildLibraryJson`
+  /// already supports an arbitrary subset (see its own doc comment for the
+  /// "manage libraries" screen's whole-group use of the same parameter);
+  /// this is the same mechanism at individual-exercise granularity. Unlike
+  /// the whole-library export, a selected exercise is included exactly as
+  /// picked regardless of `isCustom` - a built-in exercise the *recipient's*
+  /// install might be missing (an older seed database) is still worth
+  /// sending, and there's no technical reason to special-case it out the
+  /// way the default "export everything" already deliberately does.
+  Future<void> _showSelectedExportMenu(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final action = await showModalBottomSheet<_LibraryExportAction>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('Share (.json)'),
+              onTap: () =>
+                  Navigator.of(context).pop(_LibraryExportAction.shareJson),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Share encrypted (.tlibrary)'),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(_LibraryExportAction.shareEncrypted),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt),
+              title: const Text('Save (.json)'),
+              onTap: () =>
+                  Navigator.of(context).pop(_LibraryExportAction.saveJson),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Save encrypted (.tlibrary)'),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(_LibraryExportAction.saveEncrypted),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !context.mounted) return;
+
+    final allExercises =
+        ref.read(filteredExercisesProvider).valueOrNull ?? const <Exercise>[];
+    final selected = allExercises
+        .where((e) => _selectedExerciseIds.contains(e.id))
+        .toList();
+    if (selected.isEmpty) return;
+
+    await _handleExportAction(context, ref, action, exercisesOverride: selected);
+    if (!mounted) return;
+    _cancelSelection();
+  }
+
   Future<void> _handleExportAction(
     BuildContext context,
     WidgetRef ref,
-    _LibraryExportAction action,
-  ) async {
+    _LibraryExportAction action, {
+    List<Exercise>? exercisesOverride,
+  }) async {
     final db = ref.read(appDatabaseProvider);
-    final json = await buildLibraryJson(db);
+    final json = await buildLibraryJson(db, exercisesOverride: exercisesOverride);
     if (!context.mounted) return;
     final plainJson = jsonEncode(json);
+
+    final fileNameBase = exercisesOverride == null
+        ? 'exercise_library'
+        : _selectionFileNameBase(exercisesOverride);
+    final shareText = exercisesOverride == null
+        ? 'Exercise library'
+        : exercisesOverride.length == 1
+        ? exercisesOverride.single.name
+        : '${exercisesOverride.length} exercises';
 
     final String contents;
     final String fileName;
@@ -578,11 +717,11 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
       );
       if (passphrase == null || passphrase.isEmpty) return;
       contents = await encryptBackup(plainJson, passphrase);
-      fileName = 'exercise_library.$encryptedLibraryFileExtension';
+      fileName = '$fileNameBase.$encryptedLibraryFileExtension';
       extension = encryptedLibraryFileExtension;
     } else {
       contents = plainJson;
-      fileName = 'exercise_library.json';
+      fileName = '$fileNameBase.json';
       extension = 'json';
     }
     if (!context.mounted) return;
@@ -604,13 +743,34 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
       final file = File(p.join(tempDir.path, fileName));
       await file.writeAsString(contents);
       await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)], text: 'Exercise library'),
+        ShareParams(files: [XFile(file.path)], text: shareText),
       );
     }
   }
+
+  /// A filename that says what's actually in the file rather than the
+  /// generic "exercise_library" name a whole-library export uses - "bench_
+  /// press" for one exercise, or a plain "exercises_selection" for several
+  /// (concatenating every name would get unwieldy past two or three).
+  String _selectionFileNameBase(List<Exercise> exercises) {
+    if (exercises.length == 1) {
+      final slug = exercises.single.name
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      return slug.isEmpty ? 'exercise' : slug;
+    }
+    return 'exercises_selection';
+  }
 }
 
-enum _LibraryExportAction { shareJson, shareEncrypted, saveJson, saveEncrypted }
+enum _LibraryExportAction {
+  shareJson,
+  shareEncrypted,
+  saveJson,
+  saveEncrypted,
+  selectExercises,
+}
 
 enum _LibraryImportSource { spreadsheet, json, encryptedJson }
 
@@ -683,7 +843,21 @@ class _ExerciseTile extends ConsumerWidget {
   final Exercise exercise;
   final AppColorPalette palette;
 
-  const _ExerciseTile({required this.exercise, required this.palette});
+  // "Select exercises to export" mode - see _ExerciseLibraryScreenState's
+  // own doc comment on _selectingForExport. All default to the pre-existing
+  // behaviour so every other caller of this tile (there are none today, but
+  // the shape matters) is unaffected.
+  final bool selecting;
+  final bool selected;
+  final ValueChanged<bool>? onSelectedChanged;
+
+  const _ExerciseTile({
+    required this.exercise,
+    required this.palette,
+    this.selecting = false,
+    this.selected = false,
+    this.onSelectedChanged,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -694,22 +868,27 @@ class _ExerciseTile extends ConsumerWidget {
     );
 
     return ListTile(
-      // Two colour stripes mirroring the two colour-coded filter rows above
-      // the list, in the same order: category first, muscle area second -
-      // tying the per-row list colouring directly to the rows it comes from
-      // reads more intuitively than a third, independent "who made this"
-      // colour that didn't correspond to anything above it.
-      leading: SizedBox(
-        width: 16,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CategoryStripe(category: exercise.category, palette: palette),
-            const SizedBox(width: 4),
-            MuscleAreaStripe(area: area, palette: palette),
-          ],
-        ),
-      ),
+      // While selecting, a checkbox takes over the leading slot from the
+      // two colour stripes - both are informational/interactive
+      // placeholders sized the same way a normal tile's leading area is,
+      // so the list doesn't visibly reflow just from entering selection
+      // mode.
+      leading: selecting
+          ? Checkbox(
+              value: selected,
+              onChanged: (value) => onSelectedChanged?.call(value ?? false),
+            )
+          : SizedBox(
+              width: 16,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CategoryStripe(category: exercise.category, palette: palette),
+                  const SizedBox(width: 4),
+                  MuscleAreaStripe(area: area, palette: palette),
+                ],
+              ),
+            ),
       title: Text(exercise.name),
       subtitle: Text(
         // Equipment/difficulty are optional on a custom exercise - filter
@@ -721,35 +900,43 @@ class _ExerciseTile extends ConsumerWidget {
           exercise.difficulty,
         ].where((part) => part.isNotEmpty).join(' • '),
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(exercise.measurementType),
-          IconButton(
-            icon: Icon(
-              exercise.isFavorite ? Icons.star : Icons.star_border,
+      // The favorite star's own tap target would be ambiguous alongside a
+      // row-selection tap while selecting - hidden rather than left active
+      // and easy to hit by mistake.
+      trailing: selecting
+          ? null
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(exercise.measurementType),
+                IconButton(
+                  icon: Icon(
+                    exercise.isFavorite ? Icons.star : Icons.star_border,
+                  ),
+                  color: exercise.isFavorite ? Colors.amber.shade700 : null,
+                  tooltip: exercise.isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites',
+                  onPressed: () async {
+                    await ref
+                        .read(appDatabaseProvider)
+                        .exerciseDao
+                        .setFavorite(exercise.id, !exercise.isFavorite);
+                    // One-shot FutureProvider - won't notice this write on
+                    // its own.
+                    ref.invalidate(filteredExercisesProvider);
+                  },
+                ),
+              ],
             ),
-            color: exercise.isFavorite ? Colors.amber.shade700 : null,
-            tooltip: exercise.isFavorite
-                ? 'Remove from favorites'
-                : 'Add to favorites',
-            onPressed: () async {
-              await ref
-                  .read(appDatabaseProvider)
-                  .exerciseDao
-                  .setFavorite(exercise.id, !exercise.isFavorite);
-              // One-shot FutureProvider - won't notice this write on its own.
-              ref.invalidate(filteredExercisesProvider);
-            },
-          ),
-        ],
-      ),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => ExerciseDetailScreen(exercise: exercise),
-        ),
-      ),
-      onLongPress: () => _showQuickActions(context),
+      onTap: selecting
+          ? () => onSelectedChanged?.call(!selected)
+          : () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => ExerciseDetailScreen(exercise: exercise),
+              ),
+            ),
+      onLongPress: selecting ? null : () => _showQuickActions(context),
     );
   }
 

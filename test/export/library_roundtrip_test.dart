@@ -69,6 +69,31 @@ void main() {
     expect(ids, isNot(contains('EX_BP')));
   });
 
+  // The Exercise Library screen's "Select exercises to export" feature
+  // passes exercisesOverride at individual-exercise granularity, and
+  // deliberately doesn't filter it down to isCustom the way the default
+  // (no override) export does above - a user picking a specific built-in
+  // exercise to send a friend (e.g. one their older install's seed data is
+  // missing) should get exactly what they picked, not have it silently
+  // dropped for being a seed-library entry.
+  test(
+    'exercisesOverride includes a non-custom exercise when explicitly passed',
+    () async {
+      await seedLibrary();
+      final benchPress = (await db.exerciseDao.getExerciseById('EX_BP'))!;
+      expect(benchPress.isCustom, isFalse);
+
+      final json = await buildLibraryJson(
+        db,
+        exercisesOverride: [benchPress],
+      );
+      final ids = (json['exercises'] as List)
+          .map((e) => (e as Map)['id'])
+          .toList();
+      expect(ids, ['EX_BP']);
+    },
+  );
+
   test('round-trips onto a fresh device: wipe -> import -> identical', () async {
     await seedLibrary();
     final json = await buildLibraryJson(db);
