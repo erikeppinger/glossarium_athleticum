@@ -263,6 +263,13 @@ class CompletedWorkoutScreen extends ConsumerWidget {
     final db = ref.read(appDatabaseProvider);
     await db.sessionLogDao.deleteSessionLog(logId);
     ref.invalidate(workoutHistoryProvider);
+    // Also invalidates every period-scoped list this same log could be
+    // showing in (the Progress tab's activity-chip drill-down, a custom
+    // range) - found live while testing on Android: deleting from a scoped
+    // list left it showing the just-deleted row until a full app restart,
+    // since this family provider caches by default like any other
+    // FutureProvider.family.
+    ref.invalidate(workoutHistoryInRangeProvider);
     ref.invalidate(loggedPlanSessionIdsProvider);
     invalidateProgressProviders(ref);
 
