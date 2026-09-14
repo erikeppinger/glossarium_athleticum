@@ -666,6 +666,111 @@ void main() {
     });
   });
 
+  group('getWorkoutHistory with start/end/adHocOnly', () {
+    test('start/end narrows to a date range, matching every other range query', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 10),
+        activityName: 'Walk',
+      );
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-2',
+        loggedAt: DateTime(2026, 9, 5),
+        activityName: 'Bike',
+      );
+
+      final inRange = await db.sessionLogDao.getWorkoutHistory(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+
+      expect(inRange, hasLength(1));
+      expect(inRange.single.sessionName, 'Walk');
+    });
+
+    test('no start/end still returns all-time history, unchanged from before', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 10),
+        activityName: 'Walk',
+      );
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-2',
+        loggedAt: DateTime(2026, 9, 5),
+        activityName: 'Bike',
+      );
+
+      expect(await db.sessionLogDao.getWorkoutHistory(), hasLength(2));
+    });
+
+    test('adHocOnly excludes plan-based sessions', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 10),
+        activityName: 'Walk',
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 11),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      final adHocOnly = await db.sessionLogDao.getWorkoutHistory(adHocOnly: true);
+
+      expect(adHocOnly, hasLength(1));
+      expect(adHocOnly.single.sessionName, 'Walk');
+    });
+  });
+
+  group('getCompletedWorkoutsInRange', () {
+    test('returns every log in range, each with its full exercise/set breakdown', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 10),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60),
+        ],
+      );
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 15),
+        activityName: 'Walk',
+        durationSec: 1800,
+      );
+      // Outside the range - shouldn't appear.
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-2',
+        loggedAt: DateTime(2026, 9, 5),
+        activityName: 'Bike',
+      );
+
+      final workouts = await db.sessionLogDao.getCompletedWorkoutsInRange(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+
+      expect(workouts, hasLength(2));
+      expect(workouts[0].sessionName, 'Push Day');
+      expect(workouts[0].exercises.single.sets, hasLength(2));
+      expect(workouts[1].sessionName, 'Walk');
+      expect(workouts[1].exercises, isEmpty);
+      expect(workouts[1].log.durationSec, 1800);
+    });
+
+    test('an empty range returns an empty list', () async {
+      final workouts = await db.sessionLogDao.getCompletedWorkoutsInRange(
+        start: DateTime(2026, 8, 1),
+        end: DateTime(2026, 9, 1),
+      );
+      expect(workouts, isEmpty);
+    });
+  });
+
   group('getLastLoggedSets', () {
     test('returns every set from only the most recent session, in order', () async {
       await db.sessionLogDao.createSessionLog(

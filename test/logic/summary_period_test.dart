@@ -72,4 +72,35 @@ void main() {
       expect(range.end, DateTime(2026, 1, 1));
     });
   });
+
+  group('shiftedRange', () {
+    test('a negative step shifts backward by the range\'s own length', () {
+      final range = (start: DateTime(2026, 8, 10), end: DateTime(2026, 8, 17));
+      final shifted = shiftedRange(range, -1);
+      expect(shifted.start, DateTime(2026, 8, 3));
+      expect(shifted.end, DateTime(2026, 8, 10));
+    });
+
+    test('a positive step shifts forward by the range\'s own length', () {
+      final range = (start: DateTime(2026, 8, 10), end: DateTime(2026, 8, 17));
+      final shifted = shiftedRange(range, 1);
+      expect(shifted.start, DateTime(2026, 8, 17));
+      expect(shifted.end, DateTime(2026, 8, 24));
+    });
+
+    test('step 0 returns the same range', () {
+      final range = (start: DateTime(2026, 8, 10), end: DateTime(2026, 8, 17));
+      final shifted = shiftedRange(range, 0);
+      expect(shifted.start, range.start);
+      expect(shifted.end, range.end);
+    });
+
+    test('works for an arbitrary custom-length range, not just a week', () {
+      // A 10-day custom range.
+      final range = (start: DateTime(2026, 8, 1), end: DateTime(2026, 8, 11));
+      final shifted = shiftedRange(range, -2);
+      expect(shifted.start, DateTime(2026, 7, 12));
+      expect(shifted.end, DateTime(2026, 7, 22));
+    });
+  });
 }

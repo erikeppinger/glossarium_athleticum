@@ -561,10 +561,61 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  /// Every completed workout, newest first - the history list.
-  Future<List<CompletedWorkoutSummary>> getWorkoutHistory() async {
+  /// Every completed workout in [start, end), each with its full exercise/set
+  /// breakdown - the data behind the Progress tab's "detailed log" export
+  /// (see `progress_report_pdf.dart`'s `fullLog`), as opposed to
+  /// [getWorkoutHistory]'s flat summary rows or [getPeriodSummary]'s
+  /// aggregate counts. Same N+1-per-log shape as [getWorkoutHistory]/
+  /// [getPeriodSummary] already use - simplicity over a single mega-query,
+  /// consistent with the rest of this DAO.
+  Future<List<CompletedWorkout>> getCompletedWorkoutsInRange({
+    required DateTime start,
+    required DateTime end,
+  }) async {
     final logs = await (select(sessionLogs)
-          ..where((l) => l.finishedAt.isNotNull())
+          ..where(
+            (l) =>
+                l.finishedAt.isNotNull() &
+                l.loggedAt.isBiggerOrEqualValue(start) &
+                l.loggedAt.isSmallerThanValue(end),
+          )
+          ..orderBy([(l) => OrderingTerm.asc(l.loggedAt)]))
+        .get();
+
+    final result = <CompletedWorkout>[];
+    for (final log in logs) {
+      final workout = await getCompletedWorkout(log.id);
+      if (workout != null) result.add(workout);
+    }
+    return result;
+  }
+
+  /// Every completed workout, newest first - the history list.
+  /// [start]/[end] scope this to a date range (matching every other
+  /// range-scoped query's half-open [start, end) convention) instead of the
+  /// whole database - both null (the default) preserves the original
+  /// all-time behaviour every existing caller relies on. [adHocOnly] narrows
+  /// to just the walks/runs/etc. with no plan session, for a view scoped to
+  /// what the Progress tab's activity chips themselves summarize.
+  Future<List<CompletedWorkoutSummary>> getWorkoutHistory({
+    DateTime? start,
+    DateTime? end,
+    bool adHocOnly = false,
+  }) async {
+    final logs = await (select(sessionLogs)
+          ..where((l) {
+            Expression<bool> condition = l.finishedAt.isNotNull();
+            if (start != null) {
+              condition = condition & l.loggedAt.isBiggerOrEqualValue(start);
+            }
+            if (end != null) {
+              condition = condition & l.loggedAt.isSmallerThanValue(end);
+            }
+            if (adHocOnly) {
+              condition = condition & l.planSessionId.isNull();
+            }
+            return condition;
+          })
           ..orderBy([(l) => OrderingTerm.desc(l.loggedAt)]))
         .get();
     if (logs.isEmpty) return [];

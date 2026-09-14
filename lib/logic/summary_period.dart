@@ -34,3 +34,17 @@ PeriodRange computeSummaryRange({
   );
   return (start: start, end: DateTime(start.year, start.month + 1, 1));
 }
+
+/// Shifts [range] backward/forward by its own length, [steps] times
+/// (negative = backward, matching [computeSummaryRange]'s `offset`
+/// convention). There's no calendar-aware definition of "the period before"
+/// for an arbitrary custom range the way [computeSummaryRange] has for
+/// week/month (a month's own length varies, a custom range's doesn't have
+/// a calendar unit at all) - shifting by the range's own length is the one
+/// definition that works for any range, so this is what a custom range's
+/// prev/next navigation and previous-period comparison both use instead of
+/// [computeSummaryRange].
+PeriodRange shiftedRange(PeriodRange range, int steps) {
+  final shift = range.end.difference(range.start) * steps;
+  return (start: range.start.add(shift), end: range.end.add(shift));
+}

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/session_log_dao.dart';
+import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart' show loggedPlanSessionIdsProvider;
 import '../progress/progress_providers.dart';
@@ -17,6 +18,23 @@ final workoutHistoryProvider = FutureProvider<List<CompletedWorkoutSummary>>((
   return db.sessionLogDao.getWorkoutHistory();
 });
 
+/// Same data as [workoutHistoryProvider], scoped to one [PeriodRange] and
+/// optionally to just ad-hoc activities - backs [WorkoutHistoryScreen] when
+/// it's opened from the Progress tab's period controls or activity chips,
+/// rather than the all-time "Workout history" entry point.
+final workoutHistoryInRangeProvider = FutureProvider.family<
+    List<CompletedWorkoutSummary>, ({PeriodRange range, bool adHocOnly})>((
+  ref,
+  args,
+) {
+  final db = ref.watch(appDatabaseProvider);
+  return db.sessionLogDao.getWorkoutHistory(
+    start: args.range.start,
+    end: args.range.end,
+    adHocOnly: args.adHocOnly,
+  );
+});
+
 final completedWorkoutProvider =
     FutureProvider.family<CompletedWorkout?, String>((ref, logId) {
       final db = ref.watch(appDatabaseProvider);
@@ -25,27 +43,52 @@ final completedWorkoutProvider =
 
 /// Every completed workout, newest first. The app recorded all of this from
 /// day one but had no way to read it back - only aggregate charts.
+///
+/// [range]/[adHocOnly] scope this to one period (and optionally just its
+/// ad-hoc activities) instead of all-time history - used when this screen is
+/// pushed from the Progress tab's period controls or activity chips, so
+/// what's listed matches whatever period/summary the user was just looking
+/// at. Both null/false (the default) is the original all-time behaviour.
 class WorkoutHistoryScreen extends ConsumerWidget {
-  const WorkoutHistoryScreen({super.key});
+  final PeriodRange? range;
+  final bool adHocOnly;
+  final String? title;
+
+  const WorkoutHistoryScreen({
+    super.key,
+    this.range,
+    this.adHocOnly = false,
+    this.title,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final historyAsync = ref.watch(workoutHistoryProvider);
+    final scopedRange = range;
+    final historyAsync = scopedRange == null
+        ? ref.watch(workoutHistoryProvider)
+        : ref.watch(
+            workoutHistoryInRangeProvider((
+              range: scopedRange,
+              adHocOnly: adHocOnly,
+            )),
+          );
     final unit = ref.watch(appPreferencesProvider).weightUnit;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Workout history')),
+      appBar: AppBar(title: Text(title ?? 'Workout history')),
       body: historyAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
         data: (workouts) {
           if (workouts.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(32),
+                padding: const EdgeInsets.all(32),
                 child: Text(
-                  'No completed workouts yet.\n'
-                  'Finish a session and it will show up here.',
+                  scopedRange == null
+                      ? 'No completed workouts yet.\n'
+                            'Finish a session and it will show up here.'
+                      : 'Nothing logged in this period.',
                   textAlign: TextAlign.center,
                 ),
               ),

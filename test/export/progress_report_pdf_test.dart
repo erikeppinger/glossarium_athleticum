@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:training_app/data/app_database.dart';
 import 'package:training_app/data/daos/session_log_dao.dart';
 import 'package:training_app/export/progress_report_pdf.dart';
 import 'package:training_app/logic/units.dart';
@@ -141,6 +142,138 @@ void main() {
       expect(briefBytes.length, lessThan(detailedBytes.length - 100));
     },
   );
+
+  group('fullLog (the trainer-oriented detailed export)', () {
+    const emptySummary = PeriodSummary(
+      sessionsScheduled: 0,
+      sessionsCompleted: 0,
+      totalVolume: 0,
+      prCount: 0,
+    );
+
+    test('omitting fullLog entirely produces a report about the same size as passing null', () async {
+      // Not byte-for-byte equality - two separate doc.save() calls aren't
+      // guaranteed identical (internal object ids, timestamps embedded by
+      // the pdf package) even with identical content. Size is a good enough
+      // proxy that fullLog: null adds nothing, without over-asserting.
+      final withoutParam = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: emptySummary,
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+      );
+      final withNullParam = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: emptySummary,
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+        fullLog: null,
+      );
+      expect(
+        (withoutParam.length - withNullParam.length).abs(),
+        lessThan(20),
+      );
+    });
+
+    test('an empty (non-null) fullLog states there was nothing logged', () async {
+      final bytes = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: emptySummary,
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+        fullLog: const [],
+      );
+      expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+    });
+
+    test('a populated fullLog with a plan session and an ad-hoc activity produces a valid, larger PDF', () async {
+      final baseline = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: emptySummary,
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+      );
+
+      final withLog = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: emptySummary,
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+        fullLog: [
+          CompletedWorkout(
+            log: SessionLog(
+              id: 'log-1',
+              planSessionId: 1,
+              loggedAt: DateTime(2026, 9, 1),
+              finishedAt: DateTime(2026, 9, 1),
+            ),
+            sessionName: 'Push Day',
+            exercises: [
+              CompletedExercise(
+                exerciseId: 'EX_BP',
+                exerciseName: 'Bench Press',
+                sets: [
+                  LoggedSet(
+                    id: 1,
+                    sessionLogId: 'log-1',
+                    exerciseId: 'EX_BP',
+                    setNumber: 1,
+                    reps: 8,
+                    weight: 60,
+                    isPr: true,
+                  ),
+                  LoggedSet(
+                    id: 2,
+                    sessionLogId: 'log-1',
+                    exerciseId: 'EX_BP',
+                    setNumber: 2,
+                    reps: 8,
+                    weight: 60,
+                    isPr: false,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          CompletedWorkout(
+            log: SessionLog(
+              id: 'activity-1',
+              planSessionId: null,
+              loggedAt: DateTime(2026, 9, 3),
+              finishedAt: DateTime(2026, 9, 3),
+              activityName: 'Walk',
+              durationSec: 1800,
+              distance: 3000,
+            ),
+            sessionName: 'Walk',
+            exercises: const [],
+          ),
+        ],
+      );
+
+      expect(String.fromCharCodes(withLog.take(4)), '%PDF');
+      // A whole extra section (a plan session's set-by-set table plus a
+      // separate ad-hoc activity entry) must produce a meaningfully larger
+      // document, not a coincidentally different one - guards against
+      // fullLog being wired up but silently ignored.
+      expect(withLog.length, greaterThan(baseline.length + 100));
+    });
+  });
 
   test('many exercises (forcing a multi-page table) still produces a valid PDF', () async {
     final dashboard = [

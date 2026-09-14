@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -9,10 +10,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/app_database.dart';
+import '../../data/app_database_provider.dart';
 import '../../data/daos/session_log_dao.dart';
 import '../../export/progress_report_pdf.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../logic/body_weight_trend.dart';
+import '../../logic/period_comparison.dart';
 import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
 import '../history/history_screen.dart';
@@ -22,6 +25,19 @@ import '../settings/app_preferences.dart';
 import 'body_measurements_screen.dart';
 import 'progress_charts.dart';
 import 'progress_providers.dart';
+
+/// The Progress tab's three period views. Kept separate from
+/// [SummaryPeriod] (which only knows week/month, and is what
+/// `AppPreferences.summaryPeriod` persists as a default) because "custom"
+/// has no calendar-aware meaning to persist as a default - it's always
+/// picked fresh, per visit.
+enum _ViewMode { week, month, custom }
+
+String _periodNoun(_ViewMode mode) => switch (mode) {
+  _ViewMode.week => 'week',
+  _ViewMode.month => 'month',
+  _ViewMode.custom => 'period',
+};
 
 /// The Progress tab: a chooseable week/month overview summary (sessions
 /// completed vs scheduled, volume, PRs) plus a cross-exercise dashboard of
@@ -34,8 +50,9 @@ class ProgressScreen extends ConsumerStatefulWidget {
 }
 
 class _ProgressScreenState extends ConsumerState<ProgressScreen> {
-  SummaryPeriod? _period;
+  _ViewMode? _viewMode;
   int _offset = 0;
+  DateTimeRange? _customRange;
 
   @override
   Widget build(BuildContext context) {
@@ -104,14 +121,56 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       );
     }
 
-    final period = _period ?? prefs.summaryPeriod;
-    final range = computeSummaryRange(
-      period: period,
-      weekStart: prefs.weekStart,
-      offset: _offset,
-      now: DateTime.now(),
-    );
+    final viewMode =
+        _viewMode ??
+        (prefs.summaryPeriod == SummaryPeriod.week
+            ? _ViewMode.week
+            : _ViewMode.month);
+    final PeriodRange range;
+    final PeriodRange previousRange;
+    if (viewMode == _ViewMode.custom && _customRange != null) {
+      final customStart = _customRange!.start;
+      // showDateRangePicker's end date is inclusive (the last selected day
+      // itself), so +1 day turns it into this project's usual half-open
+      // [start, end) convention every range-scoped query expects.
+      final customEnd = _customRange!.end.add(const Duration(days: 1));
+      final baseRange = (
+        start: DateTime(customStart.year, customStart.month, customStart.day),
+        end: DateTime(customEnd.year, customEnd.month, customEnd.day),
+      );
+      range = shiftedRange(baseRange, _offset);
+      previousRange = shiftedRange(range, -1);
+    } else {
+      final period = viewMode == _ViewMode.month
+          ? SummaryPeriod.month
+          : SummaryPeriod.week;
+      range = computeSummaryRange(
+        period: period,
+        weekStart: prefs.weekStart,
+        offset: _offset,
+        now: DateTime.now(),
+      );
+      previousRange = computeSummaryRange(
+        period: period,
+        weekStart: prefs.weekStart,
+        offset: _offset - 1,
+        now: DateTime.now(),
+      );
+    }
     final summaryAsync = ref.watch(periodSummaryProvider(range));
+    // Only fetched to compute the "vs previous period" deltas shown on the
+    // summary cards - a second, independent FutureProvider read (same family,
+    // different key) rather than a new query, so it benefits from whatever
+    // caching periodSummaryProvider already has for a range the user just
+    // navigated away from (e.g. flipping back and forth with the chevrons).
+    final previousSummaryAsync = ref.watch(periodSummaryProvider(previousRange));
+    final comparison =
+        summaryAsync.valueOrNull != null && previousSummaryAsync.valueOrNull != null
+        ? comparePeriods(
+            current: summaryAsync.value!,
+            previous: previousSummaryAsync.value!,
+          )
+        : null;
     final dashboardAsync = ref.watch(exerciseProgressDashboardProvider);
     final exerciseNamesAsync = ref.watch(allExercisesForMatchingProvider);
     final currentStreak = ref.watch(currentStreakProvider).valueOrNull ?? 0;
@@ -143,7 +202,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                 case _ShareAction.brief:
                 case _ShareAction.detailed:
                   _shareSummary(
-                    period,
+                    viewMode,
                     range,
                     summaryAsync.value!,
                     action == _ShareAction.brief
@@ -158,13 +217,23 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                 case _ShareAction.pdfSave:
                   _exportPdf(
                     context,
-                    period,
+                    viewMode,
                     range,
                     summaryAsync.value!,
                     dashboardAsync.valueOrNull,
                     exerciseNamesAsync.valueOrNull,
                     weightChange,
                     share: action == _ShareAction.pdfShare,
+                  );
+                case _ShareAction.fullLogShare:
+                case _ShareAction.fullLogSave:
+                  _exportFullLogPdf(
+                    context,
+                    viewMode,
+                    range,
+                    summaryAsync.value!,
+                    weightChange,
+                    share: action == _ShareAction.fullLogShare,
                   );
               }
             },
@@ -187,6 +256,21 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
               const PopupMenuItem(
                 value: _ShareAction.pdfSave,
                 child: Text('Save as PDF'),
+              ),
+              const PopupMenuDivider(),
+              // A separate "hand this to a trainer" export - every set/rep
+              // actually logged plus every ad-hoc activity individually,
+              // rather than the aggregate-only report above. Deliberately a
+              // distinct action rather than a third Brief/Detailed level,
+              // since "everything I did, set by set" is a different kind of
+              // document from a highlights summary, not just a longer one.
+              const PopupMenuItem(
+                value: _ShareAction.fullLogShare,
+                child: Text('Share full log (PDF)'),
+              ),
+              const PopupMenuItem(
+                value: _ShareAction.fullLogSave,
+                child: Text('Save full log (PDF)'),
               ),
             ],
           ),
@@ -222,16 +306,18 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           // inside _SummaryCards, which only ever renders period-scoped data.
           const _StreakCard(),
           const SizedBox(height: 16),
-          SegmentedButton<SummaryPeriod>(
+          SegmentedButton<_ViewMode>(
             segments: const [
-              ButtonSegment(value: SummaryPeriod.week, label: Text('Week')),
-              ButtonSegment(value: SummaryPeriod.month, label: Text('Month')),
+              ButtonSegment(value: _ViewMode.week, label: Text('Week')),
+              ButtonSegment(value: _ViewMode.month, label: Text('Month')),
+              ButtonSegment(
+                value: _ViewMode.custom,
+                icon: Icon(Icons.date_range),
+                label: Text('Custom'),
+              ),
             ],
-            selected: {period},
-            onSelectionChanged: (selected) => setState(() {
-              _period = selected.first;
-              _offset = 0;
-            }),
+            selected: {viewMode},
+            onSelectionChanged: (selected) => _onViewModeChanged(selected.first),
           ),
           const SizedBox(height: 12),
           Row(
@@ -239,16 +325,29 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             children: [
               IconButton(
                 icon: const Icon(Icons.chevron_left),
-                tooltip: 'Previous ${period == SummaryPeriod.week ? 'week' : 'month'}',
+                tooltip: 'Previous ${_periodNoun(viewMode)}',
                 onPressed: () => setState(() => _offset -= 1),
               ),
-              Text(
-                _formatRange(range, period),
-                style: Theme.of(context).textTheme.titleMedium,
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatRange(range, viewMode),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (viewMode == _ViewMode.custom)
+                      TextButton(
+                        onPressed: () => _pickCustomRange(initial: _customRange),
+                        child: const Text('Change dates'),
+                      ),
+                  ],
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right),
-                tooltip: 'Next ${period == SummaryPeriod.week ? 'week' : 'month'}',
+                tooltip: 'Next ${_periodNoun(viewMode)}',
                 onPressed: _offset >= 0
                     ? null
                     : () => setState(() => _offset += 1),
@@ -263,6 +362,22 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
               summary: summary,
               unit: prefs.weightUnit,
               weightChange: weightChange,
+              comparison: comparison,
+              // Reported live: activities were summarized here but never
+              // listed anywhere from this screen - tapping through to the
+              // same period's activities (reusing WorkoutHistoryScreen,
+              // scoped and ad-hoc-only) closes that gap directly.
+              onActivitiesTap: summary.adHocActivityCount > 0
+                  ? () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => WorkoutHistoryScreen(
+                          range: range,
+                          adHocOnly: true,
+                          title: 'Activities • ${_formatRange(range, viewMode)}',
+                        ),
+                      ),
+                    )
+                  : null,
             ),
           ),
           if (prefs.showProgressCharts) ...[
@@ -339,16 +454,50 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     );
   }
 
-  String _formatRange(PeriodRange range, SummaryPeriod period) {
-    if (period == SummaryPeriod.month) {
+  /// Custom uses the same "MMMd - MMMd" format as week - only month gets its
+  /// own single-name format, since it's the only mode with a calendar unit
+  /// short enough to name outright.
+  String _formatRange(PeriodRange range, _ViewMode mode) {
+    if (mode == _ViewMode.month) {
       return DateFormat.yMMMM().format(range.start);
     }
     final lastDay = range.end.subtract(const Duration(days: 1));
     return '${DateFormat.MMMd().format(range.start)} - ${DateFormat.MMMd().format(lastDay)}';
   }
 
+  Future<void> _onViewModeChanged(_ViewMode mode) async {
+    if (mode == _ViewMode.custom) {
+      await _pickCustomRange(initial: _customRange);
+      return;
+    }
+    setState(() {
+      _viewMode = mode;
+      _offset = 0;
+    });
+  }
+
+  /// Opens the date-range picker and, if the user actually picks a range
+  /// (as opposed to cancelling), switches to/stays on Custom with it. A
+  /// cancel leaves whatever mode/range was already showing untouched, rather
+  /// than dropping into an empty custom selection.
+  Future<void> _pickCustomRange({DateTimeRange? initial}) async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange: initial,
+    );
+    if (picked == null) return;
+    setState(() {
+      _viewMode = _ViewMode.custom;
+      _customRange = picked;
+      _offset = 0;
+    });
+  }
+
   Future<void> _shareSummary(
-    SummaryPeriod period,
+    _ViewMode mode,
     PeriodRange range,
     PeriodSummary summary,
     ReportDetail detail,
@@ -359,7 +508,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
   ) async {
     final unit = ref.read(appPreferencesProvider).weightUnit;
     final buffer = StringBuffer()
-      ..writeln('Training progress - ${_formatRange(range, period)}')
+      ..writeln('Training progress - ${_formatRange(range, mode)}')
       ..writeln();
     // Period-independent, so it's stated up front rather than folded into
     // the period-scoped lines below - same "hide a meaningless stat" gate
@@ -432,7 +581,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
   /// `templates_screen.dart`.
   Future<void> _exportPdf(
     BuildContext context,
-    SummaryPeriod period,
+    _ViewMode mode,
     PeriodRange range,
     PeriodSummary summary,
     List<ExerciseProgressSummary>? dashboard,
@@ -449,7 +598,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     final names = {for (final e in exercises ?? <Exercise>[]) e.id: e.name};
 
     final bytes = await buildProgressReportPdf(
-      rangeLabel: _formatRange(range, period),
+      rangeLabel: _formatRange(range, mode),
       summary: summary,
       dailyTotals: dailyTotals,
       dashboard: dashboard ?? const [],
@@ -463,15 +612,78 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       includeExerciseDashboard: prefs.reportDetail == ReportDetail.detailed,
     );
 
+    if (!context.mounted) return;
+    await _sharePdfOrSave(
+      context,
+      bytes,
+      fileNamePrefix: 'training-progress',
+      shareText: 'Training progress report',
+      share: share,
+    );
+  }
+
+  /// The trainer-oriented counterpart to [_exportPdf]: every set actually
+  /// logged and every ad-hoc activity individually, for whatever range is
+  /// currently selected (most usefully a custom one - see
+  /// [_pickCustomRange]), rather than the aggregate-only summary report.
+  Future<void> _exportFullLogPdf(
+    BuildContext context,
+    _ViewMode mode,
+    PeriodRange range,
+    PeriodSummary summary,
+    BodyWeightChange? weightChange, {
+    required bool share,
+  }) async {
+    final unit = ref.read(appPreferencesProvider).weightUnit;
+    final db = ref.read(appDatabaseProvider);
+    final dailyTotals = await ref.read(dailyTotalsProvider(range).future);
+    final fullLog = await db.sessionLogDao.getCompletedWorkoutsInRange(
+      start: range.start,
+      end: range.end,
+    );
+
+    final bytes = await buildProgressReportPdf(
+      rangeLabel: _formatRange(range, mode),
+      summary: summary,
+      dailyTotals: dailyTotals,
+      dashboard: const [],
+      exerciseNames: const {},
+      unit: unit,
+      weightChange: weightChange,
+      includeExerciseDashboard: false,
+      fullLog: fullLog,
+    );
+
+    if (!context.mounted) return;
+    await _sharePdfOrSave(
+      context,
+      bytes,
+      fileNamePrefix: 'training-log',
+      shareText: 'Training log',
+      share: share,
+    );
+  }
+
+  /// Shares a temp copy of [bytes] via the share sheet, or saves it through
+  /// a SAF "Save as" dialog - the exact Save/Share pattern already used for
+  /// the plan/library templates (see `templates_screen.dart`), shared here
+  /// by both PDF export actions rather than duplicated.
+  Future<void> _sharePdfOrSave(
+    BuildContext context,
+    Uint8List bytes, {
+    required String fileNamePrefix,
+    required String shareText,
+    required bool share,
+  }) async {
     final fileName =
-        'training-progress-${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
+        '$fileNamePrefix-${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
 
     if (share) {
       final tempDir = await getTemporaryDirectory();
       final tempFile = File(p.join(tempDir.path, fileName));
       await tempFile.writeAsBytes(bytes);
       await SharePlus.instance.share(
-        ShareParams(files: [XFile(tempFile.path)], text: 'Training progress report'),
+        ShareParams(files: [XFile(tempFile.path)], text: shareText),
       );
       return;
     }
@@ -489,17 +701,35 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
   }
 }
 
-enum _ShareAction { brief, detailed, pdfShare, pdfSave }
+enum _ShareAction {
+  brief,
+  detailed,
+  pdfShare,
+  pdfSave,
+  fullLogShare,
+  fullLogSave,
+}
 
 class _SummaryCards extends StatelessWidget {
   final PeriodSummary summary;
   final WeightUnit unit;
   final BodyWeightChange? weightChange;
 
+  /// vs the immediately preceding period, when both it and this one have
+  /// resolved - see `_ProgressScreenState.build`. Null while still loading.
+  final PeriodComparison? comparison;
+
+  /// Pushes a period-scoped, ad-hoc-only activity list (reusing
+  /// WorkoutHistoryScreen) - null when there's nothing to show, which also
+  /// naturally suppresses the tap ripple on a card with nothing behind it.
+  final VoidCallback? onActivitiesTap;
+
   const _SummaryCards({
     required this.summary,
     required this.unit,
     this.weightChange,
+    this.comparison,
+    this.onActivitiesTap,
   });
 
   @override
@@ -527,11 +757,23 @@ class _SummaryCards extends StatelessWidget {
               child: _SummaryCard(
                 label: 'Volume',
                 value: formatWeightInUnit(summary.totalVolume, unit),
+                delta: comparison == null
+                    ? null
+                    : formatPercentDelta(
+                        comparison!.volumeDeltaPercent,
+                        isNew: comparison!.volumeIsNew,
+                      ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _SummaryCard(label: 'PRs', value: '${summary.prCount}'),
+              child: _SummaryCard(
+                label: 'PRs',
+                value: '${summary.prCount}',
+                delta: comparison == null
+                    ? null
+                    : formatCountDelta(comparison!.prCountDelta),
+              ),
             ),
           ],
         ),
@@ -548,6 +790,14 @@ class _SummaryCards extends StatelessWidget {
                 child: _SummaryCard(
                   label: 'Activities',
                   value: '${summary.adHocActivityCount}',
+                  delta: comparison == null
+                      ? null
+                      : formatCountDelta(comparison!.activityCountDelta),
+                  // Reported live: these cards summarized ad-hoc activities
+                  // but had no way to see them individually from here -
+                  // tapping any of the three now opens exactly what they
+                  // summarize, for this same period.
+                  onTap: onActivitiesTap,
                 ),
               ),
               const SizedBox(width: 8),
@@ -555,6 +805,7 @@ class _SummaryCards extends StatelessWidget {
                 child: _SummaryCard(
                   label: 'Active time',
                   value: formatDurationSec(summary.adHocDurationSec),
+                  onTap: onActivitiesTap,
                 ),
               ),
               const SizedBox(width: 8),
@@ -564,6 +815,7 @@ class _SummaryCards extends StatelessWidget {
                   value: summary.adHocDistanceMeters > 0
                       ? formatDistanceMeters(summary.adHocDistanceMeters)
                       : '—',
+                  onTap: onActivitiesTap,
                 ),
               ),
             ],
@@ -628,24 +880,49 @@ class _SummaryCard extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryCard({required this.label, required this.value});
+  /// A short "vs previous period" string (e.g. "+12%", "±0", "new") shown
+  /// beneath the label - null omits the line entirely, same as before this
+  /// existed.
+  final String? delta;
+  final VoidCallback? onTap;
+
+  const _SummaryCard({
+    required this.label,
+    required this.value,
+    this.delta,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            FittedBox(
-              child: Text(
-                value,
-                style: Theme.of(context).textTheme.headlineSmall,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              FittedBox(
+                child: Text(
+                  value,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ],
+              const SizedBox(height: 4),
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+              if (delta != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  delta!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

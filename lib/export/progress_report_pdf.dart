@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../data/app_database.dart' show LoggedSet;
 import '../data/daos/session_log_dao.dart';
 import '../logic/body_weight_trend.dart';
 import '../logic/chart_axis.dart';
@@ -34,6 +35,12 @@ Future<Uint8List> buildProgressReportPdf({
   BodyWeightChange? weightChange,
   DateTime? generatedAt,
   bool includeExerciseDashboard = true,
+  // The "hand this to a trainer" counterpart to [dashboard]'s top-set-only
+  // table: every workout in the period with its full set-by-set breakdown
+  // (and every ad-hoc activity individually, not just its aggregate count in
+  // [_summaryStats]). Null/empty renders nothing extra - the existing
+  // summary report is unaffected when a caller never passes this.
+  List<CompletedWorkout>? fullLog,
 }) async {
   final doc = pw.Document();
   final now = generatedAt ?? DateTime.now();
@@ -71,6 +78,24 @@ Future<Uint8List> buildProgressReportPdf({
           else
             _exerciseTable(dashboard, exerciseNames, unit),
         ],
+        if (fullLog != null && fullLog.isNotEmpty) ...[
+          pw.Text(
+            'Full training log',
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          // Each workout is its own top-level MultiPage child (not nested in
+          // one big Column) for the same page-splitting reason as the
+          // exercise table above - a long log blows past a single page.
+          for (final workout in fullLog) ...[
+            _workoutLogEntry(workout, unit),
+            pw.SizedBox(height: 12),
+          ],
+        ] else if (fullLog != null)
+          pw.Text(
+            'Nothing logged in this period.',
+            style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey600),
+          ),
       ],
     ),
   );
@@ -312,6 +337,87 @@ pw.Widget _exerciseTable(
         ),
     ],
   );
+}
+
+/// One workout's full detail for the "Full training log" section - date,
+/// name, and (for a plan-based session) every exercise with every set, or
+/// (for an ad-hoc activity) its duration/distance/notes, matching what
+/// `CompletedWorkoutScreen` already shows in-app for the same log.
+pw.Widget _workoutLogEntry(CompletedWorkout workout, WeightUnit unit) {
+  final log = workout.log;
+  final isAdHoc = log.planSessionId == null;
+  final detailParts = <String>[
+    if (log.durationSec != null) formatDurationSec(log.durationSec!),
+    if (log.distance != null) formatDistanceMeters(log.distance!),
+  ];
+
+  return pw.Container(
+    padding: const pw.EdgeInsets.all(10),
+    decoration: pw.BoxDecoration(
+      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+      borderRadius: pw.BorderRadius.circular(4),
+    ),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              workout.sessionName,
+              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              DateFormat.yMMMd().format(log.loggedAt),
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+          ],
+        ),
+        if (detailParts.isNotEmpty) ...[
+          pw.SizedBox(height: 2),
+          pw.Text(
+            // A plain comma, not '•' - the pdf package's default Helvetica
+            // font has no glyph for it (confirmed via a "no font to draw"
+            // warning), unlike '×' below which WinAnsi does cover.
+            detailParts.join(', '),
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          ),
+        ],
+        if (log.notes != null && log.notes!.isNotEmpty) ...[
+          pw.SizedBox(height: 4),
+          pw.Text(
+            log.notes!,
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          ),
+        ],
+        if (!isAdHoc)
+          for (final exercise in workout.exercises) ...[
+            pw.SizedBox(height: 6),
+            pw.Text(
+              exercise.exerciseName,
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              [
+                for (final set in exercise.sets) _formatLoggedSet(set, unit),
+              ].join(',   '),
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          ],
+      ],
+    ),
+  );
+}
+
+String _formatLoggedSet(LoggedSet set, WeightUnit unit) {
+  final parts = <String>[
+    if (set.weight != null) formatWeightInUnit(set.weight!, unit),
+    if (set.reps != null) '${set.reps} reps',
+    if (set.durationSec != null) '${set.durationSec!.toInt()}s',
+    if (set.distance != null) '${set.distance}m',
+  ];
+  final text = parts.isEmpty ? 'Logged' : parts.join(' × ');
+  return set.isPr ? '$text (PR)' : text;
 }
 
 pw.Widget _cell(String text, {bool bold = false, PdfColor? color}) {
