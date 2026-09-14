@@ -21,6 +21,7 @@ import '../shared/info_dialog.dart';
 import '../shared/muscle_area_stripe.dart';
 import '../shared/numeric_input_formatters.dart';
 import '../shared/pulsing_highlight.dart';
+import '../tools/plate_calculator_screen.dart';
 import 'rest_timer_controller.dart';
 
 /// The full "Last: ..." half - every set from only the most recent session,
@@ -553,7 +554,21 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         }
       },
       child: Scaffold(
-      appBar: AppBar(title: const Text('Log session')),
+      appBar: AppBar(
+        title: const Text('Log session'),
+        actions: [
+          // Reported live: mid-session plate math meant leaving the screen
+          // entirely (Exercise Library's own toolbar icon) - unsaved sets
+          // and the rest timer both survive that, but it's still a detour
+          // for something this quick. A modal sheet keeps the session
+          // screen mounted underneath instead of pushing a whole new route.
+          IconButton(
+            icon: const Icon(Icons.calculate_outlined),
+            tooltip: 'Plate calculator',
+            onPressed: () => showPlateCalculatorSheet(context),
+          ),
+        ],
+      ),
       body: detailsAsync.when(
         data: (details) {
           if (details == null) {

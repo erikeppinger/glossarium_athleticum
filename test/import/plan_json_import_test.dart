@@ -34,6 +34,7 @@ void main() {
       id: 'plan-1',
       name: 'My Plan',
       notes: 'Some notes',
+      createdBy: 'Coach Erik',
       sessions: [
         PlanSessionInput(
           weekNumber: 1,
@@ -69,12 +70,50 @@ void main() {
     expect(imported, isNotNull);
     expect(imported!.plan.name, 'My Plan');
     expect(imported.plan.notes, 'Some notes');
+    expect(imported.plan.createdBy, 'Coach Erik');
     expect(imported.plan.createdAt, original.plan.createdAt);
     expect(imported.sessions, hasLength(1));
     expect(imported.sessions.single.dates, assignedDates);
     expect(imported.sessions.single.exercises.single.exerciseId, 'EX_BP');
     expect(imported.sessions.single.exercises.single.weightIntensity, '60kg');
   });
+
+  // Regression coverage: a plan built with no author stated (the common
+  // case) must not import as an empty string - that would show up in the UI
+  // as "by " with nothing after it instead of correctly hiding the field.
+  test(
+    'a plan with no createdBy round-trips to null, not an empty string',
+    () async {
+      await seedLibrary();
+      await db.planDao.createPlan(
+        id: 'plan-1',
+        name: 'My Plan',
+        sessions: [
+          const PlanSessionInput(
+            weekNumber: 1,
+            day: 'Mon',
+            sessionName: 'Push Day',
+            exercises: [
+              PlanExerciseInput(
+                order: 1,
+                exerciseId: 'EX_BP',
+                exerciseName: 'Bench Press',
+                sets: 4,
+                reps: '8-10',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final json = planToJson((await db.planDao.getPlanDetails('plan-1'))!);
+      expect(json.containsKey('created_by'), isFalse);
+
+      final newPlanId = await importPlanJson(json, db);
+      final imported = await db.planDao.getPlanDetails(newPlanId);
+      expect(imported!.plan.createdBy, isNull);
+    },
+  );
 
   // Regression: schema_version 2 replaced a session's singular
   // 'assigned_date' field with an 'assigned_dates' array - a file exported

@@ -30,7 +30,7 @@ class LoggedSetInput {
 }
 
 @DriftAccessor(
-  tables: [SessionLogs, LoggedSets, PlanSessions, PlanSessionDates],
+  tables: [SessionLogs, LoggedSets, PlanSessions, PlanSessionDates, PlanExercises],
 )
 class SessionLogDao extends DatabaseAccessor<AppDatabase>
     with _$SessionLogDaoMixin {
@@ -261,10 +261,52 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return sets;
   }
 
+  /// One entry per session that logged this exercise with no weight at all
+  /// (bodyweight/band/Time-type exercises - e.g. a resistance-band warm-up),
+  /// reduced to that session's total reps across every set. There's no
+  /// weight axis to reduce onto the way [getProgressionHistory] does, so
+  /// "total reps that session" is used instead of a single top set - the
+  /// most honest simple stand-in for "did more work than last time" without
+  /// inventing progression math ([suggestNextSet] and PR detection stay
+  /// weight-only; see their own doc comments for why).
+  Future<List<RepsHistoryEntry>> getRepsOnlyHistory(String exerciseId) async {
+    final query = select(loggedSets).join([
+      innerJoin(
+        sessionLogs,
+        sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+      ),
+    ])
+      ..where(
+        loggedSets.exerciseId.equals(exerciseId) &
+            loggedSets.weight.isNull() &
+            loggedSets.reps.isNotNull() &
+            sessionLogs.finishedAt.isNotNull(),
+      );
+    final rows = await query.get();
+
+    final bySession = <String, List<TypedResult>>{};
+    for (final row in rows) {
+      final sessionId = row.readTable(sessionLogs).id;
+      bySession.putIfAbsent(sessionId, () => []).add(row);
+    }
+
+    return bySession.values.map((setsInSession) {
+      final totalReps = setsInSession
+          .map((r) => r.readTable(loggedSets).reps!)
+          .fold(0, (a, b) => a + b);
+      return RepsHistoryEntry(
+        date: setsInSession.first.readTable(sessionLogs).loggedAt,
+        totalReps: totalReps,
+        setCount: setsInSession.length,
+      );
+    }).toList();
+  }
+
   /// One entry per session that logged this exercise, reduced to that
   /// session's top (heaviest) working weight - the shape [suggestNextSet]
   /// wants. Only weight-based sets are considered; Time/Distance-measured
-  /// exercises aren't covered by progression suggestions yet.
+  /// exercises aren't covered by progression suggestions yet (see
+  /// [getRepsOnlyHistory] for those instead).
   ///
   /// When a session has multiple sets at that same top weight (the normal
   /// case - e.g. 3 sets of 8 at 60kg), [ProgressionHistoryEntry.reps] is the
@@ -475,11 +517,20 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
 
     var totalVolume = 0.0;
     var prCount = 0;
+    // Reps logged on a set with no weight at all (bodyweight/band/Time-type
+    // exercises) contribute nothing to totalVolume above - weight × reps
+    // isn't meaningful without a weight - so without this they were
+    // invisible in the period summary entirely, even though real work was
+    // done. Tracked as its own tally rather than folded into totalVolume,
+    // since kilograms and bare reps aren't the same unit.
+    var nonWeightedReps = 0;
     for (final log in logsInPeriod) {
       final sets = await getLoggedSetsForSessionLog(log.id);
       for (final s in sets) {
         if (s.weight != null && s.reps != null) {
           totalVolume += s.weight! * s.reps!;
+        } else if (s.weight == null && s.reps != null) {
+          nonWeightedReps += s.reps!;
         }
         if (s.isPr) prCount++;
       }
@@ -511,6 +562,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       sessionsCompleted: completedOccurrences,
       totalVolume: totalVolume,
       prCount: prCount,
+      nonWeightedReps: nonWeightedReps,
     );
   }
 
@@ -547,6 +599,28 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       grouped.putIfAbsent(set.exerciseId, () => []).add(set);
     }
 
+    // What the plan actually prescribed for this exercise in this session -
+    // alongside [sets] (what was actually logged), this is what lets a
+    // trainer-facing report show prescribed vs. actual side by side instead
+    // of just the raw sets on their own. Null for an ad-hoc activity (no
+    // plan session at all) or an exercise added mid-session that was never
+    // part of the plan template to begin with. Keyed by exerciseId - the
+    // rare case of the same exercise appearing twice in one session's
+    // template (e.g. as two different superset members) just keeps
+    // whichever row's map insertion wins, since there's no per-set way to
+    // tell which prescribed row a given logged set was actually answering.
+    final prescriptionByExerciseId = <String, PlanExercise>{};
+    if (planSessionId != null) {
+      final prescribed = await (select(
+        planExercises,
+      )..where((e) => e.sessionId.equals(planSessionId))).get();
+      for (final row in prescribed) {
+        if (row.exerciseId != null) {
+          prescriptionByExerciseId[row.exerciseId!] = row;
+        }
+      }
+    }
+
     return CompletedWorkout(
       log: log,
       sessionName: session?.sessionName ?? log.activityName ?? 'Workout',
@@ -556,6 +630,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
             exerciseId: entry.key,
             exerciseName: names[entry.key] ?? entry.key,
             sets: entry.value,
+            prescription: prescriptionByExerciseId[entry.key],
           ),
       ],
     );
@@ -720,9 +795,18 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return result;
   }
 
-  /// The most recent logged top (heaviest) set for every exercise that has
-  /// weight-based history - the Progress tab's cross-exercise dashboard.
-  /// Same weight-only scope limitation as [getProgressionHistory].
+  /// The most recent logged set for every exercise that has any reps-based
+  /// history - the Progress tab's cross-exercise dashboard. An exercise
+  /// whose latest session has a weight on at least one set is reduced to
+  /// that session's top (heaviest) set, same as before; an exercise with no
+  /// weight at all that session (bodyweight/band/Time-type - e.g. Hip
+  /// Circles) instead gets [ExerciseProgressSummary.topWeight] left null and
+  /// [ExerciseProgressSummary.topReps] set to that session's *total* reps
+  /// across all its sets - there's no weight to reduce onto a single "top"
+  /// set the way there is for a weighted exercise. Previously this query
+  /// required both weight and reps, which meant a no-weight exercise never
+  /// appeared in the dashboard at all, however consistently it was actually
+  /// trained.
   Future<List<ExerciseProgressSummary>> getLatestTopSetPerExercise() async {
     final query = select(loggedSets).join([
       innerJoin(
@@ -730,9 +814,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         sessionLogs.id.equalsExp(loggedSets.sessionLogId),
       ),
     ])..where(
-      loggedSets.weight.isNotNull() &
-          loggedSets.reps.isNotNull() &
-          sessionLogs.finishedAt.isNotNull(),
+      loggedSets.reps.isNotNull() & sessionLogs.finishedAt.isNotNull(),
     );
     final rows = await query.get();
 
@@ -748,24 +830,44 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       final latestDate = rowsForExercise
           .map((r) => r.readTable(sessionLogs).loggedAt)
           .reduce((a, b) => a.isAfter(b) ? a : b);
-      final rowsInLatestSession = rowsForExercise.where(
-        (r) => r.readTable(sessionLogs).loggedAt == latestDate,
-      );
-      final topSet = rowsInLatestSession.reduce(
-        (a, b) =>
-            a.readTable(loggedSets).weight! >= b.readTable(loggedSets).weight!
-            ? a
-            : b,
-      );
-      result.add(
-        ExerciseProgressSummary(
-          exerciseId: entry.key,
-          lastLoggedAt: latestDate,
-          topWeight: topSet.readTable(loggedSets).weight!,
-          topReps: topSet.readTable(loggedSets).reps!,
-          isPr: topSet.readTable(loggedSets).isPr,
-        ),
-      );
+      final rowsInLatestSession = rowsForExercise
+          .where((r) => r.readTable(sessionLogs).loggedAt == latestDate)
+          .toList();
+      final weightedRows = rowsInLatestSession
+          .where((r) => r.readTable(loggedSets).weight != null)
+          .toList();
+
+      if (weightedRows.isNotEmpty) {
+        final topSet = weightedRows.reduce(
+          (a, b) =>
+              a.readTable(loggedSets).weight! >=
+                  b.readTable(loggedSets).weight!
+              ? a
+              : b,
+        );
+        result.add(
+          ExerciseProgressSummary(
+            exerciseId: entry.key,
+            lastLoggedAt: latestDate,
+            topWeight: topSet.readTable(loggedSets).weight!,
+            topReps: topSet.readTable(loggedSets).reps!,
+            isPr: topSet.readTable(loggedSets).isPr,
+          ),
+        );
+      } else {
+        final totalReps = rowsInLatestSession
+            .map((r) => r.readTable(loggedSets).reps!)
+            .fold(0, (a, b) => a + b);
+        result.add(
+          ExerciseProgressSummary(
+            exerciseId: entry.key,
+            lastLoggedAt: latestDate,
+            topWeight: null,
+            topReps: totalReps,
+            isPr: false,
+          ),
+        );
+      }
     }
     result.sort((a, b) => b.lastLoggedAt.compareTo(a.lastLoggedAt));
     return result;
@@ -811,6 +913,13 @@ class PeriodSummary {
   final double adHocDurationSec;
   final double adHocDistanceMeters;
 
+  /// Total reps logged in this period on sets with no weight at all
+  /// (bodyweight/band/Time-type exercises) - kept separate from
+  /// [totalVolume] since kilograms and bare reps aren't the same unit and
+  /// summing them would be meaningless. Zero when there were none, matching
+  /// every other count on this class.
+  final int nonWeightedReps;
+
   const PeriodSummary({
     required this.sessionsScheduled,
     required this.sessionsCompleted,
@@ -819,6 +928,7 @@ class PeriodSummary {
     this.adHocActivityCount = 0,
     this.adHocDurationSec = 0,
     this.adHocDistanceMeters = 0,
+    this.nonWeightedReps = 0,
   });
 }
 
@@ -839,10 +949,16 @@ class CompletedExercise {
   final String exerciseName;
   final List<LoggedSet> sets;
 
+  /// What the plan actually prescribed for this exercise in this session -
+  /// see [SessionLogDao.getCompletedWorkout]'s own doc comment for why this
+  /// can be null.
+  final PlanExercise? prescription;
+
   const CompletedExercise({
     required this.exerciseId,
     required this.exerciseName,
     required this.sets,
+    this.prescription,
   });
 }
 
@@ -891,7 +1007,16 @@ class DailyTotals {
 class ExerciseProgressSummary {
   final String exerciseId;
   final DateTime lastLoggedAt;
-  final double topWeight;
+
+  /// Null for an exercise whose latest session logged no weight at all
+  /// (bodyweight/band/Time-type) - see [topReps]'s doc comment for what it
+  /// means instead in that case.
+  final double? topWeight;
+
+  /// The hardest set's reps at [topWeight] when it's non-null; the *total*
+  /// reps across every set in the latest session when [topWeight] is null.
+  /// These are deliberately different reductions - see
+  /// [SessionLogDao.getLatestTopSetPerExercise]'s doc comment for why.
   final int topReps;
   final bool isPr;
 
@@ -901,5 +1026,20 @@ class ExerciseProgressSummary {
     required this.topWeight,
     required this.topReps,
     required this.isPr,
+  });
+}
+
+/// One past session's total reps for a no-weight exercise (bodyweight/band/
+/// Time-type) - the reps-only counterpart to [ProgressionHistoryEntry],
+/// which requires a weight. See [SessionLogDao.getRepsOnlyHistory].
+class RepsHistoryEntry {
+  final DateTime date;
+  final int totalReps;
+  final int setCount;
+
+  const RepsHistoryEntry({
+    required this.date,
+    required this.totalReps,
+    required this.setCount,
   });
 }

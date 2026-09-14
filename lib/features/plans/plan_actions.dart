@@ -52,6 +52,18 @@ Future<void> showPlanActions(
                 : Text(plan.notes, maxLines: 1, overflow: TextOverflow.ellipsis),
             onTap: () => Navigator.of(context).pop(_PlanAction.notes),
           ),
+          // Purely free text (this app has no real identity/account system)
+          // - for a plan a trainer builds and hands off as a file, so it's
+          // still clear whose plan a client is looking at once it's on their
+          // own device. See Plans.createdBy's own doc comment.
+          ListTile(
+            leading: const Icon(Icons.badge_outlined),
+            title: const Text('Created by'),
+            subtitle: Text(plan.createdBy?.isNotEmpty == true
+                ? plan.createdBy!
+                : 'Not set'),
+            onTap: () => Navigator.of(context).pop(_PlanAction.createdBy),
+          ),
           ListTile(
             leading: const Icon(Icons.notifications_active_outlined),
             title: const Text('Progress reminders'),
@@ -98,6 +110,8 @@ Future<void> showPlanActions(
       await _rename(context, ref, plan);
     case _PlanAction.notes:
       await _editNotes(context, ref, plan);
+    case _PlanAction.createdBy:
+      await _editCreatedBy(context, ref, plan);
     case _PlanAction.archive:
       await _archive(context, ref, plan);
     case _PlanAction.unarchive:
@@ -109,7 +123,15 @@ Future<void> showPlanActions(
   }
 }
 
-enum _PlanAction { rename, notes, archive, unarchive, delete, reportPreference }
+enum _PlanAction {
+  rename,
+  notes,
+  createdBy,
+  archive,
+  unarchive,
+  delete,
+  reportPreference,
+}
 
 String _reportPreferenceSubtitle(Plan plan) {
   if (plan.reportPreference != 'enabled') return 'Off';
@@ -292,6 +314,71 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
         decoration: const InputDecoration(
           labelText: 'Notes',
           hintText: 'e.g. "Swap deadlifts for RDLs next block"',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Who authored this plan (e.g. a trainer's name) - see `PlanDao.
+/// updatePlanCreatedBy`. Round-trips through export/import unchanged, unlike
+/// an exercise's own author/sourcePlanName fields (which get regenerated per
+/// device) - see `Plans.createdBy`'s own doc comment for why this one field
+/// is different. An empty result clears it back to "not set" (null), not an
+/// empty string - see `updatePlanCreatedBy`'s own doc comment.
+Future<void> _editCreatedBy(BuildContext context, WidgetRef ref, Plan plan) async {
+  final newValue = await showDialog<String>(
+    context: context,
+    builder: (context) => _EditCreatedByDialog(initialValue: plan.createdBy ?? ''),
+  );
+  if (newValue == null) return;
+
+  await ref
+      .read(appDatabaseProvider)
+      .planDao
+      .updatePlanCreatedBy(plan.id, newValue.isEmpty ? null : newValue);
+  ref.invalidate(planDetailsProvider(plan.id));
+}
+
+class _EditCreatedByDialog extends StatefulWidget {
+  final String initialValue;
+
+  const _EditCreatedByDialog({required this.initialValue});
+
+  @override
+  State<_EditCreatedByDialog> createState() => _EditCreatedByDialogState();
+}
+
+class _EditCreatedByDialogState extends State<_EditCreatedByDialog> {
+  late final _controller = TextEditingController(text: widget.initialValue);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Created by'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Created by',
+          hintText: 'e.g. "Coach Erik"',
           border: OutlineInputBorder(),
         ),
       ),

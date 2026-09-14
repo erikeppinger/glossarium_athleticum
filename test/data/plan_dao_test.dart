@@ -462,4 +462,43 @@ void main() {
     expect(after.notes, 'Swap deadlifts for RDLs next block');
     expect(after.updatedAt.isAfter(before.updatedAt), isTrue);
   });
+
+  test('createPlan with createdBy stores it; without it defaults to null', () async {
+    await db.planDao.createPlan(
+      id: 'plan-1',
+      name: 'Plan A',
+      sessions: [pushDay],
+      createdBy: 'Coach Erik',
+    );
+    expect((await db.planDao.getPlanDetails('plan-1'))!.plan.createdBy, 'Coach Erik');
+
+    await db.planDao.createPlan(id: 'plan-2', name: 'Plan B', sessions: [pushDay]);
+    expect((await db.planDao.getPlanDetails('plan-2'))!.plan.createdBy, isNull);
+  });
+
+  test('updatePlanCreatedBy saves the value and bumps updated_at', () async {
+    await db.planDao.createPlan(id: 'plan-1', name: 'Plan A', sessions: [pushDay]);
+    final before = (await db.planDao.getPlanDetails('plan-1'))!.plan;
+    expect(before.createdBy, isNull);
+    await Future<void>.delayed(const Duration(seconds: 1, milliseconds: 100));
+
+    await db.planDao.updatePlanCreatedBy('plan-1', 'Coach Erik');
+
+    final after = (await db.planDao.getPlanDetails('plan-1'))!.plan;
+    expect(after.createdBy, 'Coach Erik');
+    expect(after.updatedAt.isAfter(before.updatedAt), isTrue);
+  });
+
+  test('updatePlanCreatedBy with null clears it back to unset', () async {
+    await db.planDao.createPlan(
+      id: 'plan-1',
+      name: 'Plan A',
+      sessions: [pushDay],
+      createdBy: 'Coach Erik',
+    );
+
+    await db.planDao.updatePlanCreatedBy('plan-1', null);
+
+    expect((await db.planDao.getPlanDetails('plan-1'))!.plan.createdBy, isNull);
+  });
 }

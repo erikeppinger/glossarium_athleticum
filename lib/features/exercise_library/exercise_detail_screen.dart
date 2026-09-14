@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/daos/plan_dao.dart';
 import '../../data/local_storage.dart';
 import '../../logic/exercise_images.dart';
+import '../execution/execution_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import '../history/history_screen.dart';
 import '../shared/attachment_image.dart';
+import '../shared/exercise_export_flow.dart';
 import '../shared/photo_viewer_screen.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_library_providers.dart';
@@ -47,6 +51,18 @@ class ExerciseDetailScreen extends ConsumerWidget {
                 ),
               ),
             ),
+          ),
+          // Reported live: sharing a single exercise meant leaving this
+          // screen for the library's export menu, then re-finding and
+          // checking this same exercise in "Select exercises to export" -
+          // several steps for the common "just send my buddy this one
+          // exercise" case. Reuses the exact same sheet and export logic as
+          // that multi-select flow (see exercise_export_flow.dart), just
+          // pre-scoped to this one exercise.
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: 'Export/share exercise',
+            onPressed: () => showExerciseExportSheet(context, ref, [exercise]),
           ),
           // Seed-library entries are reseeded on every launch, so deleting
           // one would silently be undone - only custom exercises can be
@@ -145,17 +161,38 @@ class ExerciseDetailScreen extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 32),
-          FilledButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add to plan'),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => AddExerciseToPlanScreen(
-                  exerciseId: exercise.id,
-                  exerciseName: exercise.name,
+          // Reported live: wanting to do a couple of sets of something (e.g.
+          // pull-ups on a break) meant first building a whole plan and
+          // session just to get to the logging screen - "Add to plan" is the
+          // right call for real programming, but overkill for "let me just
+          // do this now". Mirrors random_workout_screen.dart's own trick of
+          // creating a throwaway single-session plan under the hood rather
+          // than needing a schema concept of a plan-less session.
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add to plan'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => AddExerciseToPlanScreen(
+                        exerciseId: exercise.id,
+                        exerciseName: exercise.name,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start now'),
+                  onPressed: () => _startNow(context, ref),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -227,6 +264,62 @@ class ExerciseDetailScreen extends ConsumerWidget {
     ref.invalidate(allExercisesForMatchingProvider);
 
     if (context.mounted) Navigator.of(context).pop();
+  }
+
+  /// Creates a throwaway one-exercise plan (never surfaced as a "plan" in
+  /// the UI - same sleight of hand `random_workout_screen.dart` already
+  /// uses) and jumps straight into logging it. Deliberately skips the
+  /// first-session prompts `startSessionWithMoveToTodayPrompt` shows (body
+  /// tracking, trainer reports) - both are keyed to a real, ongoing plan,
+  /// and would be confusing noise in front of a session that only exists to
+  /// log a couple of sets right now.
+  Future<void> _startNow(BuildContext context, WidgetRef ref) async {
+    final db = ref.read(appDatabaseProvider);
+    const weekdayNames = [
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ];
+    final now = DateTime.now();
+    final planId = const Uuid().v4();
+    await db.planDao.createPlan(
+      id: planId,
+      name:
+          'Quick: ${exercise.name} '
+          '${MaterialLocalizations.of(context).formatMediumDate(now)}',
+      sessions: [
+        PlanSessionInput(
+          weekNumber: 1,
+          day: weekdayNames[now.weekday - 1],
+          sessionName: exercise.name,
+          exercises: [
+            PlanExerciseInput(
+              order: 1,
+              exerciseId: exercise.id,
+              exerciseName: exercise.name,
+              sets: 3,
+              reps: '8-10',
+            ),
+          ],
+        ),
+      ],
+    );
+    if (!context.mounted) return;
+
+    final details = await db.planDao.getPlanDetails(planId);
+    final sessionId = details?.sessions.firstOrNull?.session.id;
+    if (sessionId == null || !context.mounted) return;
+
+    ref.invalidate(plansListProvider);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ExecutionScreen(planSessionId: sessionId),
+      ),
+    );
   }
 
   Future<void> _openVideo(BuildContext context, String url) async {

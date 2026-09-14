@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
@@ -153,6 +154,7 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
           for (final session in _sessions) _SessionDraftCard(
             session: session,
             onAddExercise: () => _addExerciseTo(session),
+            onInsertBlock: () => _insertBlockInto(session),
             onRemoveExercise: (input) =>
                 setState(() => session.exercises.remove(input)),
             onRemoveSession: () => setState(() => _sessions.remove(session)),
@@ -204,6 +206,54 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
     );
     if (input == null) return;
     setState(() => session.exercises.add(input));
+  }
+
+  /// Nothing is written to the database until "Save plan" - so unlike
+  /// `edit_session_screen.dart`'s own "Insert block" (which edits an
+  /// already-saved session and has to fork), this just appends the block's
+  /// exercises straight into the in-memory draft. Still a fresh, independent
+  /// stamped copy of each one (`toPlanInput`), not a link back to the block.
+  Future<void> _insertBlockInto(_SessionDraft session) async {
+    final db = ref.read(appDatabaseProvider);
+    final blocks = await db.blockDao.getAllBlocks();
+    if (!mounted) return;
+
+    if (blocks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No blocks yet - build one from an existing session\'s '
+            'exercises via "Save as block", or from Manage libraries & '
+            'blocks.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final chosen = await showDialog<Block>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Insert block'),
+        children: [
+          for (final block in blocks)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(block),
+              child: Text(block.name),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    final blockDetails = await db.blockDao.getBlockDetails(chosen.id);
+    if (blockDetails == null) return;
+
+    setState(() {
+      for (final e in blockDetails.exercises) {
+        session.exercises.add(e.toPlanInput(order: 0));
+      }
+    });
   }
 
   Future<void> _groupExercisesIn(_SessionDraft session) async {
@@ -274,6 +324,7 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
 class _SessionDraftCard extends StatelessWidget {
   final _SessionDraft session;
   final VoidCallback onAddExercise;
+  final VoidCallback onInsertBlock;
   final ValueChanged<PlanExerciseInput> onRemoveExercise;
   final VoidCallback onRemoveSession;
   final VoidCallback onGroupExercises;
@@ -282,6 +333,7 @@ class _SessionDraftCard extends StatelessWidget {
   const _SessionDraftCard({
     required this.session,
     required this.onAddExercise,
+    required this.onInsertBlock,
     required this.onRemoveExercise,
     required this.onRemoveSession,
     required this.onGroupExercises,
@@ -349,6 +401,11 @@ class _SessionDraftCard extends StatelessWidget {
                   onPressed: onAddExercise,
                   icon: const Icon(Icons.add),
                   label: const Text('Add exercise'),
+                ),
+                TextButton.icon(
+                  onPressed: onInsertBlock,
+                  icon: const Icon(Icons.dynamic_feed_outlined),
+                  label: const Text('Insert block'),
                 ),
                 if (session.exercises.length >= 2) ...[
                   TextButton.icon(

@@ -7,6 +7,17 @@ class Plans extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get notes => text().withDefault(const Constant(''))();
+
+  /// Who authored this plan (e.g. a trainer's name), for a plan handed off
+  /// as a file to someone else to train from - purely free text, no real
+  /// identity/account system behind it (this app has none). Null for a plan
+  /// someone built for themselves, which is the common case and has no
+  /// "author" worth stating. Unlike `Exercises.author`/`sourcePlanName`
+  /// (which get *regenerated* per import - see `plan_json_import.dart`),
+  /// this round-trips the original value through export/import unchanged,
+  /// since the whole point is a trainer's name surviving the handoff to a
+  /// client's device.
+  TextColumn get createdBy => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 

@@ -39,6 +39,18 @@ String _periodNoun(_ViewMode mode) => switch (mode) {
   _ViewMode.custom => 'period',
 };
 
+/// The dashboard/share-text label for one exercise's latest top set - "60kg
+/// × 8" when it has a weight, or just "24 reps" (that session's total, see
+/// [ExerciseProgressSummary]'s own doc comment) for a no-weight exercise,
+/// where a weight figure would be meaningless.
+String _topSetLabel(ExerciseProgressSummary entry, WeightUnit unit) {
+  final weight = entry.topWeight;
+  if (weight == null) {
+    return '${entry.topReps} rep${entry.topReps == 1 ? '' : 's'}';
+  }
+  return '${formatWeightInUnit(weight, unit)} × ${entry.topReps}';
+}
+
 /// The Progress tab: a chooseable week/month overview summary (sessions
 /// completed vs scheduled, volume, PRs) plus a cross-exercise dashboard of
 /// the most recent top set per exercise, with a plain-text share/export.
@@ -419,7 +431,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     ListTile(
                       title: Text(names[entry.exerciseId] ?? entry.exerciseId),
                       subtitle: Text(
-                        '${formatWeightInUnit(entry.topWeight, prefs.weightUnit)} × ${entry.topReps} • ${DateFormat.yMMMd().format(entry.lastLoggedAt)}',
+                        '${_topSetLabel(entry, prefs.weightUnit)} • ${DateFormat.yMMMd().format(entry.lastLoggedAt)}',
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -533,6 +545,11 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       )
       ..writeln('Personal records: ${summary.prCount}');
 
+    // Same "hide a meaningless stat" gate as the summary cards' equivalent.
+    if (summary.nonWeightedReps > 0) {
+      buffer.writeln('Bodyweight reps: ${summary.nonWeightedReps}');
+    }
+
     // Same opt-in gate as the summary cards - only ever present when body
     // tracking is on and there's actually a comparison to make.
     if (weightChange != null) {
@@ -565,8 +582,8 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       for (final entry in dashboard) {
         final name = names[entry.exerciseId] ?? entry.exerciseId;
         buffer.writeln(
-          '- $name: ${formatWeightInUnit(entry.topWeight, unit)} × '
-          '${entry.topReps}${entry.isPr ? ' (PR)' : ''} '
+          '- $name: ${_topSetLabel(entry, unit)}'
+          '${entry.isPr ? ' (PR)' : ''} '
           '(${DateFormat.yMMMd().format(entry.lastLoggedAt)})',
         );
       }
@@ -816,6 +833,26 @@ class _SummaryCards extends StatelessWidget {
                       ? formatDistanceMeters(summary.adHocDistanceMeters)
                       : '—',
                   onTap: onActivitiesTap,
+                ),
+              ),
+            ],
+          ),
+        ],
+        // No-weight exercises (bodyweight/band/Time-type, e.g. a resistance-
+        // band warm-up) have nothing to contribute to Volume above - kg ×
+        // reps is meaningless without a kg - so without this they were
+        // invisible in the period summary entirely, however consistently
+        // they were actually trained. Only shown when there's at least one
+        // such rep logged, same "hide a meaningless stat" pattern as the
+        // ad-hoc activity cards above.
+        if (summary.nonWeightedReps > 0) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _SummaryCard(
+                  label: 'Bodyweight reps',
+                  value: '${summary.nonWeightedReps}',
                 ),
               ),
             ],

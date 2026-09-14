@@ -279,6 +279,29 @@ void main() {
       expect(summary.adHocDurationSec, 3000);
       expect(summary.adHocDistanceMeters, 8000);
     });
+
+    test(
+      'a no-weight set contributes to nonWeightedReps, not totalVolume',
+      () async {
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 10),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 15),
+          ],
+        );
+
+        final summary = await db.sessionLogDao.getPeriodSummary(
+          start: DateTime(2026, 8, 1),
+          end: DateTime(2026, 9, 1),
+        );
+
+        expect(summary.totalVolume, 8 * 60.0);
+        expect(summary.nonWeightedReps, 15);
+      },
+    );
   });
 
   group('getDailyTotals', () {
@@ -401,6 +424,109 @@ void main() {
         ],
       );
       expect(await db.sessionLogDao.getLatestTopSetPerExercise(), isEmpty);
+    });
+
+    test(
+      'a no-weight exercise (bodyweight/band) appears with null topWeight '
+      "and that session's total reps, instead of being excluded entirely",
+      () async {
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 13),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 10),
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 12),
+          ],
+        );
+
+        final summaries = await db.sessionLogDao.getLatestTopSetPerExercise();
+        expect(summaries, hasLength(1));
+        expect(summaries.single.exerciseId, 'EX_BP');
+        expect(summaries.single.topWeight, isNull);
+        expect(summaries.single.topReps, 22);
+        expect(summaries.single.isPr, isFalse);
+      },
+    );
+
+    test(
+      'a session with at least one weighted set is unaffected by a no-weight '
+      'exercise existing elsewhere',
+      () async {
+        await db.exerciseDao.upsertExercise(
+          ExercisesCompanion.insert(
+            id: 'EX_BAND',
+            name: 'Band Pull-Apart',
+            category: 'Warm-up',
+            movementPattern: '',
+            muscleGroups: 'Back',
+            equipment: 'Resistance Band',
+            difficulty: 'Beginner',
+            measurementType: 'Time',
+          ),
+        );
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 13),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+            LoggedSetInput(exerciseId: 'EX_BAND', setNumber: 1, reps: 15),
+          ],
+        );
+
+        final summaries = await db.sessionLogDao.getLatestTopSetPerExercise();
+        final byId = {for (final s in summaries) s.exerciseId: s};
+        expect(byId['EX_BP']!.topWeight, 60.0);
+        expect(byId['EX_BAND']!.topWeight, isNull);
+        expect(byId['EX_BAND']!.topReps, 15);
+      },
+    );
+  });
+
+  group('getRepsOnlyHistory', () {
+    test('one entry per session, summing reps across sets that session', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 6),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 10),
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 8),
+        ],
+      );
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-2',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 12),
+        ],
+      );
+
+      final history = await db.sessionLogDao.getRepsOnlyHistory('EX_BP');
+      expect(history, hasLength(2));
+      final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
+      expect(sorted[0].totalReps, 18);
+      expect(sorted[0].setCount, 2);
+      expect(sorted[1].totalReps, 12);
+      expect(sorted[1].setCount, 1);
+    });
+
+    test('excludes sets that have a weight', () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 13),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+      expect(await db.sessionLogDao.getRepsOnlyHistory('EX_BP'), isEmpty);
+    });
+
+    test('is empty when the exercise has never been logged', () async {
+      expect(await db.sessionLogDao.getRepsOnlyHistory('EX_BP'), isEmpty);
     });
   });
 
@@ -663,6 +789,67 @@ void main() {
       );
       await db.sessionLogDao.deleteSessionLog('activity-1');
       expect(await db.sessionLogDao.getAdHocActivities(), isEmpty);
+    });
+  });
+
+  group('getCompletedWorkout prescription (prescribed vs. actual)', () {
+    test(
+      "an exercise that's part of the plan template carries its prescription",
+      () async {
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 20),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 55),
+          ],
+        );
+
+        final workout = await db.sessionLogDao.getCompletedWorkout('log-1');
+        final prescription = workout!.exercises.single.prescription;
+        expect(prescription, isNotNull);
+        expect(prescription!.sets, 3);
+        expect(prescription.reps, '8');
+      },
+    );
+
+    test(
+      'an exercise added mid-session with no matching template row has no prescription',
+      () async {
+        await db.exerciseDao.upsertExercise(
+          ExercisesCompanion.insert(
+            id: 'EX_ADHOC',
+            name: 'Pull-Ups',
+            category: 'Main Lift',
+            movementPattern: 'Pull',
+            muscleGroups: 'Back',
+            equipment: 'Pull-up Bar',
+            difficulty: 'Intermediate',
+            measurementType: 'Weight x Reps',
+          ),
+        );
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 20),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_ADHOC', setNumber: 1, reps: 10),
+          ],
+        );
+
+        final workout = await db.sessionLogDao.getCompletedWorkout('log-1');
+        expect(workout!.exercises.single.prescription, isNull);
+      },
+    );
+
+    test('an ad-hoc activity has no prescription (no plan session at all)', () async {
+      await db.sessionLogDao.createAdHocActivity(
+        id: 'activity-1',
+        loggedAt: DateTime(2026, 8, 20),
+        activityName: 'Walk',
+      );
+      final workout = await db.sessionLogDao.getCompletedWorkout('activity-1');
+      expect(workout!.exercises, isEmpty);
     });
   });
 

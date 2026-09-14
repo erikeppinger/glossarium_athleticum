@@ -121,4 +121,76 @@ void main() {
     await tester.pump();
     await db.close();
   });
+
+  // Blocks share this same screen (a segmented toggle, not a separate icon -
+  // requested directly so managing them doesn't add another corner to the
+  // UI) despite being an unrelated kind of "named group" from the
+  // source-string library groupings above.
+  group('Blocks view', () {
+    testWidgets(
+      'creating a block from scratch opens it for editing, then lists it',
+      (tester) async {
+        final db = await seedDb();
+        tester.view.physicalSize = const Size(1080, 3000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(wrap(db));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Blocks'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('No blocks yet.'), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.add));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'Warm-up');
+        await tester.tap(find.text('Create'));
+        await tester.pumpAndSettle();
+
+        // Landed directly in BlockEditScreen for the new (empty) block.
+        expect(find.text('This block has no exercises yet.'), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Warm-up'), findsOneWidget);
+        final blocks = await db.blockDao.getAllBlocks();
+        expect(blocks.single.name, 'Warm-up');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await db.close();
+      },
+    );
+
+    testWidgets('deleting a block removes it from the list', (tester) async {
+      final db = await seedDb();
+      await db.blockDao.createBlock(name: 'Warm-up', exercises: const []);
+      tester.view.physicalSize = const Size(1080, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(wrap(db));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Blocks'));
+      await tester.pumpAndSettle();
+      expect(find.text('Warm-up'), findsOneWidget);
+
+      await tester.tap(find.widgetWithIcon(IconButton, Icons.delete_outline));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Warm-up'), findsNothing);
+      expect(await db.blockDao.getAllBlocks(), isEmpty);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    });
+  });
 }

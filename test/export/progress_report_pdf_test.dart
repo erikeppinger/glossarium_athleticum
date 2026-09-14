@@ -273,7 +273,136 @@ void main() {
       // fullLog being wired up but silently ignored.
       expect(withLog.length, greaterThan(baseline.length + 100));
     });
+
+    test(
+      "an exercise with a prescription produces a larger PDF than the same "
+      "exercise with none (the trainer-facing prescribed-vs-actual line)",
+      () async {
+        CompletedWorkout workoutWith({PlanExercise? prescription}) =>
+            CompletedWorkout(
+              log: SessionLog(
+                id: 'log-1',
+                planSessionId: 1,
+                loggedAt: DateTime(2026, 9, 1),
+                finishedAt: DateTime(2026, 9, 1),
+              ),
+              sessionName: 'Push Day',
+              exercises: [
+                CompletedExercise(
+                  exerciseId: 'EX_BP',
+                  exerciseName: 'Bench Press',
+                  sets: [
+                    LoggedSet(
+                      id: 1,
+                      sessionLogId: 'log-1',
+                      exerciseId: 'EX_BP',
+                      setNumber: 1,
+                      reps: 8,
+                      weight: 60,
+                      isPr: false,
+                    ),
+                  ],
+                  prescription: prescription,
+                ),
+              ],
+            );
+
+        final withoutPrescription = await buildProgressReportPdf(
+          rangeLabel: 'Aug 31 - Sep 6',
+          summary: emptySummary,
+          dailyTotals: const [],
+          dashboard: const [],
+          exerciseNames: const {},
+          unit: WeightUnit.kg,
+          generatedAt: DateTime(2026, 9, 6),
+          fullLog: [workoutWith()],
+        );
+
+        final withPrescription = await buildProgressReportPdf(
+          rangeLabel: 'Aug 31 - Sep 6',
+          summary: emptySummary,
+          dailyTotals: const [],
+          dashboard: const [],
+          exerciseNames: const {},
+          unit: WeightUnit.kg,
+          generatedAt: DateTime(2026, 9, 6),
+          fullLog: [
+            workoutWith(
+              prescription: const PlanExercise(
+                id: 1,
+                sessionId: 1,
+                order: 1,
+                exerciseId: 'EX_BP',
+                exerciseName: 'Bench Press',
+                sets: 4,
+                reps: '8-10',
+                weightIntensity: '60kg',
+                notes: '',
+                videoUrl: '',
+              ),
+            ),
+          ],
+        );
+
+        expect(String.fromCharCodes(withPrescription.take(4)), '%PDF');
+        expect(
+          withPrescription.length,
+          greaterThan(withoutPrescription.length + 20),
+        );
+      },
+    );
   });
+
+  test(
+    'a no-weight dashboard entry (bodyweight/band exercise) and a nonzero '
+    'nonWeightedReps stat both render without a weight figure',
+    () async {
+      final baseline = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: const PeriodSummary(
+          sessionsScheduled: 0,
+          sessionsCompleted: 0,
+          totalVolume: 0,
+          prCount: 0,
+        ),
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+      );
+
+      final withNoWeightData = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: const PeriodSummary(
+          sessionsScheduled: 0,
+          sessionsCompleted: 0,
+          totalVolume: 0,
+          prCount: 0,
+          nonWeightedReps: 24,
+        ),
+        dailyTotals: const [],
+        dashboard: [
+          ExerciseProgressSummary(
+            exerciseId: 'EX_BAND',
+            lastLoggedAt: DateTime.utc(2026, 9, 3),
+            topWeight: null,
+            topReps: 24,
+            isPr: false,
+          ),
+        ],
+        exerciseNames: const {'EX_BAND': 'Band Pull-Apart'},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+      );
+
+      expect(String.fromCharCodes(withNoWeightData.take(4)), '%PDF');
+      // A whole extra stat tile plus a dashboard row must produce a
+      // meaningfully larger document, not a coincidentally different one -
+      // guards against the null-topWeight branch silently rendering nothing.
+      expect(withNoWeightData.length, greaterThan(baseline.length + 100));
+    },
+  );
 
   test('many exercises (forcing a multi-page table) still produces a valid PDF', () async {
     final dashboard = [

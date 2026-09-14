@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
@@ -38,12 +39,29 @@ class EditSessionScreen extends ConsumerStatefulWidget {
   ConsumerState<EditSessionScreen> createState() => _EditSessionScreenState();
 }
 
+/// What the current checkbox-selection pass is for - the app bar and bottom
+/// bar both key off this rather than a plain `bool`, since "Group into
+/// superset" and "Save as block" share one selection UI but need different
+/// minimum counts, confirm actions, and helper text.
+enum _SelectionPurpose { superset, block }
+
 class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
   int get sessionId => widget.sessionId;
   String get planId => widget.planId;
 
-  bool _selecting = false;
+  _SelectionPurpose? _selectionPurpose;
+  bool get _selecting => _selectionPurpose != null;
   final Set<int> _selectedIds = {};
+
+  void _startSelecting(_SelectionPurpose purpose) => setState(() {
+    _selectionPurpose = purpose;
+    _selectedIds.clear();
+  });
+
+  void _cancelSelecting() => setState(() {
+    _selectionPurpose = null;
+    _selectedIds.clear();
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -62,13 +80,21 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
               content: supersetExplanationNote,
             ),
           ),
-          TextButton(
-            onPressed: () => setState(() {
-              _selecting = !_selecting;
-              _selectedIds.clear();
-            }),
-            child: Text(_selecting ? 'Cancel' : 'Group into superset'),
-          ),
+          if (_selecting)
+            TextButton(
+              onPressed: _cancelSelecting,
+              child: const Text('Cancel'),
+            )
+          else ...[
+            TextButton(
+              onPressed: () => _startSelecting(_SelectionPurpose.block),
+              child: const Text('Save as block'),
+            ),
+            TextButton(
+              onPressed: () => _startSelecting(_SelectionPurpose.superset),
+              child: const Text('Group into superset'),
+            ),
+          ],
         ],
       ),
       body: detailsAsync.when(
@@ -86,10 +112,17 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 16),
-              if (_selecting)
+              if (_selectionPurpose == _SelectionPurpose.superset)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
                   child: Text('Select 2 or more exercises to do back-to-back.'),
+                )
+              else if (_selectionPurpose == _SelectionPurpose.block)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Select the exercises to save as a reusable block.',
+                  ),
                 ),
               if (details.exercises.isEmpty)
                 const Padding(
@@ -116,25 +149,38 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
                   onUngroup: () => _ungroup(details.exercises[i]),
                 ),
               const SizedBox(height: 8),
-              if (!_selecting)
+              if (!_selecting) ...[
                 OutlinedButton.icon(
                   onPressed: () => _addExercise(details),
                   icon: const Icon(Icons.add),
                   label: const Text('Add exercise'),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _insertBlock(details),
+                  icon: const Icon(Icons.dynamic_feed_outlined),
+                  label: const Text('Insert block'),
+                ),
+              ],
             ],
           );
         },
       ),
-      bottomNavigationBar: _selecting
-          ? SafeArea(
+      bottomNavigationBar: !_selecting
+          ? null
+          : SafeArea(
               minimum: const EdgeInsets.all(16),
               child: FilledButton(
-                onPressed: _selectedIds.length >= 2 ? _confirmGroup : null,
-                child: Text('Group selected (${_selectedIds.length})'),
+                onPressed: _selectionPurpose == _SelectionPurpose.superset
+                    ? (_selectedIds.length >= 2 ? _confirmGroup : null)
+                    : (_selectedIds.isNotEmpty ? _confirmSaveAsBlock : null),
+                child: Text(
+                  _selectionPurpose == _SelectionPurpose.superset
+                      ? 'Group selected (${_selectedIds.length})'
+                      : 'Save as block (${_selectedIds.length})',
+                ),
               ),
-            )
-          : null,
+            ),
     );
   }
 
@@ -146,11 +192,96 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
   Future<void> _confirmGroup() async {
     final db = ref.read(appDatabaseProvider);
     await db.planDao.setSupersetGroup(_selectedIds.toList());
-    setState(() {
-      _selecting = false;
-      _selectedIds.clear();
-    });
+    _cancelSelecting();
     _invalidate();
+  }
+
+  /// Stamps the selected exercises (in their existing session order, not
+  /// selection-tap order) into a brand new block - see `block_dao.dart`'s
+  /// own doc comment for why this is a copy, not a live link.
+  Future<void> _confirmSaveAsBlock() async {
+    final details = await ref.read(_sessionDetailsProvider(sessionId).future);
+    if (details == null || !mounted) return;
+
+    final selected = [
+      for (final e in details.exercises)
+        if (_selectedIds.contains(e.id)) e,
+    ];
+    if (selected.isEmpty) return;
+
+    final name = await _promptBlockName();
+    if (name == null || !mounted) return;
+
+    final db = ref.read(appDatabaseProvider);
+    await db.blockDao.createBlock(
+      name: name,
+      exercises: [
+        for (var i = 0; i < selected.length; i++)
+          selected[i].toBlockInput(order: i + 1),
+      ],
+    );
+    if (!mounted) return;
+
+    _cancelSelecting();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved "$name" as a block.')));
+  }
+
+  Future<String?> _promptBlockName() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => const _BlockNamePromptDialog(),
+    );
+    return name == null || name.isEmpty ? null : name;
+  }
+
+  /// Inserting a block is a structural change to the session, exactly like
+  /// adding a single exercise (see [_addExercise]) - forks a new plan
+  /// rather than mutating this one in place. Each of the block's exercises
+  /// is stamped fresh via `toPlanInput` (an independent copy, not a link
+  /// back to the block), so editing the block later never retroactively
+  /// changes this session.
+  Future<void> _insertBlock(PlanSessionDetails details) async {
+    final db = ref.read(appDatabaseProvider);
+    final blocks = await db.blockDao.getAllBlocks();
+    if (!mounted) return;
+
+    if (blocks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No blocks yet - select exercises above and tap "Save as '
+            'block" to create one.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final chosen = await showDialog<Block>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Insert block'),
+        children: [
+          for (final block in blocks)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(block),
+              child: Text(block.name),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    final blockDetails = await db.blockDao.getBlockDetails(chosen.id);
+    if (blockDetails == null || !mounted) return;
+
+    final updated = [
+      for (final e in details.exercises) e.toInput(),
+      for (final e in blockDetails.exercises) e.toPlanInput(order: 0),
+    ];
+    await _forkAndNavigate(details, updated);
   }
 
   Future<void> _ungroup(PlanExercise exercise) async {
@@ -270,35 +401,12 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
     );
   }
 
-  Future<String?> _promptForkName(String planName) {
-    final controller = TextEditingController(text: '$planName (edited)');
-    return showDialog<String>(
+  Future<String?> _promptForkName(String planName) async {
+    final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save as a new plan'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'New plan name',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    ).then((name) {
-      controller.dispose();
-      return name == null || name.isEmpty ? null : name;
-    });
+      builder: (context) => _ForkNamePromptDialog(planName: planName),
+    );
+    return name == null || name.isEmpty ? null : name;
   }
 
   Future<void> _edit(PlanExercise exercise) async {
@@ -556,6 +664,110 @@ class _EditExerciseDialogState extends State<_EditExerciseDialog> {
                 : null,
             child: const Text('Save'),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Owns its own controller (disposed in its own `State.dispose()`, once the
+/// route is actually removed) rather than one created inline by the caller
+/// and disposed right after `showDialog`'s Future resolves - that races the
+/// dialog's own exit transition, which keeps rebuilding the same `TextField`
+/// for a few frames while it animates out. Same bug/fix `plate_calculator_screen.dart`'s
+/// `_AddPlateDialog` already documents; hit directly again while writing
+/// this file's own block-naming widget test.
+class _BlockNamePromptDialog extends StatefulWidget {
+  const _BlockNamePromptDialog();
+
+  @override
+  State<_BlockNamePromptDialog> createState() =>
+      _BlockNamePromptDialogState();
+}
+
+class _BlockNamePromptDialogState extends State<_BlockNamePromptDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Save as block'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Block name',
+          hintText: 'e.g. Warm-up',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Same controller-lifetime fix as [_BlockNamePromptDialog] above, applied
+/// to the pre-existing fork-name prompt - it had the identical
+/// dispose-after-the-Future-resolves race, just never caught before since
+/// no widget test previously drove this dialog interactively (the fork
+/// function itself is tested directly - see plan_fork_test.dart).
+class _ForkNamePromptDialog extends StatefulWidget {
+  final String planName;
+
+  const _ForkNamePromptDialog({required this.planName});
+
+  @override
+  State<_ForkNamePromptDialog> createState() => _ForkNamePromptDialogState();
+}
+
+class _ForkNamePromptDialogState extends State<_ForkNamePromptDialog> {
+  late final _controller = TextEditingController(
+    text: '${widget.planName} (edited)',
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Save as a new plan'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'New plan name',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
         ),
       ],
     );

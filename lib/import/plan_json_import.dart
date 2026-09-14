@@ -158,5 +158,9 @@ Future<String> importPlanJson(
     sessions: sessions,
     createdAt: createdAtStr == null ? null : DateTime.parse(createdAtStr),
     updatedAt: updatedAtStr == null ? null : DateTime.parse(updatedAtStr),
+    // Absent in a plan built with no author stated, and in any file
+    // exported before this field existed - both correctly read as "no
+    // author", not an empty string (see Plans.createdBy's own doc comment).
+    createdBy: json['created_by'] as String?,
   );
 }

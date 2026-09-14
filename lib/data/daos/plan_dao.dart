@@ -208,6 +208,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
     required List<PlanSessionInput> sessions,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? createdBy,
   }) {
     final now = DateTime.now();
     return transaction(() async {
@@ -218,6 +219,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           notes: Value(notes),
           createdAt: createdAt ?? now,
           updatedAt: updatedAt ?? now,
+          createdBy: Value(createdBy),
         ),
       );
       for (final s in sessions) {
@@ -737,6 +739,21 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
     return transaction(() async {
       await (update(plans)..where((p) => p.id.equals(planId))).write(
         PlansCompanion(notes: Value(notes)),
+      );
+      await _touchUpdatedAt(planId);
+    });
+  }
+
+  /// Who authored this plan (e.g. a trainer's name) - see
+  /// `Plans.createdBy`'s own doc comment. [createdBy] null clears it back to
+  /// "no author stated" rather than the empty string [updatePlanNotes] uses,
+  /// since a blank author is meaningfully different from an unset one here
+  /// (an empty "Created by" field in the UI means "remove this", not "set it
+  /// to blank").
+  Future<void> updatePlanCreatedBy(String planId, String? createdBy) {
+    return transaction(() async {
+      await (update(plans)..where((p) => p.id.equals(planId))).write(
+        PlansCompanion(createdBy: Value(createdBy)),
       );
       await _touchUpdatedAt(planId);
     });

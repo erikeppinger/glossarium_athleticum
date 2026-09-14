@@ -15,6 +15,65 @@ import '../shared/numeric_input_formatters.dart';
 const _commonPlateMenuKg = [50.0, 40.0, 25.0, 20.0, 15.0, 10.0, 5.0, 2.5, 1.25, 0.5];
 const _commonPlateMenuLbs = [100.0, 55.0, 45.0, 35.0, 25.0, 10.0, 5.0, 2.5, 1.25];
 
+/// Full-screen entry point, reached from the Exercise Library toolbar - a
+/// thin `Scaffold` around [PlateCalculatorForm], which carries the actual
+/// logic. See [showPlateCalculatorSheet] for the other entry point (a modal
+/// sheet, reached mid-session without leaving [ExecutionScreen]) - both
+/// share this exact same form rather than each keeping their own copy.
+class PlateCalculatorScreen extends StatelessWidget {
+  const PlateCalculatorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Plate calculator')),
+      body: const SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: PlateCalculatorForm(),
+      ),
+    );
+  }
+}
+
+/// Opens the same [PlateCalculatorForm] as a modal bottom sheet - requested
+/// directly so a lifter doesn't have to leave an in-progress session (and
+/// its rest timer/unsaved sets) just to work out plate math. `isScrollControlled`
+/// + `DraggableScrollableSheet` so the sheet can grow tall enough for the
+/// form plus an open keyboard without either clipping content or covering
+/// the whole screen by default.
+Future<void> showPlateCalculatorSheet(BuildContext context) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Plate calculator',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            const PlateCalculatorForm(),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Given a target weight and a bar weight, shows which plates to load per
 /// side - a standalone utility with no DB/session dependency, reusing
 /// [WeightUnit]/[kgToDisplay]/[displayToKg]/[formatWeightNumber] from
@@ -23,16 +82,20 @@ const _commonPlateMenuLbs = [100.0, 55.0, 45.0, 35.0, 25.0, 10.0, 5.0, 2.5, 1.25
 /// `AppPreferences.availablePlatesKg`/`availablePlatesLbs`) rather than
 /// always the fixed standard set - asked for directly, since not every gym
 /// has the same plates on hand.
-class PlateCalculatorScreen extends ConsumerStatefulWidget {
-  const PlateCalculatorScreen({super.key});
+///
+/// A plain `Column` rather than a `ListView`/`Scaffold` of its own, so
+/// either host (the full screen above, or the bottom sheet) can supply its
+/// own scaffolding/scroll behavior around the same form.
+class PlateCalculatorForm extends ConsumerStatefulWidget {
+  const PlateCalculatorForm({super.key});
 
   @override
-  ConsumerState<PlateCalculatorScreen> createState() =>
-      _PlateCalculatorScreenState();
+  ConsumerState<PlateCalculatorForm> createState() =>
+      _PlateCalculatorFormState();
 }
 
-class _PlateCalculatorScreenState
-    extends ConsumerState<PlateCalculatorScreen> {
+class _PlateCalculatorFormState
+    extends ConsumerState<PlateCalculatorForm> {
   late final TextEditingController _targetController;
   late final TextEditingController _barController;
   WeightUnit? _lastSeededUnit;
@@ -124,11 +187,10 @@ class _PlateCalculatorScreenState
           )
         : null;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Plate calculator')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           TextField(
             controller: _targetController,
             keyboardType: const TextInputType.numberWithOptions(
@@ -201,8 +263,7 @@ class _PlateCalculatorScreenState
             const Text('Turn on at least one plate size above.')
           else
             _PlateResultCard(result: result, unitLabel: unitLabel),
-        ],
-      ),
+      ],
     );
   }
 }

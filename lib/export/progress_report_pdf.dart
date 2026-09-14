@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../data/app_database.dart' show LoggedSet;
+import '../data/app_database.dart' show LoggedSet, PlanExercise;
 import '../data/daos/session_log_dao.dart';
 import '../logic/body_weight_trend.dart';
 import '../logic/chart_axis.dart';
@@ -158,6 +158,8 @@ pw.Widget _summaryStats(
       if (summary.adHocDistanceMeters > 0)
         ('Distance', formatDistanceMeters(summary.adHocDistanceMeters)),
     ],
+    if (summary.nonWeightedReps > 0)
+      ('Bodyweight reps', '${summary.nonWeightedReps}'),
   ];
 
   return pw.Wrap(
@@ -326,7 +328,7 @@ pw.Widget _exerciseTable(
         pw.TableRow(
           children: [
             _cell(exerciseNames[entry.exerciseId] ?? entry.exerciseId),
-            _cell('${formatWeightInUnit(entry.topWeight, unit)} × ${entry.topReps}'),
+            _cell(_topSetLabel(entry, unit)),
             _cell(DateFormat.yMMMd().format(entry.lastLoggedAt)),
             _cell(
               entry.isPr ? 'PR' : '',
@@ -397,6 +399,19 @@ pw.Widget _workoutLogEntry(CompletedWorkout workout, WeightUnit unit) {
               exercise.exerciseName,
               style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
             ),
+            // What the plan actually called for, directly above what was
+            // logged - the point of a trainer-facing report is seeing
+            // prescribed vs. actual together, not hunting up the plan
+            // separately. Absent for an exercise added mid-session with no
+            // template row to compare against (see getCompletedWorkout's own
+            // doc comment).
+            if (exercise.prescription != null) ...[
+              pw.Text(
+                'Prescribed: ${_formatPrescription(exercise.prescription!)}',
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+              ),
+              pw.SizedBox(height: 2),
+            ],
             pw.Text(
               [
                 for (final set in exercise.sets) _formatLoggedSet(set, unit),
@@ -407,6 +422,31 @@ pw.Widget _workoutLogEntry(CompletedWorkout workout, WeightUnit unit) {
       ],
     ),
   );
+}
+
+/// One exercise dashboard row's "Top set" cell text - "60kg × 8" when the
+/// entry has a weight, or just "24 reps" (that session's total - see
+/// [ExerciseProgressSummary]'s own doc comment) for a no-weight exercise,
+/// where a weight figure would be meaningless. Same logic as
+/// `progress_screen.dart`'s private `_topSetLabel`, kept separate since the
+/// two files don't share UI code.
+String _topSetLabel(ExerciseProgressSummary entry, WeightUnit unit) {
+  final weight = entry.topWeight;
+  if (weight == null) {
+    return '${entry.topReps} rep${entry.topReps == 1 ? '' : 's'}';
+  }
+  return '${formatWeightInUnit(weight, unit)} × ${entry.topReps}';
+}
+
+/// "3×8-10 @ 60kg" - the plan's own text fields as authored, not converted
+/// to [unit] the way a logged weight is, since `weightIntensity` is free
+/// text (could be "60kg", "bodyweight", "RPE 8", ...), not a stored number.
+String _formatPrescription(PlanExercise prescription) {
+  final parts = [
+    '${prescription.sets}×${prescription.reps}',
+    if (prescription.weightIntensity.isNotEmpty) prescription.weightIntensity,
+  ];
+  return parts.join(' @ ');
 }
 
 String _formatLoggedSet(LoggedSet set, WeightUnit unit) {

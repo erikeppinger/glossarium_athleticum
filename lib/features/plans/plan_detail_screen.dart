@@ -128,6 +128,20 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(details.plan.name, style: Theme.of(context).textTheme.headlineSmall),
+              // Purely free text (see Plans.createdBy's own doc comment) -
+              // shown right under the title so it's clear at a glance whose
+              // plan this is once it's been handed off as a file and
+              // imported onto someone else's device.
+              if (details.plan.createdBy?.isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'by ${details.plan.createdBy}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               if (details.plan.archivedAt != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),

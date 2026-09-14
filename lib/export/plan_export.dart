@@ -34,6 +34,7 @@ Map<String, dynamic> planToJson(PlanDetails details) {
     'created_at': details.plan.createdAt.toIso8601String(),
     'updated_at': details.plan.updatedAt.toIso8601String(),
     'notes': details.plan.notes,
+    if (details.plan.createdBy != null) 'created_by': details.plan.createdBy,
     'weeks': [
       for (final weekNumber in sortedWeekNumbers)
         {

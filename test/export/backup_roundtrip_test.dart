@@ -324,6 +324,17 @@ void main() {
     await tempRoot.delete(recursive: true);
   });
 
+  test("a plan's createdBy (e.g. a trainer's name) survives a full backup round-trip", () async {
+    await seedFullState();
+    await db.planDao.updatePlanCreatedBy('plan-1', 'Coach Erik');
+
+    final backup = await buildBackupJson(db);
+    await importBackupJson(backup, db);
+
+    final details = await db.planDao.getPlanDetails('plan-1');
+    expect(details!.plan.createdBy, 'Coach Erik');
+  });
+
   test('importBackupJson throws for an unsupported schema version', () async {
     await expectLater(
       importBackupJson({

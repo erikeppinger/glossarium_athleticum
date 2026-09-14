@@ -11,6 +11,7 @@ mixin _$SessionLogDaoMixin on DatabaseAccessor<AppDatabase> {
   $LoggedSetsTable get loggedSets => attachedDatabase.loggedSets;
   $PlanSessionDatesTable get planSessionDates =>
       attachedDatabase.planSessionDates;
+  $PlanExercisesTable get planExercises => attachedDatabase.planExercises;
   SessionLogDaoManager get managers => SessionLogDaoManager(this);
 }
 
@@ -32,4 +33,6 @@ class SessionLogDaoManager {
         _db.attachedDatabase,
         _db.planSessionDates,
       );
+  $$PlanExercisesTableTableManager get planExercises =>
+      $$PlanExercisesTableTableManager(_db.attachedDatabase, _db.planExercises);
 }

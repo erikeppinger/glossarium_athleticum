@@ -21,6 +21,7 @@ import '../../security/backup_encryption.dart';
 import '../history/history_screen.dart';
 import '../settings/app_preferences.dart';
 import '../settings/backup_dialogs.dart';
+import '../shared/exercise_export_flow.dart';
 import '../shared/muscle_area_stripe.dart';
 import '../tools/plate_calculator_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
@@ -198,7 +199,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.folder_outlined),
-                tooltip: 'Manage libraries',
+                tooltip: 'Manage libraries & blocks',
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => const LibraryManagementScreen(),
@@ -618,59 +619,18 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
     }
   }
 
-  /// Opens the export-action sheet for whatever the user has checked so
-  /// far in selection mode, then hands the chosen action + that exact
-  /// list to [_handleExportAction] via [exercisesOverride] - `buildLibraryJson`
-  /// already supports an arbitrary subset (see its own doc comment for the
-  /// "manage libraries" screen's whole-group use of the same parameter);
-  /// this is the same mechanism at individual-exercise granularity. Unlike
-  /// the whole-library export, a selected exercise is included exactly as
-  /// picked regardless of `isCustom` - a built-in exercise the *recipient's*
-  /// install might be missing (an older seed database) is still worth
-  /// sending, and there's no technical reason to special-case it out the
-  /// way the default "export everything" already deliberately does.
+  /// Hands whatever the user has checked so far in selection mode to the
+  /// same export sheet the exercise detail screen's own share action uses
+  /// (see exercise_export_flow.dart) - unlike the whole-library export
+  /// below, a selected exercise is included exactly as picked regardless
+  /// of `isCustom`: a built-in exercise the *recipient's* install might be
+  /// missing (an older seed database) is still worth sending, and there's
+  /// no technical reason to special-case it out the way the default
+  /// "export everything" already deliberately does.
   Future<void> _showSelectedExportMenu(
     BuildContext context,
     WidgetRef ref,
   ) async {
-    final action = await showModalBottomSheet<_LibraryExportAction>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.share_outlined),
-              title: const Text('Share (.json)'),
-              onTap: () =>
-                  Navigator.of(context).pop(_LibraryExportAction.shareJson),
-            ),
-            ListTile(
-              leading: const Icon(Icons.lock_outline),
-              title: const Text('Share encrypted (.tlibrary)'),
-              onTap: () => Navigator.of(
-                context,
-              ).pop(_LibraryExportAction.shareEncrypted),
-            ),
-            ListTile(
-              leading: const Icon(Icons.save_alt),
-              title: const Text('Save (.json)'),
-              onTap: () =>
-                  Navigator.of(context).pop(_LibraryExportAction.saveJson),
-            ),
-            ListTile(
-              leading: const Icon(Icons.lock_outline),
-              title: const Text('Save encrypted (.tlibrary)'),
-              onTap: () => Navigator.of(
-                context,
-              ).pop(_LibraryExportAction.saveEncrypted),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (action == null || !context.mounted) return;
-
     final allExercises =
         ref.read(filteredExercisesProvider).valueOrNull ?? const <Exercise>[];
     final selected = allExercises
@@ -678,30 +638,23 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
         .toList();
     if (selected.isEmpty) return;
 
-    await _handleExportAction(context, ref, action, exercisesOverride: selected);
-    if (!mounted) return;
+    final actionTaken = await showExerciseExportSheet(context, ref, selected);
+    if (!mounted || !actionTaken) return;
     _cancelSelection();
   }
 
   Future<void> _handleExportAction(
     BuildContext context,
     WidgetRef ref,
-    _LibraryExportAction action, {
-    List<Exercise>? exercisesOverride,
-  }) async {
+    _LibraryExportAction action,
+  ) async {
     final db = ref.read(appDatabaseProvider);
-    final json = await buildLibraryJson(db, exercisesOverride: exercisesOverride);
+    final json = await buildLibraryJson(db);
     if (!context.mounted) return;
     final plainJson = jsonEncode(json);
 
-    final fileNameBase = exercisesOverride == null
-        ? 'exercise_library'
-        : _selectionFileNameBase(exercisesOverride);
-    final shareText = exercisesOverride == null
-        ? 'Exercise library'
-        : exercisesOverride.length == 1
-        ? exercisesOverride.single.name
-        : '${exercisesOverride.length} exercises';
+    const fileNameBase = 'exercise_library';
+    const shareText = 'Exercise library';
 
     final String contents;
     final String fileName;
@@ -746,21 +699,6 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
         ShareParams(files: [XFile(file.path)], text: shareText),
       );
     }
-  }
-
-  /// A filename that says what's actually in the file rather than the
-  /// generic "exercise_library" name a whole-library export uses - "bench_
-  /// press" for one exercise, or a plain "exercises_selection" for several
-  /// (concatenating every name would get unwieldy past two or three).
-  String _selectionFileNameBase(List<Exercise> exercises) {
-    if (exercises.length == 1) {
-      final slug = exercises.single.name
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-          .replaceAll(RegExp(r'^_+|_+$'), '');
-      return slug.isEmpty ? 'exercise' : slug;
-    }
-    return 'exercises_selection';
   }
 }
 

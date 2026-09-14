@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../data/daos/session_log_dao.dart' show RepsHistoryEntry;
 import '../../logic/chart_axis.dart';
 import '../../logic/one_rep_max.dart';
 import '../../logic/progression.dart';
@@ -23,6 +24,13 @@ class HistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final historyAsync = ref.watch(exerciseProgressionHistoryProvider(exerciseId));
+    // Only actually read when the weight-based history above turns out
+    // empty (see below) - a bodyweight/band/Time-type exercise (e.g. Hip
+    // Circles) never has weight-based history at all, and used to just show
+    // "No logged sets yet for this exercise" even when it had been logged
+    // plenty of times, since [exerciseProgressionHistoryProvider] only ever
+    // sees weight-bearing sets.
+    final repsOnlyAsync = ref.watch(repsOnlyHistoryProvider(exerciseId));
     final estimatedOneRepMax = ref
         .watch(estimatedOneRepMaxProvider(exerciseId))
         .valueOrNull;
@@ -34,8 +42,17 @@ class HistoryScreen extends ConsumerWidget {
       body: historyAsync.when(
         data: (history) {
           if (history.isEmpty) {
-            return const Center(
-              child: Text('No logged sets yet for this exercise.'),
+            return repsOnlyAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(child: Text('Error: $error')),
+              data: (repsHistory) {
+                if (repsHistory.isEmpty) {
+                  return const Center(
+                    child: Text('No logged sets yet for this exercise.'),
+                  );
+                }
+                return _RepsOnlyHistory(history: repsHistory);
+              },
             );
           }
           final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
@@ -228,6 +245,98 @@ class HistoryScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The reps-over-time fallback shown instead of [HistoryScreen]'s normal
+/// weight-based view for an exercise that has never logged a weight
+/// (bodyweight/band/Time-type, e.g. Hip Circles) - no 1RM estimate and no
+/// auto-progression suggestion here, since both are genuinely weight-based
+/// math (see `lib/logic/one_rep_max.dart`/`lib/logic/progression.dart`), just
+/// the trend and session list a weight-based exercise gets, reduced to total
+/// reps per session (see `RepsHistoryEntry`'s own doc comment for why total
+/// rather than a single "top" set - there's no weight axis to pick one by).
+class _RepsOnlyHistory extends StatelessWidget {
+  final List<RepsHistoryEntry> history;
+
+  const _RepsOnlyHistory({required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...history]..sort((a, b) => a.date.compareTo(b.date));
+    final maxReps = sorted
+        .map((e) => e.totalReps)
+        .reduce((a, b) => a > b ? a : b)
+        .toDouble();
+    final axis = niceAxis(maxReps);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          'Reps over time',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Semantics(
+          label:
+              'Reps over time chart. Latest: ${sorted.last.totalReps} reps. '
+              'Highest: ${maxReps.toInt()} reps.',
+          child: ExcludeSemantics(
+            child: SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: axis.max,
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: axis.interval,
+                        reservedSize: 40,
+                      ),
+                    ),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: [
+                        for (var i = 0; i < sorted.length; i++)
+                          FlSpot(i.toDouble(), sorted[i].totalReps.toDouble()),
+                      ],
+                      isCurved: false,
+                      dotData: const FlDotData(show: true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text('Sessions', style: Theme.of(context).textTheme.titleMedium),
+        for (final entry in sorted.reversed)
+          ListTile(
+            title: Text(
+              '${entry.totalReps} rep${entry.totalReps == 1 ? '' : 's'}'
+              ' (${entry.setCount} set${entry.setCount == 1 ? '' : 's'})',
+            ),
+            subtitle: Text(DateFormat.yMMMd().format(entry.date)),
+            trailing: entry.totalReps == maxReps.toInt()
+                ? const Icon(Icons.emoji_events, color: Colors.amber)
+                : null,
+          ),
+      ],
     );
   }
 }

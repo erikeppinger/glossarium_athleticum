@@ -765,7 +765,10 @@ class SettingsScreen extends ConsumerWidget {
     if (passphrase == null || passphrase.isEmpty) return;
 
     final db = ref.read(appDatabaseProvider);
-    final backupJson = await buildBackupJson(db);
+    final backupJson = await buildBackupJson(
+      db,
+      attachmentsDirectory: await getAttachmentsDirectory(),
+    );
     final envelope = await encryptBackup(jsonEncode(backupJson), passphrase);
 
     final fileName =
@@ -818,7 +821,11 @@ class SettingsScreen extends ConsumerWidget {
     try {
       final decrypted = await decryptBackup(envelope, passphrase);
       final backupJson = jsonDecode(decrypted) as Map<String, dynamic>;
-      await importBackupJson(backupJson, db);
+      await importBackupJson(
+        backupJson,
+        db,
+        attachmentsDirectory: await getAttachmentsDirectory(),
+      );
       // The exercise library screen's providers are one-shot Futures, not
       // reactive DB streams, so they don't notice a restore's direct writes
       // on their own.

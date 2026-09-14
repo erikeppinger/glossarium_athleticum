@@ -2,11 +2,13 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'daos/block_dao.dart';
 import 'daos/body_measurement_dao.dart';
 import 'daos/exercise_dao.dart';
 import 'daos/maintenance_dao.dart';
 import 'daos/plan_dao.dart';
 import 'daos/session_log_dao.dart';
+import 'tables/blocks_table.dart';
 import 'tables/body_measurements_table.dart';
 import 'tables/exercises_table.dart';
 import 'tables/plans_table.dart';
@@ -24,6 +26,8 @@ part 'app_database.g.dart';
     SessionLogs,
     LoggedSets,
     BodyMeasurements,
+    Blocks,
+    BlockExercises,
   ],
   daos: [
     ExerciseDao,
@@ -31,6 +35,7 @@ part 'app_database.g.dart';
     SessionLogDao,
     MaintenanceDao,
     BodyMeasurementDao,
+    BlockDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -38,7 +43,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -139,6 +144,18 @@ class AppDatabase extends _$AppDatabase {
         // that can't conflict with each other.
         await m.addColumn(exercises, exercises.isFavorite);
         await m.addColumn(planExercises, planExercises.supersetGroupId);
+      }
+      if (from < 14) {
+        // Reusable exercise "blocks" (e.g. a warm-up group reused across
+        // different sessions/plans) - two new tables, nothing existing
+        // changes shape.
+        await m.createTable(blocks);
+        await m.createTable(blockExercises);
+      }
+      if (from < 15) {
+        // Plan-level authorship (e.g. a trainer's name), for a plan handed
+        // off as a file to a client - see Plans.createdBy's own doc comment.
+        await m.addColumn(plans, plans.createdBy);
       }
     },
   );

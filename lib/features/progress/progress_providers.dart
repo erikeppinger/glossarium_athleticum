@@ -45,6 +45,16 @@ final exerciseProgressionHistoryProvider =
       return db.sessionLogDao.getProgressionHistory(exerciseId);
     });
 
+/// One exercise's reps-only history (see `SessionLogDao.getRepsOnlyHistory`)
+/// - the no-weight counterpart to [exerciseProgressionHistoryProvider],
+/// backing the History screen's fallback view for a bodyweight/band/
+/// Time-type exercise that has never logged a weight.
+final repsOnlyHistoryProvider =
+    FutureProvider.family<List<RepsHistoryEntry>, String>((ref, exerciseId) {
+      final db = ref.watch(appDatabaseProvider);
+      return db.sessionLogDao.getRepsOnlyHistory(exerciseId);
+    });
+
 /// Derived from [exerciseProgressionHistoryProvider] via `.future` rather
 /// than its own DAO query - stays fresh automatically whenever that
 /// provider is invalidated (see [invalidateProgressProviders] below), so
@@ -95,4 +105,5 @@ void invalidateProgressProviders(WidgetRef ref) {
   ref.invalidate(currentStreakProvider);
   ref.invalidate(longestStreakProvider);
   ref.invalidate(exerciseProgressionHistoryProvider);
+  ref.invalidate(repsOnlyHistoryProvider);
 }
