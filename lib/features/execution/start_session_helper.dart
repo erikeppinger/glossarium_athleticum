@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/daos/plan_dao.dart';
 import '../calendar/calendar_screen.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../plans/plan_providers.dart';
@@ -86,6 +88,65 @@ Future<void> startSessionWithMoveToTodayPrompt(
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (context) => ExecutionScreen(planSessionId: session.id),
+    ),
+  );
+}
+
+/// "Skip straight to logging" for one specific exercise picked outside any
+/// plan - creates a throwaway single-session plan (never surfaced as a real
+/// plan anywhere else) via `PlanDao.createPlan()` and jumps directly into
+/// `ExecutionScreen` for it. Originated on `exercise_detail_screen.dart`'s
+/// "Start now" button (per its own doc comment, reusing
+/// `random_workout_screen.dart`'s original version of this same trick) and
+/// extracted here once `today_screen.dart`'s own quick-start action became a
+/// third user - copy this pattern for any future "skip straight to logging"
+/// shortcut rather than duplicating it a fourth time.
+///
+/// Deliberately skips `startSessionWithMoveToTodayPrompt`'s first-session
+/// prompts (body tracking, plan reports) - both are keyed to a real ongoing
+/// plan and would be confusing noise in front of a session that exists only
+/// to log a couple of sets right now.
+Future<void> startNowWithExercise(
+  BuildContext context,
+  WidgetRef ref,
+  Exercise exercise,
+) async {
+  final db = ref.read(appDatabaseProvider);
+  const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final now = DateTime.now();
+  final planId = const Uuid().v4();
+  await db.planDao.createPlan(
+    id: planId,
+    name:
+        'Quick: ${exercise.name} '
+        '${MaterialLocalizations.of(context).formatMediumDate(now)}',
+    sessions: [
+      PlanSessionInput(
+        weekNumber: 1,
+        day: weekdayNames[now.weekday - 1],
+        sessionName: exercise.name,
+        exercises: [
+          PlanExerciseInput(
+            order: 1,
+            exerciseId: exercise.id,
+            exerciseName: exercise.name,
+            sets: 3,
+            reps: '8-10',
+          ),
+        ],
+      ),
+    ],
+  );
+  if (!context.mounted) return;
+
+  final details = await db.planDao.getPlanDetails(planId);
+  final sessionId = details?.sessions.firstOrNull?.session.id;
+  if (sessionId == null || !context.mounted) return;
+
+  ref.invalidate(plansListProvider);
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (context) => ExecutionScreen(planSessionId: sessionId),
     ),
   );
 }

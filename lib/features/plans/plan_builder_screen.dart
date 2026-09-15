@@ -6,6 +6,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../logic/block_info.dart';
 import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
@@ -406,6 +407,16 @@ class _SessionDraftCard extends StatelessWidget {
                   onPressed: onInsertBlock,
                   icon: const Icon(Icons.dynamic_feed_outlined),
                   label: const Text('Insert block'),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline, size: 18),
+                  tooltip: 'What is a block?',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => showInfoDialog(
+                    context,
+                    title: 'What is a block?',
+                    content: blockExplanationNote,
+                  ),
                 ),
                 if (session.exercises.length >= 2) ...[
                   TextButton.icon(

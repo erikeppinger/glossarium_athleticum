@@ -10,6 +10,7 @@ import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart' show loggedPlanSessionIdsProvider;
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
+import '../shared/numeric_input_formatters.dart';
 
 final workoutHistoryProvider = FutureProvider<List<CompletedWorkoutSummary>>((
   ref,
@@ -224,6 +225,7 @@ class CompletedWorkoutScreen extends ConsumerWidget {
                             setNumber: i + 1,
                             set: exercise.sets[i],
                             unit: unit,
+                            onEdited: () => _onSetEdited(ref),
                           ),
                       ],
                     ),
@@ -262,6 +264,25 @@ class CompletedWorkoutScreen extends ConsumerWidget {
 
     final db = ref.read(appDatabaseProvider);
     await db.sessionLogDao.deleteSessionLog(logId);
+    _invalidateAfterChange(ref);
+
+    if (context.mounted) Navigator.of(context).pop();
+  }
+
+  /// Reported live (2026-09-16): once a session was finished, correcting a
+  /// mistyped value (e.g. the wrong rep count) meant deleting the whole
+  /// workout and redoing it - there was no way to fix just one set. A
+  /// tapped set now opens [_EditSetDialog]; this refreshes everything an
+  /// edited weight/reps could affect (this workout's own detail view via
+  /// [completedWorkoutProvider], the history list's volume/PR summary, and
+  /// Progress) - the same invalidation set [_delete] already needed, since
+  /// both change what a logged set contributes to.
+  void _onSetEdited(WidgetRef ref) {
+    ref.invalidate(completedWorkoutProvider(logId));
+    _invalidateAfterChange(ref);
+  }
+
+  void _invalidateAfterChange(WidgetRef ref) {
     ref.invalidate(workoutHistoryProvider);
     // Also invalidates every period-scoped list this same log could be
     // showing in (the Progress tab's activity-chip drill-down, a custom
@@ -272,24 +293,24 @@ class CompletedWorkoutScreen extends ConsumerWidget {
     ref.invalidate(workoutHistoryInRangeProvider);
     ref.invalidate(loggedPlanSessionIdsProvider);
     invalidateProgressProviders(ref);
-
-    if (context.mounted) Navigator.of(context).pop();
   }
 }
 
-class _SetRow extends StatelessWidget {
+class _SetRow extends ConsumerWidget {
   final int setNumber;
   final LoggedSet set;
   final WeightUnit unit;
+  final VoidCallback onEdited;
 
   const _SetRow({
     required this.setNumber,
     required this.set,
     required this.unit,
+    required this.onEdited,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final parts = <String>[
       if (set.weight != null) formatWeightInUnit(set.weight!, unit),
       if (set.reps != null) '${set.reps} reps',
@@ -298,27 +319,161 @@ class _SetRow extends StatelessWidget {
       if (set.rpe != null) 'RPE ${set.rpe}',
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
+    return InkWell(
+      onTap: () => _edit(context, ref),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 26,
+              child: Text(
+                '$setNumber',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            Expanded(
+              child: Text(
+                parts.isEmpty ? 'Logged' : parts.join(' × '),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            if (set.isPr)
+              Icon(Icons.emoji_events, size: 18, color: Colors.amber.shade700),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.edit_outlined,
+              size: 16,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref) async {
+    final result = await showDialog<_EditedSetValues>(
+      context: context,
+      builder: (context) => _EditSetDialog(set: set, unit: unit),
+    );
+    if (result == null) return;
+
+    final db = ref.read(appDatabaseProvider);
+    await db.sessionLogDao.updateLoggedSet(
+      id: set.id,
+      reps: result.reps,
+      weight: result.weight == null ? null : displayToKg(result.weight!, unit),
+      rpe: result.rpe,
+    );
+    onEdited();
+  }
+}
+
+class _EditedSetValues {
+  final int? reps;
+  final double? weight;
+  final double? rpe;
+
+  const _EditedSetValues({this.reps, this.weight, this.rpe});
+}
+
+/// Owns its own controllers (disposed in its own `State.dispose()`) rather
+/// than ones created inline and disposed after `showDialog` resolves - see
+/// this project's own documented dialog-disposal convention for why that
+/// races the dialog's exit transition. Deliberately doesn't touch
+/// duration/distance (timed or distance-measured sets) - those come from
+/// ad-hoc activity logging or GPX import, which already have their own
+/// edit path; this covers the reps/weight/RPE case a structured workout's
+/// sets actually need corrected.
+class _EditSetDialog extends StatefulWidget {
+  final LoggedSet set;
+  final WeightUnit unit;
+
+  const _EditSetDialog({required this.set, required this.unit});
+
+  @override
+  State<_EditSetDialog> createState() => _EditSetDialogState();
+}
+
+class _EditSetDialogState extends State<_EditSetDialog> {
+  late final TextEditingController _repsController;
+  late final TextEditingController _weightController;
+  late final TextEditingController _rpeController;
+
+  @override
+  void initState() {
+    super.initState();
+    final set = widget.set;
+    _repsController = TextEditingController(
+      text: set.reps?.toString() ?? '',
+    );
+    _weightController = TextEditingController(
+      text: set.weight == null
+          ? ''
+          : formatWeightNumber(kgToDisplay(set.weight!, widget.unit)),
+    );
+    _rpeController = TextEditingController(text: set.rpe?.toString() ?? '');
+  }
+
+  @override
+  void dispose() {
+    _repsController.dispose();
+    _weightController.dispose();
+    _rpeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unitLabel = widget.unit == WeightUnit.lbs ? 'lbs' : 'kg';
+    return AlertDialog(
+      title: const Text('Edit set'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: 26,
-            child: Text(
-              '$setNumber',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+          TextField(
+            controller: _repsController,
+            keyboardType: TextInputType.number,
+            inputFormatters: integerInputFormatters,
+            decoration: const InputDecoration(labelText: 'Reps'),
           ),
-          Expanded(
-            child: Text(
-              parts.isEmpty ? 'Logged' : parts.join(' × '),
-              style: Theme.of(context).textTheme.bodyMedium,
+          const SizedBox(height: 12),
+          TextField(
+            controller: _weightController,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
             ),
+            inputFormatters: decimalInputFormatters,
+            decoration: InputDecoration(labelText: 'Weight ($unitLabel)'),
           ),
-          if (set.isPr)
-            Icon(Icons.emoji_events, size: 18, color: Colors.amber.shade700),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _rpeController,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            inputFormatters: decimalInputFormatters,
+            decoration: const InputDecoration(labelText: 'RPE'),
+          ),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(
+            _EditedSetValues(
+              reps: int.tryParse(_repsController.text.trim()),
+              weight: double.tryParse(_weightController.text.trim()),
+              rpe: double.tryParse(_rpeController.text.trim()),
+            ),
+          ),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

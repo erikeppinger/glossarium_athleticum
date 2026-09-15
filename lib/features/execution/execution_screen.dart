@@ -934,6 +934,32 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       if (!mounted) return;
     }
 
+    // Requested directly (2026-09-16): there was previously no way to look
+    // over what's about to be saved before it's committed for good - the
+    // note prompt right after this was a hard "Skip or Save" commit point
+    // with no way back. Skipped when nothing was actually logged (matches
+    // the `entries.isEmpty` branch below, which has nothing to review
+    // either). Edits made here write straight into the same
+    // `_LoggedSetForm` controllers `_loggedEntries` reads from below - see
+    // `_SessionReviewScreen`'s own doc comment for why that's deliberate,
+    // not an oversight.
+    final hasAnyLoggedSet = _session.formsByExerciseRowId.values.any(
+      (forms) => forms.any((f) => f.logged),
+    );
+    if (hasAnyLoggedSet) {
+      final confirmed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (context) => _SessionReviewScreen(
+            details: details,
+            session: _session,
+            unit: unit,
+          ),
+        ),
+      );
+      if (confirmed != true) return;
+      if (!mounted) return;
+    }
+
     setState(() => _session.finishing = true);
     final db = ref.read(appDatabaseProvider);
     final entries = _loggedEntries(details, unit);
@@ -997,6 +1023,171 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       builder: (context) => const _NotePromptDialog(),
     );
     return (note == null || note.isEmpty) ? null : note;
+  }
+}
+
+/// Shown between "Finish session" and the note prompt, once there's at
+/// least one logged set to review. Deliberately edits the *same*
+/// `_LoggedSetForm` controllers the exercise list itself uses (not copies) -
+/// `_loggedEntriesFor` reads live text at the moment of the actual DB
+/// write regardless of which screen last touched it, so an edit made here
+/// is picked up correctly with no extra plumbing. This also means an edit
+/// survives tapping "Back" rather than being rolled back - treated as a
+/// deliberate choice (this is still a draft until the real "Confirm &
+/// finish" below, so keeping edits reads more like editing a draft than a
+/// transaction that needs an explicit rollback) rather than an oversight.
+class _SessionReviewScreen extends StatefulWidget {
+  final PlanSessionDetails details;
+  final _InProgressSession session;
+  final WeightUnit unit;
+
+  const _SessionReviewScreen({
+    required this.details,
+    required this.session,
+    required this.unit,
+  });
+
+  @override
+  State<_SessionReviewScreen> createState() => _SessionReviewScreenState();
+}
+
+class _SessionReviewScreenState extends State<_SessionReviewScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final exercises = _allExercisesFor(widget.session, widget.details);
+    final unitLabel = widget.unit == WeightUnit.lbs ? 'lbs' : 'kg';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Review before finishing')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Double-check what you logged - tap any field to fix it before '
+            'it\'s saved for good.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          for (final exercise in exercises)
+            if (exercise.exerciseId != null)
+              _buildExerciseCard(context, exercise, unitLabel),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Back'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Confirm & finish'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExerciseCard(
+    BuildContext context,
+    PlanExercise exercise,
+    String unitLabel,
+  ) {
+    final forms = widget.session.formsByExerciseRowId[exercise.id] ?? [];
+    final loggedForms = [
+      for (var i = 0; i < forms.length; i++)
+        if (forms[i].logged) (setNumber: i + 1, form: forms[i]),
+    ];
+    if (loggedForms.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              exercise.exerciseName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            for (final entry in loggedForms)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 22,
+                      child: Text(
+                        '${entry.setNumber}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: entry.form.reps,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: integerInputFormatters,
+                        decoration: const InputDecoration(
+                          labelText: 'Reps',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: entry.form.weight,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: decimalInputFormatters,
+                        decoration: InputDecoration(
+                          labelText: 'Weight ($unitLabel)',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: entry.form.rpe,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: decimalInputFormatters,
+                        decoration: const InputDecoration(
+                          labelText: 'RPE',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    if (entry.form.isPr)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child: Icon(
+                          Icons.emoji_events,
+                          size: 18,
+                          color: Colors.amber,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

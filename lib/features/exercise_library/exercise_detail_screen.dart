@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
-import '../../data/daos/plan_dao.dart';
 import '../../data/local_storage.dart';
 import '../../logic/exercise_images.dart';
-import '../execution/execution_screen.dart';
+import '../execution/start_session_helper.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
-import '../plans/plan_providers.dart';
+import '../plans/plan_providers.dart' show allExercisesForMatchingProvider;
 import '../history/history_screen.dart';
 import '../shared/attachment_image.dart';
 import '../shared/exercise_export_flow.dart';
@@ -189,7 +187,7 @@ class ExerciseDetailScreen extends ConsumerWidget {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Start now'),
-                  onPressed: () => _startNow(context, ref),
+                  onPressed: () => startNowWithExercise(context, ref, exercise),
                 ),
               ),
             ],
@@ -273,55 +271,6 @@ class ExerciseDetailScreen extends ConsumerWidget {
   /// tracking, trainer reports) - both are keyed to a real, ongoing plan,
   /// and would be confusing noise in front of a session that only exists to
   /// log a couple of sets right now.
-  Future<void> _startNow(BuildContext context, WidgetRef ref) async {
-    final db = ref.read(appDatabaseProvider);
-    const weekdayNames = [
-      'Mon',
-      'Tue',
-      'Wed',
-      'Thu',
-      'Fri',
-      'Sat',
-      'Sun',
-    ];
-    final now = DateTime.now();
-    final planId = const Uuid().v4();
-    await db.planDao.createPlan(
-      id: planId,
-      name:
-          'Quick: ${exercise.name} '
-          '${MaterialLocalizations.of(context).formatMediumDate(now)}',
-      sessions: [
-        PlanSessionInput(
-          weekNumber: 1,
-          day: weekdayNames[now.weekday - 1],
-          sessionName: exercise.name,
-          exercises: [
-            PlanExerciseInput(
-              order: 1,
-              exerciseId: exercise.id,
-              exerciseName: exercise.name,
-              sets: 3,
-              reps: '8-10',
-            ),
-          ],
-        ),
-      ],
-    );
-    if (!context.mounted) return;
-
-    final details = await db.planDao.getPlanDetails(planId);
-    final sessionId = details?.sessions.firstOrNull?.session.id;
-    if (sessionId == null || !context.mounted) return;
-
-    ref.invalidate(plansListProvider);
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ExecutionScreen(planSessionId: sessionId),
-      ),
-    );
-  }
-
   Future<void> _openVideo(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
     final launched =

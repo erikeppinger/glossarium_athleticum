@@ -86,6 +86,8 @@ void main() {
 
       await tester.tap(find.text('Log & finish'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm & finish'));
+      await tester.pumpAndSettle();
 
       // Finishing now prompts for an optional note before writing the log.
       await tester.tap(

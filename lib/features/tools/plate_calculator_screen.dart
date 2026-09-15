@@ -246,6 +246,15 @@ class _PlateCalculatorFormState
               for (final size in customSelected)
                 InputChip(
                   label: Text('${formatPlateWeight(size)}$unitLabel'),
+                  // A custom plate is always "on" the moment it's added -
+                  // the only way off is deleting it outright, there's no
+                  // separate toggle state the way the common-menu
+                  // FilterChips have. Reported live (2026-09-15): without
+                  // `selected: true`, this chip renders in InputChip's
+                  // plain/unfilled default look, reading as "not chosen"
+                  // even though it's already included in every calculation
+                  // - the visual state didn't match the actual state.
+                  selected: true,
                   onDeleted: () =>
                       _togglePlate(unit, availablePlates, size, false),
                 ),

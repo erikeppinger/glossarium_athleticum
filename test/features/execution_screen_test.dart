@@ -84,6 +84,8 @@ void main() {
 
       await tester.tap(find.text('Finish session'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm & finish'));
+      await tester.pumpAndSettle();
       // Finishing now prompts for an optional note before writing the log -
       // scoped to the dialog since the rest-timer banner's own "Skip" button
       // is still on screen underneath it.

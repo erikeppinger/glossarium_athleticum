@@ -244,6 +244,8 @@ void main() {
       // becoming part of the plan, not that Bench Press stays unlogged.
       await tester.tap(find.text('Log & finish'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm & finish'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),

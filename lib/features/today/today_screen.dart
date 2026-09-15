@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/app_database.dart' show Exercise;
 import '../../home_screen.dart' show homeTabIndexProvider, settingsAppBarAction;
 import '../../logic/progression.dart' show formatWeight;
 import '../../logic/summary_period.dart';
 import '../calendar/log_activity_flow.dart';
 import '../execution/rest_timer_controller.dart' show activeInProgressSessionIdProvider;
 import '../execution/start_session_helper.dart';
+import '../exercise_library/exercise_picker_screen.dart';
 import '../plans/random_workout_screen.dart';
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
@@ -174,6 +176,30 @@ class TodayScreen extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              // Requested directly (2026-09-16): the only ways to actually
+              // start a workout from here were a generated random one or
+              // switching tabs to Plans - no direct "just let me log
+              // something now" path existed on the app's own default
+              // landing screen. Reuses the exact "skip straight to
+              // logging" trick already established by
+              // exercise_detail_screen.dart's own "Start now" (a
+              // throwaway single-session plan, never surfaced as a real
+              // plan) - just reached via the exercise picker instead of
+              // already being on that exercise's own detail page.
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final exercise = await Navigator.of(context)
+                      .push<Exercise>(
+                        MaterialPageRoute(
+                          builder: (context) => const ExercisePickerScreen(),
+                        ),
+                      );
+                  if (exercise == null || !context.mounted) return;
+                  await startNowWithExercise(context, ref, exercise);
+                },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Start a session'),
+              ),
               OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(

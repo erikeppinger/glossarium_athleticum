@@ -5,6 +5,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../logic/block_info.dart';
 import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
@@ -71,6 +72,15 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
       appBar: AppBar(
         title: const Text('Edit session'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'What is a block?',
+            onPressed: () => showInfoDialog(
+              context,
+              title: 'What is a block?',
+              content: blockExplanationNote,
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline),
             tooltip: 'What is a superset?',

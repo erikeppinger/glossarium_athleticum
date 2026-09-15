@@ -65,6 +65,81 @@ void main() {
     expect(sets[1].reps, 7);
   });
 
+  test(
+    'updateLoggedSet corrects a mistyped value without touching isPr',
+    () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(
+            exerciseId: 'EX_BP',
+            setNumber: 1,
+            reps: 8,
+            weight: 60,
+            isPr: true,
+          ),
+        ],
+      );
+      final before = await db.sessionLogDao.getLoggedSetsForSessionLog(
+        'log-1',
+      );
+
+      await db.sessionLogDao.updateLoggedSet(
+        id: before.single.id,
+        reps: 10,
+        weight: 62.5,
+        rpe: 8.5,
+      );
+
+      final after = await db.sessionLogDao.getLoggedSetsForSessionLog(
+        'log-1',
+      );
+      expect(after.single.reps, 10);
+      expect(after.single.weight, 62.5);
+      expect(after.single.rpe, 8.5);
+      // Deliberately unchanged - see updateLoggedSet's own doc comment on
+      // why retroactive PR recalculation is out of scope for this fix.
+      expect(after.single.isPr, isTrue);
+    },
+  );
+
+  test(
+    'updateLoggedSet can clear a field back to null',
+    () async {
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 20),
+        entries: const [
+          LoggedSetInput(
+            exerciseId: 'EX_BP',
+            setNumber: 1,
+            reps: 8,
+            weight: 60,
+            rpe: 9,
+          ),
+        ],
+      );
+      final before = await db.sessionLogDao.getLoggedSetsForSessionLog(
+        'log-1',
+      );
+
+      await db.sessionLogDao.updateLoggedSet(
+        id: before.single.id,
+        reps: 8,
+        weight: 60,
+        rpe: null,
+      );
+
+      final after = await db.sessionLogDao.getLoggedSetsForSessionLog(
+        'log-1',
+      );
+      expect(after.single.rpe, isNull);
+    },
+  );
+
   test('getLogsForPlanSession returns logs newest first', () async {
     await db.sessionLogDao.createSessionLog(
       id: 'log-1',

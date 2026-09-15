@@ -726,6 +726,32 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return result;
   }
 
+  /// Updates one already-logged set's reps/weight/rpe in place - a genuine
+  /// partial `update()`, never `insertOnConflictUpdate` (see this file's own
+  /// DAO convention on why). Closes a real gap: once a session was
+  /// finished, the only way to correct a mistyped value (e.g. the wrong rep
+  /// count) was deleting the entire workout and redoing it from scratch.
+  /// Deliberately never touches `isPr` - recomputing personal-record status
+  /// after an edit would mean re-evaluating every *later* session's own PR
+  /// too (a value that was a PR might no longer be after editing it down,
+  /// or a newly-higher one might newly qualify), which is out of scope for
+  /// a single-set correction. `null` for any parameter clears that column,
+  /// matching how the edit dialog treats an emptied field.
+  Future<void> updateLoggedSet({
+    required int id,
+    int? reps,
+    double? weight,
+    double? rpe,
+  }) {
+    return (update(loggedSets)..where((s) => s.id.equals(id))).write(
+      LoggedSetsCompanion(
+        reps: Value(reps),
+        weight: Value(weight),
+        rpe: Value(rpe),
+      ),
+    );
+  }
+
   /// Deletes one completed workout and its sets - children before parents,
   /// since this project's connections don't enforce foreign keys.
   Future<void> deleteSessionLog(String sessionLogId) {

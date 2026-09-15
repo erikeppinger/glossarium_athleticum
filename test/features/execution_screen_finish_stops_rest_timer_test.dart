@@ -95,6 +95,8 @@ void main() {
 
       await tester.tap(find.text('Finish session'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm & finish'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
