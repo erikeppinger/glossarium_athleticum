@@ -131,231 +131,225 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
               ],
             )
           : AppBar(
-        title: const Text('Exercise Library'),
-        actions: [settingsAppBarAction(context)],
-        // Previously all five of these (the four below, plus Settings) sat
-        // in `actions`, crowding the title down to "Exercise Libr..." and
-        // packing the icons tightly enough that the row looked broken -
-        // reported live (2026-09-09). Settings alone stays in `actions`
-        // (matching every other tab's app bar); the library-management
-        // actions move to their own row directly underneath instead of
-        // fighting the title for space.
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.add),
-                tooltip: 'Create exercise',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const CreateExerciseScreen(),
-                  ),
+              title: const Text('Exercise Library'),
+              actions: [settingsAppBarAction(context)],
+              // Previously all five of these (the four below, plus Settings) sat
+              // in `actions`, crowding the title down to "Exercise Libr..." and
+              // packing the icons tightly enough that the row looked broken -
+              // reported live (2026-09-09). Settings alone stays in `actions`
+              // (matching every other tab's app bar); the library-management
+              // actions move to their own row directly underneath instead of
+              // fighting the title for space.
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Create exercise',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const CreateExerciseScreen(),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.file_download_outlined),
+                      tooltip: 'Import library',
+                      onPressed: () => _showImportOptions(context, ref),
+                    ),
+                    PopupMenuButton<_LibraryExportAction>(
+                      icon: const Icon(Icons.file_upload_outlined),
+                      tooltip: 'Export library',
+                      onSelected: (action) {
+                        if (action == _LibraryExportAction.selectExercises) {
+                          setState(() => _selectingForExport = true);
+                          return;
+                        }
+                        _handleExportAction(context, ref, action);
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: _LibraryExportAction.shareJson,
+                          child: Text('Share library (.json)'),
+                        ),
+                        PopupMenuItem(
+                          value: _LibraryExportAction.shareEncrypted,
+                          child: Text('Share encrypted library (.tlibrary)'),
+                        ),
+                        PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: _LibraryExportAction.saveJson,
+                          child: Text('Save library (.json)'),
+                        ),
+                        PopupMenuItem(
+                          value: _LibraryExportAction.saveEncrypted,
+                          child: Text('Save encrypted library (.tlibrary)'),
+                        ),
+                        PopupMenuDivider(),
+                        // Reported live: exporting was all-or-nothing (this whole
+                        // library, or a whole named group in "Manage libraries") -
+                        // this is the "just these one or two exercises" path.
+                        PopupMenuItem(
+                          value: _LibraryExportAction.selectExercises,
+                          child: Text('Select exercises to export...'),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.folder_outlined),
+                      tooltip: 'Manage libraries & blocks',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const LibraryManagementScreen(),
+                        ),
+                      ),
+                    ),
+                    // Previously buried in the Plans tab's "New plan" bottom
+                    // sheet, grouped with ways to author a *plan* - reported live
+                    // (2026-09-10) as a confusing, easy-to-miss home for it: a
+                    // random workout is built from the exercise library, not
+                    // authored as a plan (even though it happens to save as one
+                    // under the hood via PlanDao.createPlan - see
+                    // random_workout_screen.dart). Belongs here instead.
+                    IconButton(
+                      icon: const Icon(Icons.shuffle),
+                      tooltip: 'Random workout',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const RandomWorkoutScreen(),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.calculate),
+                      tooltip: 'Plate calculator',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const PlateCalculatorScreen(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.file_download_outlined),
-                tooltip: 'Import library',
-                onPressed: () => _showImportOptions(context, ref),
-              ),
-              PopupMenuButton<_LibraryExportAction>(
-                icon: const Icon(Icons.file_upload_outlined),
-                tooltip: 'Export library',
-                onSelected: (action) {
-                  if (action == _LibraryExportAction.selectExercises) {
-                    setState(() => _selectingForExport = true);
-                    return;
-                  }
-                  _handleExportAction(context, ref, action);
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _LibraryExportAction.shareJson,
-                    child: Text('Share library (.json)'),
-                  ),
-                  PopupMenuItem(
-                    value: _LibraryExportAction.shareEncrypted,
-                    child: Text('Share encrypted library (.tlibrary)'),
-                  ),
-                  PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: _LibraryExportAction.saveJson,
-                    child: Text('Save library (.json)'),
-                  ),
-                  PopupMenuItem(
-                    value: _LibraryExportAction.saveEncrypted,
-                    child: Text('Save encrypted library (.tlibrary)'),
-                  ),
-                  PopupMenuDivider(),
-                  // Reported live: exporting was all-or-nothing (this whole
-                  // library, or a whole named group in "Manage libraries") -
-                  // this is the "just these one or two exercises" path.
-                  PopupMenuItem(
-                    value: _LibraryExportAction.selectExercises,
-                    child: Text('Select exercises to export...'),
-                  ),
-                ],
-              ),
-              IconButton(
-                icon: const Icon(Icons.folder_outlined),
-                tooltip: 'Manage libraries & blocks',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const LibraryManagementScreen(),
+            ),
+      // A plain Column here (search + filters + Expanded(ListView)) would
+      // overflow at a small enough window height - the search field and
+      // three filter rows are fixed-size siblings ahead of the Expanded
+      // list, and Expanded can't reclaim space its non-flexible siblings
+      // have already claimed. Confirmed live (2026-09-15) on a narrow
+      // Linux desktop window: a genuine "BOTTOM OVERFLOWED BY 58 PIXELS"
+      // error, not just a cosmetic clipping issue. CustomScrollView with
+      // SliverFillRemaining(hasScrollBody: true) for the list behaves
+      // identically to Expanded(ListView) whenever there's enough room
+      // (the common case), but degrades to "scroll to see the rest"
+      // instead of erroring when there isn't.
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                key: const Key('exerciseSearchField'),
+                decoration: InputDecoration(
+                  labelText: 'Search exercises',
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                  // Previously its own "Favorites only" chip in the filter
+                  // row below - reported live as sitting oddly on its own
+                  // whenever "My equipment" wasn't also showing (the common
+                  // case, since equipment is opt-in). A star here saves that
+                  // whole row instead.
+                  suffixIcon: IconButton(
+                    icon: Icon(favoritesOnly ? Icons.star : Icons.star_border),
+                    color: favoritesOnly
+                        ? Colors.amber.shade700
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    tooltip: favoritesOnly
+                        ? 'Show all exercises'
+                        : 'Show favorites only',
+                    onPressed: () =>
+                        ref
+                                .read(
+                                  exerciseFavoritesOnlyFilterProvider.notifier,
+                                )
+                                .state =
+                            !favoritesOnly,
                   ),
                 ),
+                onChanged: (value) =>
+                    ref.read(exerciseSearchQueryProvider.notifier).state =
+                        value,
               ),
-              // Previously buried in the Plans tab's "New plan" bottom
-              // sheet, grouped with ways to author a *plan* - reported live
-              // (2026-09-10) as a confusing, easy-to-miss home for it: a
-              // random workout is built from the exercise library, not
-              // authored as a plan (even though it happens to save as one
-              // under the hood via PlanDao.createPlan - see
-              // random_workout_screen.dart). Belongs here instead.
-              IconButton(
-                icon: const Icon(Icons.shuffle),
-                tooltip: 'Random workout',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const RandomWorkoutScreen(),
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.calculate),
-                tooltip: 'Plate calculator',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const PlateCalculatorScreen(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              key: const Key('exerciseSearchField'),
-              decoration: InputDecoration(
-                labelText: 'Search exercises',
-                prefixIcon: const Icon(Icons.search),
-                border: const OutlineInputBorder(),
-                // Previously its own "Favorites only" chip in the filter
-                // row below - reported live as sitting oddly on its own
-                // whenever "My equipment" wasn't also showing (the common
-                // case, since equipment is opt-in). A star here saves that
-                // whole row instead.
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    favoritesOnly ? Icons.star : Icons.star_border,
-                  ),
-                  color: favoritesOnly
-                      ? Colors.amber.shade700
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                  tooltip: favoritesOnly
-                      ? 'Show all exercises'
-                      : 'Show favorites only',
-                  onPressed: () => ref
-                      .read(exerciseFavoritesOnlyFilterProvider.notifier)
-                      .state = !favoritesOnly,
-                ),
-              ),
-              onChanged: (value) =>
-                  ref.read(exerciseSearchQueryProvider.notifier).state = value,
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: !_filtersExpanded
-                ? const SizedBox(width: double.infinity)
-                : Column(
-                    // The category/area/creator rows above are horizontally
-                    // scrolling ListViews, which fill the available width
-                    // regardless of alignment - but the "My equipment"/
-                    // "Favorites only" row below is a plain Wrap, which
-                    // shrink-wraps to its content. With no explicit
-                    // alignment here, Column's own default (center) left
-                    // that Wrap floating in the horizontal middle of the
-                    // screen instead of lining up with everything else,
-                    // most noticeably when only one of the two chips shows
-                    // (e.g. equipment not configured, so just "Favorites
-                    // only" appears alone) - reported live (2026-09-10).
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      categoriesAsync.when(
-                        data: (categories) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: SizedBox(
-                            height: 40,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              children: [
-                                _CategoryChip(
-                                  label: 'All',
-                                  selected: selectedCategories.isEmpty,
-                                  onSelected: () => ref
-                                      .read(exerciseCategoryFilterProvider.notifier)
-                                      .state = {},
-                                ),
-                                for (final category in categories)
+          SliverToBoxAdapter(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: !_filtersExpanded
+                  ? const SizedBox(width: double.infinity)
+                  : Column(
+                      // The category/area/creator rows above are horizontally
+                      // scrolling ListViews, which fill the available width
+                      // regardless of alignment - but the "My equipment"/
+                      // "Favorites only" row below is a plain Wrap, which
+                      // shrink-wraps to its content. With no explicit
+                      // alignment here, Column's own default (center) left
+                      // that Wrap floating in the horizontal middle of the
+                      // screen instead of lining up with everything else,
+                      // most noticeably when only one of the two chips shows
+                      // (e.g. equipment not configured, so just "Favorites
+                      // only" appears alone) - reported live (2026-09-10).
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        categoriesAsync.when(
+                          data: (categories) => Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: SizedBox(
+                              height: 40,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                children: [
                                   _CategoryChip(
-                                    label: category,
-                                    selected: selectedCategories.contains(category),
-                                    swatch: colorForCategoryValue(category, palette),
-                                    onSelected: () => _toggle(
-                                      ref,
-                                      exerciseCategoryFilterProvider,
-                                      category,
-                                    ),
+                                    label: 'All',
+                                    selected: selectedCategories.isEmpty,
+                                    onSelected: () =>
+                                        ref
+                                                .read(
+                                                  exerciseCategoryFilterProvider
+                                                      .notifier,
+                                                )
+                                                .state =
+                                            {},
                                   ),
-                              ],
+                                  for (final category in categories)
+                                    _CategoryChip(
+                                      label: category,
+                                      selected: selectedCategories.contains(
+                                        category,
+                                      ),
+                                      swatch: colorForCategoryValue(
+                                        category,
+                                        palette,
+                                      ),
+                                      onSelected: () => _toggle(
+                                        ref,
+                                        exerciseCategoryFilterProvider,
+                                        category,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, _) => const SizedBox.shrink(),
                         ),
-                        loading: () => const SizedBox.shrink(),
-                        error: (_, _) => const SizedBox.shrink(),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: SizedBox(
-                            height: 40,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              children: [
-                                _CategoryChip(
-                                  label: 'All areas',
-                                  selected: selectedAreas.isEmpty,
-                                  onSelected: () => ref
-                                      .read(exerciseAreaFilterProvider.notifier)
-                                      .state = {},
-                                ),
-                                for (final area in MuscleArea.values)
-                                  _CategoryChip(
-                                    label: area.label,
-                                    selected: selectedAreas.contains(area),
-                                    swatch: colorForArea(area, palette),
-                                    onSelected: () => _toggle(
-                                      ref,
-                                      exerciseAreaFilterProvider,
-                                      area,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      creatorOptionsAsync.when(
-                        data: (options) => Padding(
+                        Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -365,101 +359,163 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                                 scrollDirection: Axis.horizontal,
                                 children: [
                                   _CategoryChip(
-                                    label: 'All creators',
-                                    selected: selectedCreator == null,
-                                    compact: true,
-                                    onSelected: () => ref
-                                        .read(exerciseCreatorFilterProvider.notifier)
-                                        .state = null,
+                                    label: 'All areas',
+                                    selected: selectedAreas.isEmpty,
+                                    onSelected: () =>
+                                        ref
+                                                .read(
+                                                  exerciseAreaFilterProvider
+                                                      .notifier,
+                                                )
+                                                .state =
+                                            {},
                                   ),
-                                  _CategoryChip(
-                                    // Not "Own" - this bucket is "isCustom
-                                    // with no author/plan attached", which
-                                    // includes bulk spreadsheet imports as
-                                    // often as anything hand-typed in the
-                                    // app.
-                                    label: 'Not in library',
-                                    selected: selectedCreator == ownExercisesFilter,
-                                    compact: true,
-                                    onSelected: () => ref
-                                        .read(exerciseCreatorFilterProvider.notifier)
-                                        .state = ownExercisesFilter,
-                                  ),
-                                  for (final option in options)
+                                  for (final area in MuscleArea.values)
                                     _CategoryChip(
-                                      label: option.startsWith('plan:')
-                                          ? 'Plan: ${option.substring(5)}'
-                                          : 'By: ${option.substring(7)}',
-                                      selected: selectedCreator == option,
-                                      compact: true,
-                                      onSelected: () => ref
-                                          .read(exerciseCreatorFilterProvider.notifier)
-                                          .state = option,
+                                      label: area.label,
+                                      selected: selectedAreas.contains(area),
+                                      swatch: colorForArea(area, palette),
+                                      onSelected: () => _toggle(
+                                        ref,
+                                        exerciseAreaFilterProvider,
+                                        area,
+                                      ),
                                     ),
                                 ],
                               ),
                             ),
                           ),
                         ),
-                        loading: () => const SizedBox.shrink(),
-                        error: (_, _) => const SizedBox.shrink(),
-                      ),
-                      // Hidden until equipment has actually been configured
-                      // (Settings or onboarding) *and* the library still has
-                      // exercises tagged with real equipment info right now -
-                      // same "opt-in feature invisible until there's data for
-                      // it" shape as the body-tracking card. The second half
-                      // guards against a stale "my equipment" preference
-                      // lingering as a dead filter after the library's own
-                      // equipment data changes (e.g. every tagged exercise
-                      // gets deleted) - without it the chip would still show
-                      // but could never actually filter anything. Favorites
-                      // used to live here too as its own "Favorites only"
-                      // chip, but with equipment usually unconfigured it was
-                      // the only chip in this row and ended up looking
-                      // stray - moved to a star toggle on the search field
-                      // instead (see below), which also saves a whole row
-                      // for the common case where equipment isn't set up at
-                      // all, since this row now hides completely in that
-                      // case rather than sitting empty.
-                      if (availableEquipment.isNotEmpty &&
-                          (libraryEquipmentTags.valueOrNull?.isNotEmpty ??
-                              false))
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                          child: Wrap(
-                            spacing: 8,
-                            children: [
-                              FilterChip(
-                                label: const Text('My equipment'),
-                                labelStyle: Theme.of(
-                                  context,
-                                ).textTheme.labelSmall,
-                                selected: equipmentFilterEnabled,
-                                onSelected: (selected) => ref
-                                    .read(
-                                      exerciseEquipmentFilterEnabledProvider
-                                          .notifier,
-                                    )
-                                    .state = selected,
+                        creatorOptionsAsync.when(
+                          data: (options) => Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
                               ),
-                            ],
+                              child: SizedBox(
+                                height: 40,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: [
+                                    _CategoryChip(
+                                      label: 'All creators',
+                                      selected: selectedCreator == null,
+                                      compact: true,
+                                      onSelected: () =>
+                                          ref
+                                                  .read(
+                                                    exerciseCreatorFilterProvider
+                                                        .notifier,
+                                                  )
+                                                  .state =
+                                              null,
+                                    ),
+                                    _CategoryChip(
+                                      // Not "Own" - this bucket is "isCustom
+                                      // with no author/plan attached", which
+                                      // includes bulk spreadsheet imports as
+                                      // often as anything hand-typed in the
+                                      // app.
+                                      label: 'Not in library',
+                                      selected:
+                                          selectedCreator == ownExercisesFilter,
+                                      compact: true,
+                                      onSelected: () =>
+                                          ref
+                                                  .read(
+                                                    exerciseCreatorFilterProvider
+                                                        .notifier,
+                                                  )
+                                                  .state =
+                                              ownExercisesFilter,
+                                    ),
+                                    for (final option in options)
+                                      _CategoryChip(
+                                        label: option.startsWith('plan:')
+                                            ? 'Plan: ${option.substring(5)}'
+                                            : 'By: ${option.substring(7)}',
+                                        selected: selectedCreator == option,
+                                        compact: true,
+                                        onSelected: () =>
+                                            ref
+                                                    .read(
+                                                      exerciseCreatorFilterProvider
+                                                          .notifier,
+                                                    )
+                                                    .state =
+                                                option,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, _) => const SizedBox.shrink(),
                         ),
-                      const SizedBox(height: 8),
-                    ],
-                  ),
+                        // Hidden until equipment has actually been configured
+                        // (Settings or onboarding) *and* the library still has
+                        // exercises tagged with real equipment info right now -
+                        // same "opt-in feature invisible until there's data for
+                        // it" shape as the body-tracking card. The second half
+                        // guards against a stale "my equipment" preference
+                        // lingering as a dead filter after the library's own
+                        // equipment data changes (e.g. every tagged exercise
+                        // gets deleted) - without it the chip would still show
+                        // but could never actually filter anything. Favorites
+                        // used to live here too as its own "Favorites only"
+                        // chip, but with equipment usually unconfigured it was
+                        // the only chip in this row and ended up looking
+                        // stray - moved to a star toggle on the search field
+                        // instead (see below), which also saves a whole row
+                        // for the common case where equipment isn't set up at
+                        // all, since this row now hides completely in that
+                        // case rather than sitting empty.
+                        if (availableEquipment.isNotEmpty &&
+                            (libraryEquipmentTags.valueOrNull?.isNotEmpty ??
+                                false))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                            child: Wrap(
+                              spacing: 8,
+                              children: [
+                                FilterChip(
+                                  label: const Text('My equipment'),
+                                  labelStyle: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall,
+                                  selected: equipmentFilterEnabled,
+                                  onSelected: (selected) =>
+                                      ref
+                                              .read(
+                                                exerciseEquipmentFilterEnabledProvider
+                                                    .notifier,
+                                              )
+                                              .state =
+                                          selected,
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+            ),
           ),
-          Expanded(
-            child: exercisesAsync.when(
-              data: (exercises) {
-                if (exercises.isEmpty) {
-                  return const Center(child: Text('No exercises match.'));
-                }
-                // NotificationListener (not a ScrollController) so this
-                // only ever reacts to the exercise list's own scrolling,
-                // never a horizontal filter-chip row's.
-                return NotificationListener<UserScrollNotification>(
+          exercisesAsync.when(
+            data: (exercises) {
+              if (exercises.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: Text('No exercises match.')),
+                );
+              }
+              // NotificationListener (not a ScrollController) so this
+              // only ever reacts to the exercise list's own scrolling,
+              // never a horizontal filter-chip row's.
+              return SliverFillRemaining(
+                hasScrollBody: true,
+                child: NotificationListener<UserScrollNotification>(
                   onNotification: _handleScrollNotification,
                   child: ListView.builder(
                     itemCount: exercises.length,
@@ -482,10 +538,14 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                       );
                     },
                   ),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('Error: $error')),
+                ),
+              );
+            },
+            loading: () => const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, _) => SliverFillRemaining(
+              child: Center(child: Text('Error: $error')),
             ),
           ),
         ],
@@ -511,7 +571,9 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
             ListTile(
               leading: const Icon(Icons.table_chart),
               title: const Text('From spreadsheet (.csv or .xlsx)'),
-              subtitle: const Text('Excel/Sheets export, or the library template'),
+              subtitle: const Text(
+                'Excel/Sheets export, or the library template',
+              ),
               onTap: () =>
                   Navigator.of(context).pop(_LibraryImportSource.spreadsheet),
             ),
@@ -525,9 +587,8 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
               leading: const Icon(Icons.lock_outline),
               title: const Text('From encrypted library file (.tlibrary)'),
               subtitle: const Text('A library shared with its own passphrase'),
-              onTap: () => Navigator.of(
-                context,
-              ).pop(_LibraryImportSource.encryptedJson),
+              onTap: () =>
+                  Navigator.of(context).pop(_LibraryImportSource.encryptedJson),
             ),
           ],
         ),
@@ -590,9 +651,8 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
       }
     } on BackupDecryptionException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
       return;
     } on FormatException {
       if (!context.mounted) return;
@@ -609,13 +669,14 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
       _invalidateLibraryProviders(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $count exercise${count == 1 ? '' : 's'}.')),
+        SnackBar(
+          content: Text('Imported $count exercise${count == 1 ? '' : 's'}.'),
+        ),
       );
     } on LibraryJsonFormatException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -892,7 +953,8 @@ class _ExerciseTile extends ConsumerWidget {
                 Navigator.of(context).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => ExerciseDetailScreen(exercise: exercise),
+                    builder: (context) =>
+                        ExerciseDetailScreen(exercise: exercise),
                   ),
                 );
               },

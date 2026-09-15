@@ -5,19 +5,56 @@ Future<String?> promptPassphrase(
   required String title,
   String? helperText,
 }) {
-  final controller = TextEditingController();
   return showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
+    builder: (context) =>
+        _PassphraseDialog(title: title, helperText: helperText),
+  );
+}
+
+// Owns its own controller (disposed in its own State.dispose()) rather than
+// one created inline by promptPassphrase() and disposed after showDialog
+// resolves - the latter races the dialog's own exit transition, a real,
+// reproducible crash this project has hit before (see the dialog-disposal
+// convention in CLAUDE.md). Needed here anyway once this became a
+// StatefulWidget to hold the show/hide toggle below.
+class _PassphraseDialog extends StatefulWidget {
+  final String title;
+  final String? helperText;
+
+  const _PassphraseDialog({required this.title, this.helperText});
+
+  @override
+  State<_PassphraseDialog> createState() => _PassphraseDialogState();
+}
+
+class _PassphraseDialogState extends State<_PassphraseDialog> {
+  final _controller = TextEditingController();
+  bool _obscured = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: TextField(
-        controller: controller,
-        obscureText: true,
+        controller: _controller,
+        obscureText: _obscured,
         autofocus: true,
         decoration: InputDecoration(
           labelText: 'Passphrase',
-          helperText: helperText,
+          helperText: widget.helperText,
           helperMaxLines: 3,
+          suffixIcon: IconButton(
+            icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+            tooltip: _obscured ? 'Show passphrase' : 'Hide passphrase',
+            onPressed: () => setState(() => _obscured = !_obscured),
+          ),
         ),
         onSubmitted: (value) => Navigator.of(context).pop(value),
       ),
@@ -27,12 +64,12 @@ Future<String?> promptPassphrase(
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(controller.text),
+          onPressed: () => Navigator.of(context).pop(_controller.text),
           child: const Text('Continue'),
         ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 Future<bool> confirmDestructiveAction(

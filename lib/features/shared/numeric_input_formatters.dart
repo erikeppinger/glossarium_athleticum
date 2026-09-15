@@ -15,12 +15,19 @@ final integerInputFormatters = <TextInputFormatter>[
   FilteringTextInputFormatter.digitsOnly,
 ];
 
-/// Digits with at most one decimal point (weight, RPE, body measurements,
-/// distance) - allows an empty string so backspace/clear still works. The
-/// `^...$` anchors mean [FilteringTextInputFormatter.allow] rejects the
-/// whole edit whenever it would produce something that doesn't match
-/// (e.g. a second '.' or a letter), rather than only filtering per-character
-/// (which can't enforce "only one dot total" on its own).
+/// Digits with at most one decimal point and at most two decimal places
+/// (weight, RPE, body measurements, distance) - allows an empty string so
+/// backspace/clear still works. The `^...$` anchors mean
+/// [FilteringTextInputFormatter.allow] rejects the whole edit whenever it
+/// would produce something that doesn't match (e.g. a second '.', a third
+/// decimal digit, or a letter), rather than only filtering per-character
+/// (which can't enforce "only one dot total" on its own). The two-decimal
+/// cap matches this app's own existing precision ceiling elsewhere
+/// (`formatPlateWeight()` in `plate_calculator.dart` also stops at two) -
+/// reported live (2026-09-15): nothing this app tracks (weight, RPE,
+/// measurements) is ever meaningfully more precise than that, and an
+/// unbounded decimal tail (e.g. pasted/autocorrected input producing
+/// "90.89554545") read as a real display/data bug, not a feature.
 ///
 /// Comma is normalized to a period before that check runs - reported live
 /// (2026-09-11, Android and Windows both): many European keyboards/OS locales
@@ -34,5 +41,5 @@ final decimalInputFormatters = <TextInputFormatter>[
     (oldValue, newValue) =>
         newValue.copyWith(text: newValue.text.replaceAll(',', '.')),
   ),
-  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$')),
 ];

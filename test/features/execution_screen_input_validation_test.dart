@@ -130,6 +130,38 @@ void main() {
     await db.close();
   });
 
+  testWidgets(
+    'the Weight field caps decimal precision at two places',
+    (tester) async {
+      // Reported live (2026-09-15): pasting/autocorrect could produce
+      // something like "90.89554545" - no realistic weight (barbell,
+      // dumbbell, plate math, even competition lifting) needs more than
+      // two decimal places, and an unbounded tail read as a data bug.
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      final sessionId = await seedSession(db);
+      await pumpExecutionScreen(tester, db, sessionId);
+
+      final weightField = find.byType(TextField).at(1);
+      await tester.enterText(weightField, '90.895');
+      await tester.pump();
+
+      expect(
+        tester.widget<TextField>(weightField).controller!.text,
+        isEmpty,
+        reason:
+            'more than two decimal places is rejected as a whole, same as any other invalid bulk value',
+      );
+
+      await tester.enterText(weightField, '90.89');
+      await tester.pump();
+      expect(tester.widget<TextField>(weightField).controller!.text, '90.89');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
+
   testWidgets('the Reps field rejects letters and a decimal point', (tester) async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     final sessionId = await seedSession(db);

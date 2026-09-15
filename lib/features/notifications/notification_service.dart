@@ -133,6 +133,12 @@ class NotificationService {
           appUserModelId: 'com.trainingapp.training_app',
           guid: '9de9e982-6bf6-4a1b-9aab-b8b4c2f0e3a3',
         ),
+        // Required on Linux for the exact same reason as Windows above -
+        // `initialize()` throws `ArgumentError('Linux settings must be set
+        // when targeting Linux platform.')` otherwise (confirmed by reading
+        // flutter_local_notifications' own source, ahead of ever running on
+        // Linux - see docs/linux-desktop-setup.md).
+        linux: LinuxInitializationSettings(defaultActionName: 'Open'),
       ),
       onDidReceiveNotificationResponse: _handleResponse,
       onDidReceiveBackgroundNotificationResponse:
@@ -157,6 +163,12 @@ class NotificationService {
   /// cold-start tap has to be picked up this way instead.
   Future<String?> consumeLaunchPayload() async {
     await init();
+    // flutter_local_notifications_linux never overrides this - it falls
+    // through to the platform interface's default, which always throws
+    // UnimplementedError (confirmed by reading its own source: there's no
+    // Linux override at all, unlike Android/Windows). Cold-start-via-
+    // notification-tap just isn't detectable on Linux yet.
+    if (Platform.isLinux) return null;
     final details = await _plugin.getNotificationAppLaunchDetails();
     if (details?.didNotificationLaunchApp != true) return null;
     return details?.notificationResponse?.payload;
@@ -181,6 +193,16 @@ class NotificationService {
 
   Future<void> schedule(ScheduledReminder reminder) async {
     await init();
+    // flutter_local_notifications_linux has no zonedSchedule() override at
+    // all (confirmed by reading its platform-implementation source - unlike
+    // pendingNotificationRequests()/getNotificationAppLaunchDetails() above,
+    // this isn't a narrow gap, it's every scheduled/deferred notification:
+    // workout reminders, the weekly digest, and per-plan report reminders
+    // all route through this one method). No scheduled reminders fire on
+    // Linux yet - only an immediate show() (the rest timer's ongoing
+    // countdown) can work there. Worth revisiting if this plugin adds Linux
+    // scheduling support in a future version.
+    if (Platform.isLinux) return;
     await _plugin.zonedSchedule(
       id: reminder.id,
       title: reminder.title,
@@ -226,6 +248,10 @@ class NotificationService {
   /// exactly the distinction needed here.
   Future<void> cancelAllScheduledReminders() async {
     await init();
+    // Same Linux gap as consumeLaunchPayload() above - the Linux platform
+    // implementation has no override for this, so it always throws. Nothing
+    // to clear if pending reminders can't be enumerated in the first place.
+    if (Platform.isLinux) return;
     final pending = await _plugin.pendingNotificationRequests();
     for (final request in pending) {
       await _plugin.cancel(id: request.id);
@@ -354,6 +380,10 @@ class NotificationService {
   }) async {
     await init();
     if (!endTime.isAfter(DateTime.now())) return;
+    // Same Linux zonedSchedule() gap as schedule() above - no scheduled
+    // "rest complete" alert on Linux yet, only the immediate ongoing
+    // countdown notification from showRestTimerNotification().
+    if (Platform.isLinux) return;
     // Exact-alarm scheduling needs its own permission (SCHEDULE_EXACT_ALARM/
     // "Alarms & reminders"), separate from POST_NOTIFICATIONS - unlike that
     // one, many real devices default it to *off* and require a manual visit
