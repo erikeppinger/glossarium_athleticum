@@ -774,7 +774,7 @@ class _SummaryCards extends StatelessWidget {
               child: _SummaryCard(
                 label: 'Volume',
                 value: formatWeightInUnit(summary.totalVolume, unit),
-                delta: comparison == null
+                delta: comparison == null || !comparison!.hasVolumeComparison
                     ? null
                     : formatPercentDelta(
                         comparison!.volumeDeltaPercent,
@@ -787,7 +787,7 @@ class _SummaryCards extends StatelessWidget {
               child: _SummaryCard(
                 label: 'PRs',
                 value: '${summary.prCount}',
-                delta: comparison == null
+                delta: comparison == null || !comparison!.hasPrComparison
                     ? null
                     : formatCountDelta(comparison!.prCountDelta),
               ),

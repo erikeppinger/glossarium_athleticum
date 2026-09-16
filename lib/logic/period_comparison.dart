@@ -18,11 +18,28 @@ class PeriodComparison {
   /// better than a bogus number.
   final bool volumeIsNew;
 
+  /// False when the *current* period has zero weighted volume - either
+  /// nothing was logged at all, or only bodyweight/no-weight exercises were
+  /// (see `PeriodSummary.nonWeightedReps` - those never contribute to
+  /// `totalVolume`). In that case a raw "-100%" is technically correct but
+  /// reads as "training collapsed" when the truth is just "nothing weighted
+  /// this period" - the card's own value already shows that plainly, so the
+  /// caller should skip the delta chip entirely rather than show it.
+  final bool hasVolumeComparison;
+
+  /// False when the current period has zero PRs. A PR count can only ever
+  /// go up, never down - "-1" here would read as "you lost a PR", which
+  /// isn't a real thing that happens; zero this period (very normal - most
+  /// periods have none) just means nothing new, not a regression to flag.
+  final bool hasPrComparison;
+
   const PeriodComparison({
     required this.prCountDelta,
     required this.activityCountDelta,
     required this.volumeDeltaPercent,
     required this.volumeIsNew,
+    required this.hasVolumeComparison,
+    required this.hasPrComparison,
   });
 }
 
@@ -43,6 +60,8 @@ PeriodComparison comparePeriods({
         current.adHocActivityCount - previous.adHocActivityCount,
     volumeDeltaPercent: volumeDeltaPercent,
     volumeIsNew: volumeIsNew,
+    hasVolumeComparison: current.totalVolume > 0,
+    hasPrComparison: current.prCount > 0,
   );
 }
 

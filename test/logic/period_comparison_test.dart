@@ -26,6 +26,8 @@ void main() {
       expect(comparison.activityCountDelta, 2);
       expect(comparison.volumeDeltaPercent, 20);
       expect(comparison.volumeIsNew, isFalse);
+      expect(comparison.hasVolumeComparison, isTrue);
+      expect(comparison.hasPrComparison, isTrue);
     });
 
     test('a negative delta stays negative', () {
@@ -80,7 +82,67 @@ void main() {
 
       expect(comparison.volumeIsNew, isFalse);
       expect(comparison.volumeDeltaPercent, 0);
+      expect(comparison.hasVolumeComparison, isFalse);
+      expect(comparison.hasPrComparison, isFalse);
     });
+
+    test(
+      'a completed period with only bodyweight exercises (zero weighted '
+      'volume, no PRs) is not flagged as a -100%/-1 regression against a '
+      'previous period that had real weighted training',
+      () {
+        const previous = PeriodSummary(
+          sessionsScheduled: 1,
+          sessionsCompleted: 1,
+          totalVolume: 5000,
+          prCount: 1,
+        );
+        // A session with only bodyweight/no-weight sets (e.g. Hip Circles)
+        // completes fine and logs real reps, but contributes nothing to
+        // totalVolume/prCount - see PeriodSummary.nonWeightedReps.
+        const current = PeriodSummary(
+          sessionsScheduled: 1,
+          sessionsCompleted: 1,
+          totalVolume: 0,
+          prCount: 0,
+          nonWeightedReps: 24,
+        );
+
+        final comparison = comparePeriods(current: current, previous: previous);
+
+        // The raw deltas are still computed correctly...
+        expect(comparison.volumeDeltaPercent, -100);
+        expect(comparison.prCountDelta, -1);
+        // ...but the caller is told not to actually show them, since the
+        // current period genuinely has zero weighted volume/PRs to compare.
+        expect(comparison.hasVolumeComparison, isFalse);
+        expect(comparison.hasPrComparison, isFalse);
+      },
+    );
+
+    test(
+      'a period with no training at all is not flagged as a regression '
+      'either',
+      () {
+        const previous = PeriodSummary(
+          sessionsScheduled: 1,
+          sessionsCompleted: 1,
+          totalVolume: 5000,
+          prCount: 1,
+        );
+        const current = PeriodSummary(
+          sessionsScheduled: 1,
+          sessionsCompleted: 0,
+          totalVolume: 0,
+          prCount: 0,
+        );
+
+        final comparison = comparePeriods(current: current, previous: previous);
+
+        expect(comparison.hasVolumeComparison, isFalse);
+        expect(comparison.hasPrComparison, isFalse);
+      },
+    );
   });
 
   group('formatCountDelta', () {
