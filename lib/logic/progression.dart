@@ -346,6 +346,19 @@ const progressionScienceNote =
     'rather than picking up where you left off, since research on training '
     'cessation shows measurable strength loss becoming likely around that '
     'point.\n\n'
-    'Source: Ratamess et al. (2009), "Progression Models in Resistance '
+    "• This app deliberately doesn't build in periodization (planned waves "
+    'of heavier/lighter training blocks) - a 2026 ACSM overview of over '
+    '130 systematic reviews found periodized programs are not consistently '
+    'superior to simple non-periodized progression once progressive '
+    'overload is applied, so keeping progression straightforward is a '
+    'considered choice, not a missing feature. That same overview also '
+    'confirms training to complete muscular failure isn\'t necessary for '
+    "gains, matching how these suggestions never require it.\n\n"
+    'Sources: Ratamess et al. (2009), "Progression Models in Resistance '
     'Training for Healthy Adults," American College of Sports Medicine '
-    'position stand, Medicine & Science in Sports & Exercise 41(3).';
+    'position stand, Medicine & Science in Sports & Exercise 41(3); '
+    'Currier et al. (2026), "Resistance Training Prescription for Muscle '
+    'Function, Hypertrophy, and Physical Performance in Healthy Adults: An '
+    'Overview of Reviews," American College of Sports Medicine position '
+    'stand, Medicine & Science in Sports & Exercise 58(4), which updates '
+    "the 2009 stand above.";

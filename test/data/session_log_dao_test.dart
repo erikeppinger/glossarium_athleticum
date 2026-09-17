@@ -379,6 +379,71 @@ void main() {
     );
   });
 
+  group('getSetCountsByExercise', () {
+    test(
+      'one entry per exercise with its raw muscleGroups text and set count, '
+      'restricted to the given range',
+      () async {
+        await db.exerciseDao.upsertExercise(
+          ExercisesCompanion.insert(
+            id: 'EX_OHP',
+            name: 'Overhead Press',
+            category: 'Main Lift',
+            movementPattern: 'Push',
+            muscleGroups: 'Shoulders & Triceps',
+            equipment: 'Barbell',
+            difficulty: 'Intermediate',
+            measurementType: 'Weight x Reps',
+          ),
+        );
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-1',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 8, 10),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60),
+            LoggedSetInput(exerciseId: 'EX_OHP', setNumber: 1, reps: 8, weight: 40),
+          ],
+        );
+        // Outside the range below - shouldn't be counted.
+        await db.sessionLogDao.createSessionLog(
+          id: 'log-2',
+          planSessionId: sessionId,
+          loggedAt: DateTime(2026, 9, 1),
+          entries: const [
+            LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 100),
+          ],
+        );
+
+        final entries = await db.sessionLogDao.getSetCountsByExercise(
+          start: DateTime(2026, 8, 1),
+          end: DateTime(2026, 9, 1),
+        );
+
+        final byGroups = {for (final e in entries) e.muscleGroupsRaw: e.setsLogged};
+        expect(byGroups, {'Chest': 2, 'Shoulders & Triceps': 1});
+      },
+    );
+
+    test('a draft (unfinished) session log is not counted', () async {
+      await db.sessionLogDao.saveDraft(
+        planSessionId: sessionId,
+        loggedAt: DateTime(2026, 8, 10),
+        entries: const [
+          LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60),
+        ],
+      );
+
+      final entries = await db.sessionLogDao.getSetCountsByExercise(
+        start: DateTime(2026, 1, 1),
+        end: DateTime(2027, 1, 1),
+      );
+
+      expect(entries, isEmpty);
+    });
+  });
+
   group('getDailyTotals', () {
     test('aggregates volume/sets/reps/PRs per day within the range', () async {
       await db.sessionLogDao.createSessionLog(

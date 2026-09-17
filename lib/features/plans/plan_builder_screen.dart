@@ -7,6 +7,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../logic/block_info.dart';
+import '../../logic/exercise_order_info.dart';
 import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
@@ -408,33 +409,41 @@ class _SessionDraftCard extends StatelessWidget {
                   icon: const Icon(Icons.dynamic_feed_outlined),
                   label: const Text('Insert block'),
                 ),
+                // One info icon covering whichever of these concepts are
+                // actually relevant right now, rather than one icon per
+                // concept - reported live as UI clutter once there were
+                // three separate icons in this same row.
                 IconButton(
                   icon: const Icon(Icons.info_outline, size: 18),
-                  tooltip: 'What is a block?',
+                  tooltip: 'What do these mean?',
                   visualDensity: VisualDensity.compact,
-                  onPressed: () => showInfoDialog(
+                  onPressed: () => showInfoSectionsDialog(
                     context,
-                    title: 'What is a block?',
-                    content: blockExplanationNote,
+                    title: 'What do these mean?',
+                    sections: [
+                      const InfoSection(
+                        title: 'What is a block?',
+                        content: blockExplanationNote,
+                      ),
+                      if (session.exercises.length >= 2) ...[
+                        const InfoSection(
+                          title: 'What is a superset?',
+                          content: supersetExplanationNote,
+                        ),
+                        const InfoSection(
+                          title: 'Does exercise order matter?',
+                          content: exerciseOrderExplanationNote,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (session.exercises.length >= 2) ...[
+                if (session.exercises.length >= 2)
                   TextButton.icon(
                     onPressed: onGroupExercises,
                     icon: const Icon(Icons.link),
                     label: const Text('Group exercises'),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.info_outline, size: 18),
-                    tooltip: 'What is a superset?',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => showInfoDialog(
-                      context,
-                      title: 'What is a superset?',
-                      content: supersetExplanationNote,
-                    ),
-                  ),
-                ],
               ],
             ),
           ],

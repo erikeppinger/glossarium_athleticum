@@ -6,6 +6,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../logic/block_info.dart';
+import '../../logic/exercise_order_info.dart';
 import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
@@ -72,40 +73,61 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
       appBar: AppBar(
         title: const Text('Edit session'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            tooltip: 'What is a block?',
-            onPressed: () => showInfoDialog(
-              context,
-              title: 'What is a block?',
-              content: blockExplanationNote,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            tooltip: 'What is a superset?',
-            onPressed: () => showInfoDialog(
-              context,
-              title: 'What is a superset?',
-              content: supersetExplanationNote,
-            ),
-          ),
           if (_selecting)
             TextButton(
               onPressed: _cancelSelecting,
               child: const Text('Cancel'),
-            )
-          else ...[
-            TextButton(
-              onPressed: () => _startSelecting(_SelectionPurpose.block),
-              child: const Text('Save as block'),
             ),
-            TextButton(
-              onPressed: () => _startSelecting(_SelectionPurpose.superset),
-              child: const Text('Group into superset'),
-            ),
-          ],
         ],
+        // A single info icon (rather than one per concept - reported live as
+        // UI clutter once there were three) plus, when not selecting, two
+        // labelled actions used to all sit in `actions` above, sharing space
+        // with the title, which pushed the title out entirely once there
+        // were enough of them. Moving this row to `bottom` (its own
+        // full-width toolbar row, like the Exercise Library screen's
+        // identical fix for the same crowding problem) gives it the whole
+        // screen width instead of whatever `actions` left over.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: 'What do these mean?',
+                onPressed: () => showInfoSectionsDialog(
+                  context,
+                  title: 'What do these mean?',
+                  sections: const [
+                    InfoSection(
+                      title: 'What is a block?',
+                      content: blockExplanationNote,
+                    ),
+                    InfoSection(
+                      title: 'What is a superset?',
+                      content: supersetExplanationNote,
+                    ),
+                    InfoSection(
+                      title: 'Does exercise order matter?',
+                      content: exerciseOrderExplanationNote,
+                    ),
+                  ],
+                ),
+              ),
+              if (!_selecting) ...[
+                TextButton(
+                  onPressed: () => _startSelecting(_SelectionPurpose.block),
+                  child: const Text('Save as block'),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      _startSelecting(_SelectionPurpose.superset),
+                  child: const Text('Group into superset'),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
       body: detailsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

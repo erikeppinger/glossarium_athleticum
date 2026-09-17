@@ -17,6 +17,18 @@ void main() {
     'contributes to a "Bodyweight reps" summary card',
     (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
+      // The exercise dashboard sits well down the screen's plain ListView -
+      // a ListView's SliverList lazily mounts elements by viewport
+      // visibility regardless of whether it's given a static `children:`
+      // list, so content far enough below the fold isn't just offstage
+      // (which skipOffstage: false below already accounts for), it's not
+      // built into the Element tree at all yet. Enlarging the test viewport
+      // avoids needing to script a scroll gesture for every interaction -
+      // same fix already documented for create_exercise_screen_test.dart.
+      tester.view.physicalSize = const Size(1080, 4000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await db.exerciseDao.upsertExercise(
         ExercisesCompanion.insert(
           id: 'EX_BAND',

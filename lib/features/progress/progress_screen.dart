@@ -18,10 +18,12 @@ import '../../logic/body_weight_trend.dart';
 import '../../logic/period_comparison.dart';
 import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
+import '../../logic/muscle_group_volume.dart';
 import '../history/history_screen.dart';
 import '../history/workout_history_screen.dart';
 import '../plans/plan_providers.dart';
 import '../settings/app_preferences.dart';
+import '../shared/info_dialog.dart';
 import 'body_measurements_screen.dart';
 import 'progress_charts.dart';
 import 'progress_providers.dart';
@@ -317,6 +319,12 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           // week/month) - shown above the period controls rather than
           // inside _SummaryCards, which only ever renders period-scoped data.
           const _StreakCard(),
+          const SizedBox(height: 8),
+          // Also period-independent, for the same reason - the guideline
+          // this is measured against (see muscleGroupVolumeScienceNote) is
+          // inherently "per week," regardless of whether Week/Month/Custom
+          // is selected below.
+          const _MuscleGroupVolumeCard(),
           const SizedBox(height: 16),
           SegmentedButton<_ViewMode>(
             segments: const [
@@ -906,6 +914,98 @@ class _StreakCard extends ConsumerWidget {
               '$streak day${streak == 1 ? '' : 's'} streak',
               style: Theme.of(context).textTheme.titleMedium,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "This week's sets by muscle group" - see
+/// `lib/logic/muscle_group_volume.dart`'s `muscleGroupVolumeScienceNote` for
+/// the cited guideline this is measured against. Hidden entirely once
+/// nothing has been logged this week, same as every other opt-in-feeling
+/// card on this screen (Activities, body-tracking, streak).
+class _MuscleGroupVolumeCard extends ConsumerWidget {
+  const _MuscleGroupVolumeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final volumes = ref.watch(muscleGroupVolumeProvider).valueOrNull ?? const [];
+    if (volumes.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "This week's sets by muscle group",
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  tooltip: 'What is this based on?',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => showInfoDialog(
+                    context,
+                    title: 'Sets by muscle group',
+                    content: muscleGroupVolumeScienceNote,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              'Guideline: $recommendedWeeklySetsMin-$recommendedWeeklySetsPlateau sets/week for growth',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final v in volumes)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 90,
+                      child: Text(
+                        v.muscleGroup,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: (v.setCount / recommendedWeeklySetsPlateau)
+                              .clamp(0, 1)
+                              .toDouble(),
+                          minHeight: 8,
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                          color: v.setCount >= recommendedWeeklySetsMin
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 36,
+                      child: Text(
+                        '${v.setCount}',
+                        textAlign: TextAlign.end,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

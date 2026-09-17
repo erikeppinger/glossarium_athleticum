@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../logic/progression.dart';
 import '../app_database.dart';
+import '../tables/exercises_table.dart';
 import '../tables/plans_table.dart';
 import '../tables/session_logs_table.dart';
 
@@ -30,7 +31,14 @@ class LoggedSetInput {
 }
 
 @DriftAccessor(
-  tables: [SessionLogs, LoggedSets, PlanSessions, PlanSessionDates, PlanExercises],
+  tables: [
+    SessionLogs,
+    LoggedSets,
+    PlanSessions,
+    PlanSessionDates,
+    PlanExercises,
+    Exercises,
+  ],
 )
 class SessionLogDao extends DatabaseAccessor<AppDatabase>
     with _$SessionLogDaoMixin {
@@ -564,6 +572,48 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       prCount: prCount,
       nonWeightedReps: nonWeightedReps,
     );
+  }
+
+  /// One entry per exercise with at least one real (finished) set logged in
+  /// [start, end) - its raw `muscleGroups` text plus how many sets it got -
+  /// feeding `lib/logic/muscle_group_volume.dart`'s `tallyMuscleGroupVolume()`
+  /// for the Progress tab's "This week's sets by muscle group" card. Kept as
+  /// flat, unaggregated data rather than doing the muscle-group splitting/
+  /// tallying here, matching this project's `lib/logic/` DB-free-pure-logic
+  /// convention - the actual per-muscle-group counting is unit-tested there,
+  /// not against a live database.
+  Future<List<({String muscleGroupsRaw, int setsLogged})>>
+  getSetCountsByExercise({required DateTime start, required DateTime end}) async {
+    final query = select(loggedSets).join([
+      innerJoin(
+        sessionLogs,
+        sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+      ),
+      innerJoin(exercises, exercises.id.equalsExp(loggedSets.exerciseId)),
+    ])..where(
+      sessionLogs.finishedAt.isNotNull() &
+          sessionLogs.loggedAt.isBiggerOrEqualValue(start) &
+          sessionLogs.loggedAt.isSmallerThanValue(end),
+    );
+    final rows = await query.get();
+
+    final setCounts = <String, int>{};
+    final muscleGroupsByExercise = <String, String>{};
+    for (final row in rows) {
+      final exerciseId = row.readTable(loggedSets).exerciseId;
+      setCounts[exerciseId] = (setCounts[exerciseId] ?? 0) + 1;
+      muscleGroupsByExercise[exerciseId] = row
+          .readTable(exercises)
+          .muscleGroups;
+    }
+
+    return [
+      for (final exerciseId in setCounts.keys)
+        (
+          muscleGroupsRaw: muscleGroupsByExercise[exerciseId]!,
+          setsLogged: setCounts[exerciseId]!,
+        ),
+    ];
   }
 
   /// One completed workout with every set, plus the exercise names, ready to

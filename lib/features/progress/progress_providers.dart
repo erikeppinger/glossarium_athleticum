@@ -2,10 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database_provider.dart';
 import '../../data/daos/session_log_dao.dart';
+import '../../logic/muscle_group_volume.dart';
 import '../../logic/one_rep_max.dart';
 import '../../logic/progression.dart';
 import '../../logic/streaks.dart';
 import '../../logic/summary_period.dart';
+import '../settings/app_preferences.dart';
 
 final periodSummaryProvider = FutureProvider.family<PeriodSummary, PeriodRange>(
   (ref, range) {
@@ -88,6 +90,32 @@ final longestStreakProvider = FutureProvider<int>((ref) async {
   return computeLongestStreak(days);
 });
 
+/// The current calendar week's sets-per-muscle-group tally (see
+/// `lib/logic/muscle_group_volume.dart`) - deliberately independent of the
+/// Progress tab's own selected Week/Month/Custom view, the same way
+/// [currentStreakProvider] is, since the underlying guideline this is
+/// measured against is inherently a weekly one regardless of what period
+/// the rest of the screen happens to be showing.
+final muscleGroupVolumeProvider = FutureProvider<List<MuscleGroupVolume>>((
+  ref,
+) async {
+  final db = ref.watch(appDatabaseProvider);
+  final weekStart = ref.watch(
+    appPreferencesProvider.select((p) => p.weekStart),
+  );
+  final range = computeSummaryRange(
+    period: SummaryPeriod.week,
+    weekStart: weekStart,
+    offset: 0,
+    now: DateTime.now(),
+  );
+  final entries = await db.sessionLogDao.getSetCountsByExercise(
+    start: range.start,
+    end: range.end,
+  );
+  return tallyMuscleGroupVolume(entries);
+});
+
 /// Every one-shot FutureProvider the Progress tab reads from - call this
 /// after any write that changes logged sessions/activities (finishing a
 /// session, logging an ad-hoc activity, importing/restoring, deleting a
@@ -106,4 +134,5 @@ void invalidateProgressProviders(WidgetRef ref) {
   ref.invalidate(longestStreakProvider);
   ref.invalidate(exerciseProgressionHistoryProvider);
   ref.invalidate(repsOnlyHistoryProvider);
+  ref.invalidate(muscleGroupVolumeProvider);
 }
