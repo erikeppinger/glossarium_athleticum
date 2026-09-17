@@ -57,8 +57,13 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
       (select(exercises)..where((e) => e.isCustom.equals(true))).get();
 
   /// Search/filter over the library. All filters are optional and AND-ed
-  /// together; [query] matches against name (case-insensitive, diacritic-
-  /// insensitive substring).
+  /// together; [query] matches against name, category, and difficulty
+  /// (case-insensitive, diacritic-insensitive substring) - reported live:
+  /// typing "Beginner" found nothing even though it's a real difficulty
+  /// value on several exercises, since the free-text box only ever checked
+  /// the name. Difficulty/category are also separately available as exact-
+  /// match filter params (below) for chip-style filtering, independent of
+  /// this free-text match.
   ///
   /// [query] is deliberately matched in Dart, not via SQL's `LOWER()` -
   /// SQLite's built-in `LOWER()` only case-folds ASCII, so a query like
@@ -109,8 +114,13 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
     final rows = await q.get();
     if (query == null || query.trim().isEmpty) return rows;
     final needle = foldDiacritics(query.trim().toLowerCase());
+    bool matches(String value) =>
+        foldDiacritics(value.toLowerCase()).contains(needle);
     return rows
-        .where((e) => foldDiacritics(e.name.toLowerCase()).contains(needle))
+        .where(
+          (e) =>
+              matches(e.name) || matches(e.category) || matches(e.difficulty),
+        )
         .toList();
   }
 

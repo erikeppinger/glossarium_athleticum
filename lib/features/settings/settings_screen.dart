@@ -23,7 +23,7 @@ import '../../l10n/app_localizations.dart';
 import 'app_preferences.dart';
 import 'color_palette_screen.dart';
 import 'backup_dialogs.dart';
-import 'privacy_policy_screen.dart';
+import '../shared/markdown_doc_screen.dart';
 import 'templates_screen.dart';
 
 final _appVersionProvider = FutureProvider<String>((ref) async {
@@ -372,7 +372,25 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => const PrivacyPolicyScreen(),
+                builder: (context) => const MarkdownDocScreen(
+                  title: 'Privacy Policy',
+                  assetPath: 'docs/PRIVACY_POLICY.md',
+                ),
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.gavel_outlined),
+            title: const Text('Disclaimer'),
+            subtitle: const Text(
+              'Training carries risk - read this before you start.',
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const MarkdownDocScreen(
+                  title: 'Disclaimer',
+                  assetPath: 'docs/DISCLAIMER.md',
+                ),
               ),
             ),
           ),

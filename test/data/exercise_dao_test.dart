@@ -127,6 +127,44 @@ void main() {
       final results = await db.exerciseDao.search(query: 'Strassenlauf');
       expect(results.map((e) => e.id), ['EX005']);
     });
+
+    test(
+      'a query also matches category, not just name '
+      '(regression: "Loaded" found nothing even though it names a real '
+      'category, since the free-text box only ever checked the name)',
+      () async {
+        final results = await db.exerciseDao.search(query: 'loaded');
+        expect(results.map((e) => e.id), ['EX003']);
+      },
+    );
+
+    test(
+      'a query also matches difficulty, not just name/category '
+      '(regression: searching "Beginner" found nothing even though it is a '
+      'real difficulty value)',
+      () async {
+        await db.exerciseDao.upsertExercise(
+          ExercisesCompanion.insert(
+            id: 'EX006',
+            name: 'Overhead Press',
+            category: 'Pressing Event',
+            movementPattern: 'Push',
+            muscleGroups: 'Shoulders',
+            equipment: 'Barbell',
+            difficulty: 'Advanced',
+            measurementType: 'Weight x Reps',
+          ),
+        );
+        final results = await db.exerciseDao.search(query: 'beginner');
+        expect(
+          results.map((e) => e.id).toSet(),
+          {'EX001', 'EX002', 'EX003'},
+          reason:
+              'every exercise from the setUp() defaults to difficulty '
+              "Beginner - EX006's Advanced difficulty should be excluded",
+        );
+      },
+    );
   });
 
   group('creator filter', () {

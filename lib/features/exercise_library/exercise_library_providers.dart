@@ -24,12 +24,15 @@ final exerciseFavoritesOnlyFilterProvider = StateProvider<bool>(
 /// picker and the Settings "Available equipment" editor - derived from the
 /// actual seeded/custom data rather than a hand-maintained duplicate list,
 /// so a newly added exercise's equipment is pickable without a code change.
+/// [bodyweightEquipmentTag] is the one deliberate exception - always added
+/// regardless of what the library's own data contains, see its own doc
+/// comment for why.
 final libraryEquipmentTagsProvider = FutureProvider<List<String>>((
   ref,
 ) async {
   final db = ref.watch(appDatabaseProvider);
   final all = await db.exerciseDao.getAllExercises();
-  final tags = <String>{};
+  final tags = <String>{bodyweightEquipmentTag};
   for (final e in all) {
     tags.addAll(equipmentTags(e.equipment));
   }

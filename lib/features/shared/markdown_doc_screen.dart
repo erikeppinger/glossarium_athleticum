@@ -1,26 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
-/// Shows the bundled privacy policy (docs/PRIVACY_POLICY.md) in-app, so
-/// there's a copy of it available without needing a network connection or a
-/// hosted page. Store listings (Play Console's Data Safety section, App
-/// Store Connect's App Privacy page) still need this same content hosted at
-/// a public URL - that's a one-time step outside the app itself, not
-/// something this screen replaces.
+/// Shows a bundled markdown doc in-app, so a copy is available without a
+/// network connection or a hosted page - used for both the Privacy Policy
+/// and the Disclaimer (see `docs/PRIVACY_POLICY.md`/`docs/DISCLAIMER.md`).
 ///
 /// Rendered with a small hand-rolled parser rather than a markdown package:
-/// the source file only ever uses `#`/`##` headings, `**bold**`, and `- `
+/// these source files only ever use `#`/`##` headings, `**bold**`, and `- `
 /// bullets, so a real markdown renderer would be a dependency for three
 /// tokens.
-class PrivacyPolicyScreen extends StatelessWidget {
-  const PrivacyPolicyScreen({super.key});
+class MarkdownDocScreen extends StatelessWidget {
+  final String title;
+  final String assetPath;
+
+  const MarkdownDocScreen({
+    super.key,
+    required this.title,
+    required this.assetPath,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Privacy Policy')),
+      appBar: AppBar(title: Text(title)),
       body: FutureBuilder<String>(
-        future: rootBundle.loadString('docs/PRIVACY_POLICY.md'),
+        future: rootBundle.loadString(assetPath),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());

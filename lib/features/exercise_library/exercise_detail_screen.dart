@@ -157,6 +157,14 @@ class ExerciseDetailScreen extends ConsumerWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'External link, not verified by this app - use your own '
+              'judgment and stop if something hurts.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
           const SizedBox(height: 32),
           // Reported live: wanting to do a couple of sets of something (e.g.

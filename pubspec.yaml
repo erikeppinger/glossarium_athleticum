@@ -102,6 +102,7 @@ flutter:
   assets:
     - assets/seed-data/strongman_exercise_database.csv
     - docs/PRIVACY_POLICY.md
+    - docs/DISCLAIMER.md
     - templates/training_plan_template.csv
     - templates/training_plan_template.xlsx
     - seed-data/strongman_exercise_database.xlsx

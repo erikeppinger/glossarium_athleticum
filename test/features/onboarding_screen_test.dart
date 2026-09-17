@@ -155,4 +155,75 @@ void main() {
       await db.close();
     },
   );
+
+  testWidgets(
+    'the equipment page offers a "Bodyweight" chip, selectable like any '
+    'other equipment tag (regression: bodyweight-only training had no real '
+    'option to select, only an implicit "leave everything blank")',
+    (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      // A library with only equipment-requiring exercises - "Bodyweight"
+      // must still appear as a synthetic choice, not one scraped from data.
+      await db.exerciseDao.upsertExercise(
+        ExercisesCompanion.insert(
+          id: 'EX_BARBELL',
+          name: 'Back Squat',
+          category: 'Main Lift',
+          movementPattern: 'Squat',
+          muscleGroups: 'Legs',
+          equipment: 'Barbell',
+          difficulty: 'Intermediate',
+          measurementType: 'Weight x Reps',
+        ),
+      );
+      final notifier = AppPreferencesNotifier();
+      await notifier.load();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDatabaseProvider.overrideWithValue(db),
+            appPreferencesProvider.overrideWith((ref) => notifier),
+          ],
+          child: MaterialApp(
+            home: Navigator(
+              onGenerateRoute: (settings) => MaterialPageRoute(
+                builder: (context) => Scaffold(
+                  body: Center(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const OnboardingScreen(),
+                        ),
+                      ),
+                      child: const Text('start'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('start'));
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < 6; i++) {
+        await tester.tap(find.text('Next'));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('What equipment do you have?'), findsOneWidget);
+      expect(find.text('Bodyweight'), findsOneWidget);
+
+      await tester.tap(find.text('Bodyweight'));
+      await tester.pumpAndSettle();
+
+      expect(notifier.state.availableEquipment, {'Bodyweight'});
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
 }

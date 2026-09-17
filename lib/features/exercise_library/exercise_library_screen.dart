@@ -16,6 +16,7 @@ import '../../data/daos/exercise_dao.dart';
 import '../../export/library_export.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../import/library_import.dart';
+import '../../logic/equipment_matching.dart' show bodyweightEquipmentTag;
 import '../../logic/muscle_group_colors.dart';
 import '../../security/backup_encryption.dart';
 import '../history/history_screen.dart';
@@ -471,9 +472,17 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                         // instead (see below), which also saves a whole row
                         // for the common case where equipment isn't set up at
                         // all, since this row now hides completely in that
-                        // case rather than sitting empty.
+                        // case rather than sitting empty. The `any(tag !=
+                        // bodyweightEquipmentTag)` check (rather than a plain
+                        // isNotEmpty) is deliberate: libraryEquipmentTagsProvider
+                        // always includes that one synthetic tag regardless of
+                        // real library data, so a plain isNotEmpty check would
+                        // never be false and this whole guard would stop doing
+                        // anything.
                         if (availableEquipment.isNotEmpty &&
-                            (libraryEquipmentTags.valueOrNull?.isNotEmpty ??
+                            (libraryEquipmentTags.valueOrNull?.any(
+                                  (tag) => tag != bodyweightEquipmentTag,
+                                ) ??
                                 false))
                           Padding(
                             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

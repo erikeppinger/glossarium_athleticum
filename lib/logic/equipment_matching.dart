@@ -10,6 +10,18 @@
 /// underlying data.
 library;
 
+/// Synthetic sentinel added to the equipment picker's choices (not itself
+/// scraped from library data, unlike every other tag [equipmentTags]
+/// returns - see that function's own doc comment for why a real equipment
+/// string never produces this value). Selecting it doesn't change any
+/// matching outcome ([isDoableWithEquipment] already always allows a
+/// bodyweight-only exercise regardless of what's owned) - it exists so a
+/// genuinely bodyweight-only trainee has something to actually select,
+/// since an empty `availableEquipment` set is otherwise indistinguishable
+/// from "haven't configured this yet" and hides the "My equipment" filter
+/// entirely.
+const bodyweightEquipmentTag = 'Bodyweight';
+
 final RegExp _orSplit = RegExp(r'\s+or\s+', caseSensitive: false);
 final RegExp _parenthetical = RegExp(r'\s*\([^)]*\)');
 

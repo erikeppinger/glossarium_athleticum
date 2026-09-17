@@ -132,7 +132,12 @@ class _AddExerciseToPlanScreenState
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => Center(child: Text('Error: $error')),
               data: (plans) => ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  16 + MediaQuery.paddingOf(context).bottom,
+                ),
                 children: [
                   Text('Plan', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),

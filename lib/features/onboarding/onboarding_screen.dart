@@ -72,8 +72,12 @@ class _ExperienceLevelPage extends ConsumerWidget {
 /// access to, feeding the Exercise Library's "My equipment" filter (see
 /// `exercise_library_screen.dart`). Built from the library's own data
 /// (`libraryEquipmentTagsProvider`) rather than a hand-maintained list, so
-/// it stays accurate as exercises are added. Nothing selected is a valid,
-/// deliberate choice (bodyweight-only) - not an error state - so there's no
+/// it stays accurate as exercises are added - plus one synthetic
+/// `bodyweightEquipmentTag` chip that isn't scraped from data (see its own
+/// doc comment), so a bodyweight-only trainee has something real to select
+/// instead of just leaving everything blank. Nothing selected is still a
+/// valid, deliberate choice too (equivalent to selecting only Bodyweight,
+/// as far as filtering is concerned) - not an error state - so there's no
 /// "confirm" step here either, matching the experience-level page.
 class _EquipmentPage extends ConsumerWidget {
   const _EquipmentPage();
@@ -101,8 +105,8 @@ class _EquipmentPage extends ConsumerWidget {
           const SizedBox(height: 16),
           Text(
             'Select what you have access to - the Exercise Library can then '
-            'filter to what you can actually do. Leave blank if you train '
-            'without equipment; change this anytime in Settings.',
+            'filter to what you can actually do. Pick "Bodyweight" if you '
+            'train without equipment; change this anytime in Settings.',
             style: Theme.of(context).textTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
