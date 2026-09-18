@@ -17,6 +17,36 @@ final _blockDetailsProvider = FutureProvider.family<BlockDetails?, String>((
   return db.blockDao.getBlockDetails(blockId);
 });
 
+/// Creates an empty block, prompting for its name, then opens it in
+/// [BlockEditScreen] to add exercises right away. Shared by every "Insert
+/// block" picker (`edit_session_screen.dart`, `plan_builder_screen.dart`) so
+/// someone who wants a block that doesn't exist yet can create one on the
+/// spot, instead of the only prior from-scratch path (Exercise Library ->
+/// "Manage libraries & blocks" -> "+") - reported live as hidden enough that
+/// building a whole plan/session first felt like the only way in. Returns
+/// the new block's id, or null if the name prompt itself was cancelled -
+/// the caller decides what to do if the block was left empty.
+Future<String?> createBlockFromScratch(BuildContext context, WidgetRef ref) async {
+  final name = await showDialog<String>(
+    context: context,
+    builder: (context) => const _RenamePromptDialog(
+      title: 'New block',
+      initialValue: '',
+      confirmLabel: 'Create',
+    ),
+  );
+  if (name == null || name.isEmpty || !context.mounted) return null;
+
+  final db = ref.read(appDatabaseProvider);
+  final blockId = await db.blockDao.createBlock(name: name, exercises: const []);
+  if (!context.mounted) return null;
+
+  await Navigator.of(context).push(
+    MaterialPageRoute(builder: (context) => BlockEditScreen(blockId: blockId)),
+  );
+  return context.mounted ? blockId : null;
+}
+
 /// Lets an already-saved block's exercises be edited: reorder, edit,
 /// remove, or add more. Unlike `edit_session_screen.dart`, this always
 /// mutates in place rather than forking - a block has no logged history of

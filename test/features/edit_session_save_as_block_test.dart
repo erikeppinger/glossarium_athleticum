@@ -107,4 +107,50 @@ void main() {
       await tester.pump();
     },
   );
+
+  testWidgets(
+    '"Insert block" offers "Create new block", which creates it and opens '
+    'it for editing without requiring an existing session\'s exercises',
+    (tester) async {
+      final sessionId = await seedSession();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(db)],
+          child: MaterialApp(
+            home: EditSessionScreen(sessionId: sessionId, planId: 'plan-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Insert block'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Create new block'), findsOneWidget);
+      await tester.tap(find.text('Create new block'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Cooldown');
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+
+      // Landed in BlockEditScreen for the freshly created, still-empty block.
+      expect(find.text('This block has no exercises yet.'), findsOneWidget);
+      final blocks = await db.blockDao.getAllBlocks();
+      expect(blocks.map((b) => b.name), ['Cooldown']);
+
+      // Popping back with nothing added to it is a no-op for the session -
+      // an empty block has nothing to insert, so no fork happens.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit session'), findsOneWidget);
+      final plans = await db.planDao.getAllPlans();
+      expect(plans.map((p) => p.id), ['plan-1']);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
 }

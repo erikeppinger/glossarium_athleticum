@@ -73,4 +73,49 @@ void main() {
       await tester.pump();
     },
   );
+
+  testWidgets(
+    '"Insert block" offers "Create new block" so a block can be authored '
+    'without having built a session with real exercises first',
+    (tester) async {
+      await tester.pumpWidget(wrap());
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'My Plan');
+      await tester.tap(find.text('Add session'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose a day'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mon').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Session name'), 'Push Day');
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Insert block'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Create new block'), findsOneWidget);
+      await tester.tap(find.text('Create new block'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, 'Cooldown');
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+
+      // Landed in BlockEditScreen for the freshly created, still-empty block.
+      expect(find.text('This block has no exercises yet.'), findsOneWidget);
+      final blocks = await db.blockDao.getAllBlocks();
+      expect(blocks.map((b) => b.name), ['Cooldown']);
+
+      // Popping back with nothing added leaves the in-memory draft untouched.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Push Day'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
 }

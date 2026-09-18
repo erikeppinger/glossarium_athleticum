@@ -11,10 +11,16 @@ import '../../logic/superset_info.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
 import '../shared/numeric_input_formatters.dart';
+import 'block_edit_screen.dart';
 import 'exercise_prescription_form.dart';
 import 'plan_detail_screen.dart';
 import 'plan_fork.dart';
 import 'plan_providers.dart';
+
+/// Sentinel returned by the "Insert block" picker's own "Create new block"
+/// option, distinguishing it from an actual block id (which is a real,
+/// non-empty string uuid and can never collide with this constant).
+const _createNewBlockOptionId = '__create_new_block__';
 
 final _sessionDetailsProvider = FutureProvider.family<PlanSessionDetails?, int>(
   (ref, sessionId) {
@@ -273,41 +279,54 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
   /// rather than mutating this one in place. Each of the block's exercises
   /// is stamped fresh via `toPlanInput` (an independent copy, not a link
   /// back to the block), so editing the block later never retroactively
-  /// changes this session.
+  /// changes this session. The picker always offers "Create new block"
+  /// alongside any existing ones (previously a dead-end "no blocks yet"
+  /// snackbar pointed elsewhere instead) - reported live as the block
+  /// workflow being hidden behind having to build a session first.
   Future<void> _insertBlock(PlanSessionDetails details) async {
     final db = ref.read(appDatabaseProvider);
     final blocks = await db.blockDao.getAllBlocks();
     if (!mounted) return;
 
-    if (blocks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No blocks yet - select exercises above and tap "Save as '
-            'block" to create one.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    final chosen = await showDialog<Block>(
+    final chosenId = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Insert block'),
         children: [
+          SimpleDialogOption(
+            onPressed: () =>
+                Navigator.of(context).pop(_createNewBlockOptionId),
+            child: const Row(
+              children: [
+                Icon(Icons.add),
+                SizedBox(width: 12),
+                Text('Create new block'),
+              ],
+            ),
+          ),
+          if (blocks.isNotEmpty) const Divider(height: 1),
           for (final block in blocks)
             SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(block),
+              onPressed: () => Navigator.of(context).pop(block.id),
               child: Text(block.name),
             ),
         ],
       ),
     );
-    if (chosen == null || !mounted) return;
+    if (chosenId == null || !mounted) return;
 
-    final blockDetails = await db.blockDao.getBlockDetails(chosen.id);
+    final String blockId;
+    if (chosenId == _createNewBlockOptionId) {
+      final newId = await createBlockFromScratch(context, ref);
+      if (newId == null || !mounted) return;
+      blockId = newId;
+    } else {
+      blockId = chosenId;
+    }
+
+    final blockDetails = await db.blockDao.getBlockDetails(blockId);
     if (blockDetails == null || !mounted) return;
+    if (blockDetails.exercises.isEmpty) return;
 
     final updated = [
       for (final e in details.exercises) e.toInput(),
