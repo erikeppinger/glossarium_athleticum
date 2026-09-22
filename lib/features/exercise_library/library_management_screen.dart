@@ -18,6 +18,7 @@ import '../../logic/exercise_images.dart';
 import '../../logic/random_workout_generator.dart' show matchesSource, seedLibraryFilter;
 import '../plans/block_edit_screen.dart';
 import '../plans/plan_providers.dart' show allExercisesForMatchingProvider;
+import '../settings/app_preferences.dart';
 import 'exercise_library_providers.dart';
 
 /// Which half of this screen is showing - two otherwise-unrelated kinds of
@@ -163,6 +164,7 @@ class _LibraryManagementScreenState
   }
 
   Future<void> _delete(_LibraryGroup group) async {
+    final isStandardLibrary = group.source == seedLibraryFilter;
     final db = ref.read(appDatabaseProvider);
     var planReferences = 0;
     var loggedSets = 0;
@@ -178,6 +180,12 @@ class _LibraryManagementScreenState
     final lines = <String>[
       '${group.exercises.length} exercise${group.exercises.length == 1 ? '' : 's'} '
           'in "${group.label}" will be deleted.',
+      if (isStandardLibrary)
+        'This is the app\'s built-in example library, normally restored '
+            'automatically every time the app starts - deleting it turns '
+            'that off, so it stays gone. You can bring the same exercises '
+            'back anytime as an ordinary import: Settings > Backup & data > '
+            '"Plan / library templates" > Exercise library.',
       if (planReferences > 0)
         'Together they appear $planReferences time${planReferences == 1 ? '' : 's'} '
             'in: ${planNames.join(', ')}. They will be removed from '
@@ -214,6 +222,19 @@ class _LibraryManagementScreenState
     await db.exerciseDao.deleteExercisesKeepingHistory(
       group.exercises.map((e) => e.id).toList(),
     );
+    if (isStandardLibrary) {
+      await ref
+          .read(appPreferencesProvider.notifier)
+          .setStandardLibraryDismissed(true);
+    }
+    // A deleted group can remove the last exercise(s) with a given
+    // category/area, leaving that value selected in the filter chips with
+    // no way to see it's still applied - its own chip disappears from the
+    // row along with the category, but the filter itself isn't cleared
+    // automatically. Reset both rather than risk a stuck, invisible
+    // empty-results filter.
+    ref.read(exerciseCategoryFilterProvider.notifier).state = {};
+    ref.read(exerciseAreaFilterProvider.notifier).state = {};
     if (!mounted) return;
     _refresh();
   }
@@ -464,7 +485,7 @@ class _LibraryManagementScreenState
                         Text(
                           '${group.exercises.length} exercise'
                           '${group.exercises.length == 1 ? '' : 's'}'
-                          '${group.isProtected ? ' • built-in, not editable' : ''}',
+                          '${group.isProtected ? ' • built-in' : ''}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 8),
@@ -480,16 +501,14 @@ class _LibraryManagementScreenState
                                 onPressed: () => _rename(group),
                                 child: const Text('Rename'),
                               ),
-                            if (!group.isProtected) ...[
-                              TextButton(
-                                onPressed: () => _delete(group),
-                                style: TextButton.styleFrom(
-                                  foregroundColor:
-                                      Theme.of(context).colorScheme.error,
-                                ),
-                                child: const Text('Delete'),
+                            TextButton(
+                              onPressed: () => _delete(group),
+                              style: TextButton.styleFrom(
+                                foregroundColor:
+                                    Theme.of(context).colorScheme.error,
                               ),
-                            ],
+                              child: const Text('Delete'),
+                            ),
                           ],
                         ),
                       ],

@@ -35,6 +35,7 @@ const _availablePlatesLbsKey = 'available_plates_lbs';
 const _focusModeEnabledKey = 'focus_mode_enabled';
 const _focusModeHideProgressKey = 'focus_mode_hide_progress';
 const _focusModeHideStreaksKey = 'focus_mode_hide_streaks';
+const _standardLibraryDismissedKey = 'standard_library_dismissed';
 
 /// How times of day (currently just the reminder-time setting) are
 /// displayed and entered. [system] follows the device's own 24-hour setting
@@ -207,6 +208,19 @@ class AppPreferences {
   /// people want to lose the PR-chasing but still like seeing their streak.
   final bool focusModeHideStreaks;
 
+  /// Whether the bundled 47-exercise strongman-themed example library has
+  /// been deliberately deleted - see `library_management_screen.dart`'s
+  /// "Standard library" delete action. `exercise_seed_loader.dart`'s
+  /// `seedExerciseLibrary()` normally re-upserts every seed row on *every*
+  /// app start (by design, so it survives a plain uninstall/data-clear
+  /// cycle), which would otherwise silently undo a delete the moment the
+  /// app is next launched - this flag is what `main.dart`'s startup step
+  /// checks to skip reseeding once someone has actually asked for it gone.
+  /// Deleting again after re-importing the same content via the "Exercise
+  /// library" template (which creates ordinary custom exercises, not seed
+  /// rows) is a no-op here, since that path never touches this flag.
+  final bool standardLibraryDismissed;
+
   const AppPreferences({
     this.weightUnit = WeightUnit.kg,
     this.weekStart = WeekStart.monday,
@@ -231,6 +245,7 @@ class AppPreferences {
     this.focusModeEnabled = false,
     this.focusModeHideProgress = true,
     this.focusModeHideStreaks = true,
+    this.standardLibraryDismissed = false,
   });
 
   /// Whether the body-measurement UI should be visible at all.
@@ -269,6 +284,7 @@ class AppPreferences {
     bool? focusModeEnabled,
     bool? focusModeHideProgress,
     bool? focusModeHideStreaks,
+    bool? standardLibraryDismissed,
   }) => AppPreferences(
     weightUnit: weightUnit ?? this.weightUnit,
     weekStart: weekStart ?? this.weekStart,
@@ -297,6 +313,8 @@ class AppPreferences {
     focusModeHideProgress:
         focusModeHideProgress ?? this.focusModeHideProgress,
     focusModeHideStreaks: focusModeHideStreaks ?? this.focusModeHideStreaks,
+    standardLibraryDismissed:
+        standardLibraryDismissed ?? this.standardLibraryDismissed,
   );
 }
 
@@ -365,6 +383,8 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
       focusModeHideProgress:
           prefs.getBool(_focusModeHideProgressKey) ?? true,
       focusModeHideStreaks: prefs.getBool(_focusModeHideStreaksKey) ?? true,
+      standardLibraryDismissed:
+          prefs.getBool(_standardLibraryDismissedKey) ?? false,
     );
   }
 
@@ -510,6 +530,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferences> {
     state = state.copyWith(focusModeHideStreaks: hide);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_focusModeHideStreaksKey, hide);
+  }
+
+  Future<void> setStandardLibraryDismissed(bool dismissed) async {
+    state = state.copyWith(standardLibraryDismissed: dismissed);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_standardLibraryDismissedKey, dismissed);
   }
 }
 

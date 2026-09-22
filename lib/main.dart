@@ -30,8 +30,15 @@ final navigatorKey = GlobalKey<NavigatorState>();
 
 final _startupProvider = FutureProvider<void>((ref) async {
   final db = ref.watch(appDatabaseProvider);
-  await seedExerciseLibrary(db);
   await ref.read(appPreferencesProvider.notifier).load();
+  // Skipped once someone has deliberately deleted the built-in library (see
+  // AppPreferences.standardLibraryDismissed's own doc comment) - normally
+  // this reseed runs unconditionally on every start specifically so it
+  // survives things like a plain data-clear, which would otherwise silently
+  // undo that choice the next time the app opens.
+  if (!ref.read(appPreferencesProvider).standardLibraryDismissed) {
+    await seedExerciseLibrary(db);
+  }
   // Restores the "a session is still open" marker after a genuine process
   // kill, without needing the session's own ExecutionScreen to be reopened
   // first (e.g. by tapping a still-live rest-timer notification) - reported

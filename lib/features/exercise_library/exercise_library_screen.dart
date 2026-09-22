@@ -200,7 +200,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                       ],
                     ),
                     IconButton(
-                      icon: const Icon(Icons.folder_outlined),
+                      icon: const Icon(Icons.auto_stories_outlined),
                       tooltip: 'Manage libraries & blocks',
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(

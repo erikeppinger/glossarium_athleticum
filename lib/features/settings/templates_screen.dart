@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../exercise_library/exercise_library_import_screen.dart';
 import '../shared/markdown_doc_screen.dart';
 
 class _TemplateFile {
@@ -122,11 +123,11 @@ class TemplatesScreen extends StatelessWidget {
             'Starter library (general fitness, from wger.de)',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          _TemplateTile(
-            title: 'Spreadsheet (.csv)',
-            subtitle: '~900 exercises - a broader starting point than the '
-                'strongman example above',
-            file: _wgerLibraryCsv,
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: () => _importWgerLibrary(context),
+            icon: const Icon(Icons.playlist_add),
+            label: const Text('Import into your library now'),
           ),
           const SizedBox(height: 8),
           Padding(
@@ -137,13 +138,14 @@ class TemplatesScreen extends StatelessWidget {
                 Text(
                   '~900 general-fitness exercises from wger.de\'s open '
                   'exercise database, licensed CC BY-SA. This is a separate, '
-                  'optional starter set - importing it (via the Exercise '
-                  'Library\'s own "From spreadsheet" import) adds these as '
-                  'their own manageable group; it does not replace or merge '
-                  'with your existing library. wger doesn\'t track '
-                  'difficulty or a weight/time/distance measurement type, so '
-                  'both are defaulted here - adjust individual exercises '
-                  'after importing if that matters to you.',
+                  'optional starter set - importing it adds these as their '
+                  'own manageable group; it does not replace or merge with '
+                  'your existing library. wger doesn\'t track difficulty or '
+                  'a weight/time/distance measurement type, so both are '
+                  'defaulted here - adjust individual exercises after '
+                  'importing if that matters to you. The import screen '
+                  'shows every exercise before anything is saved, same as '
+                  'any other import.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontStyle: FontStyle.italic,
                   ),
@@ -162,7 +164,42 @@ class TemplatesScreen extends StatelessWidget {
               ],
             ),
           ),
+          _TemplateTile(
+            title: 'Spreadsheet (.csv)',
+            subtitle: 'Save or share the raw file instead - e.g. to '
+                'inspect it first or hand it to someone else',
+            file: _wgerLibraryCsv,
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Reads the bundled wger CSV directly and jumps straight to the same
+  /// preview/import screen a manually-picked file would reach - skipping
+  /// the save-then-reimport round trip the file-picker path needs, but
+  /// deliberately not skipping the preview screen itself: every other
+  /// import in this app shows what it's about to do before writing
+  /// anything, and a bulk third-party import (with its own defaulted
+  /// Difficulty/Measurement Type fields - see docs/THIRD_PARTY_LICENSES.md)
+  /// is exactly the case where that review matters most.
+  ///
+  /// No widget test drives this button end-to-end: `await
+  /// rootBundle.loadString(...)` inside a `testWidgets` callback hung for
+  /// the full test timeout on this machine, even called as the very first
+  /// line before any `pumpWidget` - a new variant of this project's already
+  /// -documented "real async I/O inside testWidgets can hang" gotcha (see
+  /// CLAUDE.md), not previously known to extend to asset loads, only
+  /// `dart:io`. `ExerciseLibraryImportScreen(csvContent: ...)` itself is
+  /// already covered directly (`exercise_library_import_screen_test.dart`);
+  /// this method is the thin, reviewed-by-eye glue between that and the
+  /// bundled asset, verified live instead (build + tap the real button).
+  Future<void> _importWgerLibrary(BuildContext context) async {
+    final csv = await rootBundle.loadString(_wgerLibraryCsv.assetPath);
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ExerciseLibraryImportScreen(csvContent: csv),
       ),
     );
   }

@@ -134,6 +134,23 @@ void main() {
     });
   });
 
+  group('standard library dismissed', () {
+    test('defaults to false, matching the old always-reseeded behavior', () {
+      final notifier = AppPreferencesNotifier();
+      expect(notifier.state.standardLibraryDismissed, isFalse);
+    });
+
+    test('setStandardLibraryDismissed updates state and persists', () async {
+      final notifier = AppPreferencesNotifier();
+      await notifier.setStandardLibraryDismissed(true);
+      expect(notifier.state.standardLibraryDismissed, isTrue);
+
+      final reloaded = AppPreferencesNotifier();
+      await reloaded.load();
+      expect(reloaded.state.standardLibraryDismissed, isTrue);
+    });
+  });
+
   group('focus mode', () {
     test('defaults off, with both sub-toggles defaulting to hide', () {
       final notifier = AppPreferencesNotifier();

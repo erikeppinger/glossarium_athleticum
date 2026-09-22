@@ -3,12 +3,15 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:training_app/data/app_database.dart';
 import 'package:training_app/data/app_database_provider.dart';
 import 'package:training_app/features/exercise_library/library_management_screen.dart';
+import 'package:training_app/features/settings/app_preferences.dart';
 
 void main() {
   Future<AppDatabase> seedDb() async {
+    SharedPreferences.setMockInitialValues({});
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     await db.exerciseDao.upsertExercise(
       ExercisesCompanion.insert(
@@ -58,12 +61,10 @@ void main() {
 
       expect(find.text('Standard library'), findsOneWidget);
       expect(find.text('Plan: Imported Plan'), findsOneWidget);
-      expect(
-        find.text('1 exercise • built-in, not editable'),
-        findsOneWidget,
-      );
+      expect(find.text('1 exercise • built-in'), findsOneWidget);
 
-      // The seed group is protected - no Rename/Delete for it, only Export.
+      // The seed group can't be renamed (there's no name to change), but it
+      // can be deleted - see the group-scoped delete test below.
       final seedCard = find
           .ancestor(
             of: find.text('Standard library'),
@@ -76,7 +77,7 @@ void main() {
       );
       expect(
         find.descendant(of: seedCard, matching: find.text('Delete')),
-        findsNothing,
+        findsOneWidget,
       );
 
       // Rename the plan-sourced group.
@@ -108,7 +109,13 @@ void main() {
     await tester.pumpWidget(wrap(db));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Delete'));
+    final planCard = find
+        .ancestor(
+          of: find.text('Plan: Imported Plan'),
+          matching: find.byType(Card),
+        )
+        .first;
+    await tester.tap(find.descendant(of: planCard, matching: find.text('Delete')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
@@ -121,6 +128,59 @@ void main() {
     await tester.pump();
     await db.close();
   });
+
+  testWidgets(
+    'deleting the Standard library removes it and turns off reseeding',
+    (tester) async {
+      final db = await seedDb();
+      tester.view.physicalSize = const Size(1080, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final container = ProviderContainer(
+        overrides: [appDatabaseProvider.overrideWithValue(db)],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: LibraryManagementScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final seedCard = find
+          .ancestor(
+            of: find.text('Standard library'),
+            matching: find.byType(Card),
+          )
+          .first;
+      await tester.tap(
+        find.descendant(of: seedCard, matching: find.text('Delete')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('turns that off, so it stays gone'),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Standard library'), findsNothing);
+      final all = await db.exerciseDao.getAllExercises();
+      expect(all.map((e) => e.id), ['plan1']);
+      expect(
+        container.read(appPreferencesProvider).standardLibraryDismissed,
+        isTrue,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await db.close();
+    },
+  );
 
   // Blocks share this same screen (a segmented toggle, not a separate icon -
   // requested directly so managing them doesn't add another corner to the
