@@ -53,6 +53,15 @@ class ExerciseImportRow {
   /// turn on by accident.
   final bool embeddingAllowed;
 
+  /// Filename of a photo for this exercise, from an optional "Picture"
+  /// column - not one of `_requiredColumns`, so a spreadsheet without it
+  /// parses exactly as before. Mirrors `PlanImportRow.picture`'s own doc
+  /// comment: only meaningful alongside a zip import (see
+  /// `plan_zip_bundle.dart`, reused as-is here - it's already generic, not
+  /// plan-specific); a plain CSV/xlsx import has no image bytes to resolve
+  /// this filename against, so it's carried through unused in that path.
+  final String picture;
+
   const ExerciseImportRow({
     required this.rowNumber,
     required this.name,
@@ -66,6 +75,7 @@ class ExerciseImportRow {
     this.safetyNotes = '',
     this.videoReference = '',
     this.embeddingAllowed = false,
+    this.picture = '',
   });
 }
 
@@ -221,6 +231,7 @@ ExerciseImportResult _parseExerciseRows(List<List<dynamic>> rawRows) {
         safetyNotes: cell('Safety Notes'),
         videoReference: cell('Video Reference'),
         embeddingAllowed: parseEmbeddingFlag(cell('Embedding')),
+        picture: cell('Picture'),
       ),
     );
   }

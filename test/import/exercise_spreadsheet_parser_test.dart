@@ -58,6 +58,29 @@ Hip Circles,Warm-up,Beginner,Time
       expect(result.rows[1].embeddingAllowed, isFalse);
     });
 
+    test(
+      'reads an optional "Picture" column when present, blank when absent',
+      () {
+        final withPicture = parseExerciseCsv(
+          '$_header,Picture\n'
+          'Bench Press,Main Lift,Push,Chest,Barbell,Intermediate,Weight x Reps,,,,bench.jpg\n',
+        );
+        expect(withPicture.hasErrors, isFalse);
+        expect(withPicture.rows.single.picture, 'bench.jpg');
+
+        // The plain template (no "Picture" column at all) still parses
+        // exactly as before - a library-with-pictures zip is opt-in, not a
+        // breaking change to every other spreadsheet import.
+        const plainCsv = '''
+$_header
+Bench Press,Main Lift,Push,Chest,Barbell,Intermediate,Weight x Reps,,,
+''';
+        final withoutPicture = parseExerciseCsv(plainCsv);
+        expect(withoutPicture.hasErrors, isFalse);
+        expect(withoutPicture.rows.single.picture, '');
+      },
+    );
+
     test('skips fully empty rows without reporting them as errors', () {
       const csv = '''
 $_header

@@ -16,6 +16,7 @@ import '../../data/daos/exercise_dao.dart';
 import '../../export/library_export.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../import/library_import.dart';
+import '../../import/plan_zip_bundle.dart';
 import '../../logic/equipment_matching.dart' show bodyweightEquipmentTag;
 import '../../logic/muscle_group_colors.dart';
 import '../../security/backup_encryption.dart';
@@ -587,6 +588,17 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                   Navigator.of(context).pop(_LibraryImportSource.spreadsheet),
             ),
             ListTile(
+              leading: const Icon(Icons.perm_media_outlined),
+              title: const Text('From spreadsheet + pictures (.zip)'),
+              subtitle: const Text(
+                "A .csv/.xlsx with a \"Picture\" column, zipped up with the "
+                'image files it names',
+              ),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(_LibraryImportSource.spreadsheetWithPictures),
+            ),
+            ListTile(
               leading: const Icon(Icons.description),
               title: const Text('From library file (.json)'),
               subtitle: const Text("Exported from this app's Exercise Library"),
@@ -608,6 +620,8 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
     switch (choice) {
       case _LibraryImportSource.spreadsheet:
         await _importFromSpreadsheet(context);
+      case _LibraryImportSource.spreadsheetWithPictures:
+        await _importFromZipBundle(context);
       case _LibraryImportSource.json:
       case _LibraryImportSource.encryptedJson:
         await _importLibrary(context, ref);
@@ -630,6 +644,44 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
         builder: (context) => isXlsx
             ? ExerciseLibraryImportScreen(xlsxBytes: bytes)
             : ExerciseLibraryImportScreen(csvContent: utf8.decode(bytes)),
+      ),
+    );
+  }
+
+  /// Mirrors `plan_list_screen.dart`'s own "From spreadsheet + pictures
+  /// (.zip)" import exactly, down to reusing `readPlanZipBundle` as-is - it
+  /// was already generic (a spreadsheet plus an images-by-filename map),
+  /// never plan-specific, so there's nothing to duplicate here.
+  Future<void> _importFromZipBundle(BuildContext context) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['zip'],
+    );
+    if (file == null) return;
+
+    final PlanZipBundle bundle;
+    try {
+      bundle = readPlanZipBundle(await file.readAsBytes());
+    } on PlanZipBundleException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => bundle.xlsxBytes != null
+            ? ExerciseLibraryImportScreen(
+                xlsxBytes: bundle.xlsxBytes,
+                imagesByFileName: bundle.imagesByFileName,
+              )
+            : ExerciseLibraryImportScreen(
+                csvContent: bundle.csvContent,
+                imagesByFileName: bundle.imagesByFileName,
+              ),
       ),
     );
   }
@@ -780,7 +832,12 @@ enum _LibraryExportAction {
   selectExercises,
 }
 
-enum _LibraryImportSource { spreadsheet, json, encryptedJson }
+enum _LibraryImportSource {
+  spreadsheet,
+  spreadsheetWithPictures,
+  json,
+  encryptedJson,
+}
 
 class _CategoryChip extends StatelessWidget {
   final String label;

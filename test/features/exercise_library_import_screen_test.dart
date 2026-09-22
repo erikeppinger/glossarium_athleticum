@@ -110,6 +110,17 @@ Bench Press,Main Lift,Push,Chest,Barbell,Advanced,Weight x Reps,,,
     },
   );
 
+  // A picture-attachment widget test (constructing the screen with
+  // imagesByFileName/attachmentsDirectory set, then tapping Import) was
+  // tried here and reliably hung for the full 10-minute test timeout - the
+  // exact "real dart:io file I/O after pumpWidget()" gotcha this project's
+  // own CLAUDE.md already documents (saveAttachmentFromBytes writes a real
+  // file). Coverage stays at the levels below this instead, same as
+  // PlanImportScreen's own equivalent _attachPictureIfAny: the "Picture"
+  // column's parsing (see the group above) and readPlanZipBundle
+  // (plan_zip_bundle_test.dart, reused as-is here) are both tested
+  // directly - this screen's own attachment glue is reviewed by eye.
+
   testWidgets(
     'importing the real seed-data .xlsx template works end to end',
     (tester) async {

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Value;
@@ -7,7 +8,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
+import '../../data/local_storage.dart';
 import '../../import/exercise_spreadsheet_parser.dart';
+import '../../logic/exercise_images.dart';
 import '../plans/plan_providers.dart';
 import 'exercise_library_providers.dart';
 
@@ -27,13 +30,30 @@ class ExerciseLibraryImportScreen extends ConsumerStatefulWidget {
   final String? csvContent;
   final Uint8List? xlsxBytes;
 
+  /// From a "spreadsheet + pictures (.zip)" import (see `plan_zip_bundle.dart`,
+  /// reused as-is - it was already generic, not plan-specific) - a row's
+  /// "Picture" column value is looked up here and attached to the exercise
+  /// just created for that row. Null for a plain CSV/xlsx import, which has
+  /// no image bytes to attach at all.
+  final Map<String, Uint8List>? imagesByFileName;
+
+  /// Injectable for testing, same as every attachments-touching function in
+  /// `local_storage.dart` - real callers omit it and get the actual
+  /// platform attachments directory.
+  final Directory? attachmentsDirectory;
+
   /// Exactly one of [csvContent] (CSV text) or [xlsxBytes] (a decoded
   /// .xlsx workbook) must be provided, not both.
-  const ExerciseLibraryImportScreen({super.key, this.csvContent, this.xlsxBytes})
-    : assert(
-        (csvContent == null) != (xlsxBytes == null),
-        'pass exactly one of csvContent or xlsxBytes',
-      );
+  const ExerciseLibraryImportScreen({
+    super.key,
+    this.csvContent,
+    this.xlsxBytes,
+    this.imagesByFileName,
+    this.attachmentsDirectory,
+  }) : assert(
+         (csvContent == null) != (xlsxBytes == null),
+         'pass exactly one of csvContent or xlsxBytes',
+       );
 
   @override
   ConsumerState<ExerciseLibraryImportScreen> createState() =>
@@ -172,9 +192,10 @@ class _ExerciseLibraryImportScreenState
     final db = ref.read(appDatabaseProvider);
 
     for (final row in rows) {
+      final id = const Uuid().v4();
       await db.exerciseDao.upsertExercise(
         ExercisesCompanion.insert(
-          id: const Uuid().v4(),
+          id: id,
           name: row.name,
           category: row.category,
           movementPattern: row.movementPattern,
@@ -189,6 +210,7 @@ class _ExerciseLibraryImportScreenState
           isCustom: const Value(true),
         ),
       );
+      await _attachPictureIfAny(id, row.picture);
     }
 
     // These are one-shot FutureProviders that don't notice a write made
@@ -207,6 +229,49 @@ class _ExerciseLibraryImportScreenState
           'Imported ${rows.length} exercise${rows.length == 1 ? '' : 's'}.',
         ),
       ),
+    );
+  }
+
+  /// Copies a row's "Picture" column value out of the zip bundle's image
+  /// map and attaches it to the exercise just created for that row - a
+  /// no-op whenever there's no bundle, no picture named for this row, or
+  /// that name isn't actually in the bundle (a typo in the spreadsheet,
+  /// most likely). Mirrors `PlanImportScreen._attachPictureIfAny` exactly;
+  /// not driven by a widget test for the same documented reason that
+  /// screen's own copy isn't - covered instead at the level below this:
+  /// `readPlanZipBundle` (`plan_zip_bundle_test.dart`) and the "Picture"
+  /// column parsing (`exercise_spreadsheet_parser_test.dart`) are both
+  /// tested directly; this method is the thin, reviewed-by-eye glue
+  /// between them.
+  Future<void> _attachPictureIfAny(String exerciseId, String picture) async {
+    if (picture.isEmpty) return;
+    final images = widget.imagesByFileName;
+    if (images == null) return;
+    var bytes = images[picture];
+    if (bytes == null) {
+      // Fall back to a case-insensitive match - a spreadsheet's "Picture"
+      // cell and the zip's actual filename don't always agree on case.
+      for (final entry in images.entries) {
+        if (entry.key.toLowerCase() == picture.toLowerCase()) {
+          bytes = entry.value;
+          break;
+        }
+      }
+    }
+    if (bytes == null) return;
+
+    final dot = picture.lastIndexOf('.');
+    final extension = dot == -1 ? '' : picture.substring(dot);
+    final savedName = await saveAttachmentFromBytes(
+      bytes,
+      extension: extension,
+      directory: widget.attachmentsDirectory,
+    );
+    final db = ref.read(appDatabaseProvider);
+    await db.exerciseDao.attachImages(
+      exerciseId,
+      imagePath: savedName,
+      imagePaths: joinImagePaths([savedName]),
     );
   }
 }
