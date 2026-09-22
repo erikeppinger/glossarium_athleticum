@@ -110,8 +110,10 @@ flutter:
     - assets/seed-data/strongman_exercise_database.csv
     - docs/PRIVACY_POLICY.md
     - docs/DISCLAIMER.md
+    - docs/THIRD_PARTY_LICENSES.md
     - templates/training_plan_template.csv
     - templates/training_plan_template.xlsx
+    - templates/wger_starter_library.csv
     - seed-data/strongman_exercise_database.xlsx
 
   # To add assets to your application, add an assets section, like this:

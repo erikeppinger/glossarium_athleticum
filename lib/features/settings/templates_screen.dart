@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../shared/markdown_doc_screen.dart';
+
 class _TemplateFile {
   final String assetPath;
   final String fileName;
@@ -30,6 +32,10 @@ const _libraryCsv = _TemplateFile(
 const _libraryXlsx = _TemplateFile(
   assetPath: 'seed-data/strongman_exercise_database.xlsx',
   fileName: 'exercise_library_template.xlsx',
+);
+const _wgerLibraryCsv = _TemplateFile(
+  assetPath: 'templates/wger_starter_library.csv',
+  fileName: 'wger_starter_library.csv',
 );
 
 /// Blank(ish) templates for authoring a plan or an exercise library outside
@@ -109,6 +115,51 @@ class TemplatesScreen extends StatelessWidget {
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Starter library (general fitness, from wger.de)',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          _TemplateTile(
+            title: 'Spreadsheet (.csv)',
+            subtitle: '~900 exercises - a broader starting point than the '
+                'strongman example above',
+            file: _wgerLibraryCsv,
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '~900 general-fitness exercises from wger.de\'s open '
+                  'exercise database, licensed CC BY-SA. This is a separate, '
+                  'optional starter set - importing it (via the Exercise '
+                  'Library\'s own "From spreadsheet" import) adds these as '
+                  'their own manageable group; it does not replace or merge '
+                  'with your existing library. wger doesn\'t track '
+                  'difficulty or a weight/time/distance measurement type, so '
+                  'both are defaulted here - adjust individual exercises '
+                  'after importing if that matters to you.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const MarkdownDocScreen(
+                        title: 'Third-Party Data',
+                        assetPath: 'docs/THIRD_PARTY_LICENSES.md',
+                      ),
+                    ),
+                  ),
+                  child: const Text('See the full license notice'),
+                ),
+              ],
             ),
           ),
         ],

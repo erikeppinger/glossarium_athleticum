@@ -81,6 +81,29 @@ Bench Press,Main Lift,Push,Chest,Barbell,Intermediate,Weight x Reps,,,
       },
     );
 
+    test(
+      'reads an optional "Author" column when present, blank when absent',
+      () {
+        final withAuthor = parseExerciseCsv(
+          '$_header,Author\n'
+          'Bench Press,Main Lift,Push,Chest,Barbell,Intermediate,Weight x Reps,,,,wger.de (CC BY-SA)\n',
+        );
+        expect(withAuthor.hasErrors, isFalse);
+        expect(withAuthor.rows.single.author, 'wger.de (CC BY-SA)');
+
+        // A whole batch sharing one Author value is the point - it's what
+        // lets library_management_screen.dart group them as one manageable
+        // library instead of hundreds of ungrouped custom exercises.
+        const plainCsv = '''
+$_header
+Bench Press,Main Lift,Push,Chest,Barbell,Intermediate,Weight x Reps,,,
+''';
+        final withoutAuthor = parseExerciseCsv(plainCsv);
+        expect(withoutAuthor.hasErrors, isFalse);
+        expect(withoutAuthor.rows.single.author, '');
+      },
+    );
+
     test('skips fully empty rows without reporting them as errors', () {
       const csv = '''
 $_header

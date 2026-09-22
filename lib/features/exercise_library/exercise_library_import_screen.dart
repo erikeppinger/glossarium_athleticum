@@ -191,27 +191,34 @@ class _ExerciseLibraryImportScreenState
     setState(() => _importing = true);
     final db = ref.read(appDatabaseProvider);
 
-    for (final row in rows) {
-      final id = const Uuid().v4();
-      await db.exerciseDao.upsertExercise(
-        ExercisesCompanion.insert(
-          id: id,
-          name: row.name,
-          category: row.category,
-          movementPattern: row.movementPattern,
-          muscleGroups: row.muscleGroups,
-          equipment: row.equipment,
-          difficulty: row.difficulty,
-          measurementType: row.measurementType,
-          description: Value(row.description),
-          safetyNotes: Value(row.safetyNotes),
-          videoReference: Value(row.videoReference),
-          embeddingAllowed: Value(row.embeddingAllowed),
-          isCustom: const Value(true),
-        ),
-      );
-      await _attachPictureIfAny(id, row.picture);
-    }
+    // Wrapped in one transaction rather than a bare loop of awaited writes -
+    // a large third-party library import (e.g. wger's ~900-row starter
+    // library, see docs/THIRD_PARTY_LICENSES.md) is a real new scale for
+    // this screen, previously only ever exercised on dozens of rows.
+    await db.transaction(() async {
+      for (final row in rows) {
+        final id = const Uuid().v4();
+        await db.exerciseDao.upsertExercise(
+          ExercisesCompanion.insert(
+            id: id,
+            name: row.name,
+            category: row.category,
+            movementPattern: row.movementPattern,
+            muscleGroups: row.muscleGroups,
+            equipment: row.equipment,
+            difficulty: row.difficulty,
+            measurementType: row.measurementType,
+            description: Value(row.description),
+            safetyNotes: Value(row.safetyNotes),
+            videoReference: Value(row.videoReference),
+            embeddingAllowed: Value(row.embeddingAllowed),
+            isCustom: const Value(true),
+            author: Value(row.author.trim().isEmpty ? null : row.author.trim()),
+          ),
+        );
+        await _attachPictureIfAny(id, row.picture);
+      }
+    });
 
     // These are one-shot FutureProviders that don't notice a write made
     // from this screen on their own - see CLAUDE.md's note on this gotcha,

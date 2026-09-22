@@ -62,6 +62,16 @@ class ExerciseImportRow {
   /// this filename against, so it's carried through unused in that path.
   final String picture;
 
+  /// From the optional "Author" column - free text, matching
+  /// `create_exercise_screen.dart`'s own optional author field. Not
+  /// required, and every row in a batch sharing one value is deliberate:
+  /// `library_management_screen.dart`'s grouping (`matchesSource`) treats
+  /// every exercise with the same `author` as one named, manageable group -
+  /// this is how a whole imported library (e.g. a third-party open exercise
+  /// database) shows up as a single group with its own export/rename/delete,
+  /// rather than one custom exercise per row with no way to manage the set.
+  final String author;
+
   const ExerciseImportRow({
     required this.rowNumber,
     required this.name,
@@ -76,6 +86,7 @@ class ExerciseImportRow {
     this.videoReference = '',
     this.embeddingAllowed = false,
     this.picture = '',
+    this.author = '',
   });
 }
 
@@ -232,6 +243,7 @@ ExerciseImportResult _parseExerciseRows(List<List<dynamic>> rawRows) {
         videoReference: cell('Video Reference'),
         embeddingAllowed: parseEmbeddingFlag(cell('Embedding')),
         picture: cell('Picture'),
+        author: cell('Author'),
       ),
     );
   }

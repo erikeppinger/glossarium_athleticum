@@ -394,6 +394,21 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          ListTile(
+            leading: const Icon(Icons.source_outlined),
+            title: const Text('Third-Party Data'),
+            subtitle: const Text(
+              'Licensing for the optional wger.de starter exercise library.',
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const MarkdownDocScreen(
+                  title: 'Third-Party Data',
+                  assetPath: 'docs/THIRD_PARTY_LICENSES.md',
+                ),
+              ),
+            ),
+          ),
           Consumer(
             builder: (context, ref, _) {
               final versionAsync = ref.watch(_appVersionProvider);
