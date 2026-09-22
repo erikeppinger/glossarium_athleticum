@@ -1,7 +1,7 @@
-Week,Day,Session Name,Order,Exercise Name,Sets,Reps,Weight/Intensity,Rest (sec),Notes,Video URL,Picture
-1,Mon,Push Day,1,Bench Press,4,8-10,60kg,90,Pause at chest,,bench_press.jpg
-1,Mon,Push Day,2,Overhead Press,3,8-10,35kg,90,,https://www.youtube.com/watch?v=example,
-1,Mon,Push Day,3,Lateral Raise,3,12-15,10kg,60,Slow eccentric,,
-1,Wed,Pull Day,1,Deadlift,3,5,100kg,150,Reset each rep,,
-1,Wed,Pull Day,2,Barbell Row,4,8-10,50kg,90,,,
-,,,,,,,,,,,
+Week,Day,Session Name,Order,Exercise Name,Sets,Reps,Weight/Intensity,Rest (sec),Notes,Video URL,Picture,Embedding
+1,Mon,Push Day,1,Bench Press,4,8-10,60kg,90,Pause at chest,,bench_press.jpg,
+1,Mon,Push Day,2,Overhead Press,3,8-10,35kg,90,,https://www.youtube.com/watch?v=example,,yes
+1,Mon,Push Day,3,Lateral Raise,3,12-15,10kg,60,Slow eccentric,,,
+1,Wed,Pull Day,1,Deadlift,3,5,100kg,150,Reset each rep,,,
+1,Wed,Pull Day,2,Barbell Row,4,8-10,50kg,90,,,,
+,,,,,,,,,,,,

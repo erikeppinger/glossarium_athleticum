@@ -108,4 +108,14 @@ class PlanExercises extends Table {
   /// cloning a session (duplicateSessionToWeeks) or forking a plan for
   /// free. Set/cleared via PlanDao.setSupersetGroup/clearSupersetGroup.
   IntColumn get supersetGroupId => integer().nullable()();
+
+  /// Same opt-in as Exercises.embeddingAllowed, but for this specific
+  /// prescription's own [videoUrl] - a plan's video can differ from the
+  /// library exercise's own (e.g. a trainer's demo of this exact variation),
+  /// so it carries its own independent flag rather than inheriting the
+  /// library exercise's. Note: nothing renders a plan exercise's video today
+  /// (see execution_screen.dart) - this only stamps the author's choice
+  /// through import/fork/export so it isn't lost once a display exists.
+  BoolColumn get embeddingAllowed =>
+      boolean().withDefault(const Constant(false))();
 }

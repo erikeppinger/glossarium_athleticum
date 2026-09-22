@@ -261,4 +261,108 @@ void main() {
       await db.close();
     },
   );
+
+  // "Notice on creation/activation": turning embedding on must show the
+  // activation notice and only actually turn on if it's accepted - cancelling
+  // must leave it off, never half-on.
+  group('embedding checkbox', () {
+    Future<Exercise> seedCustom(AppDatabase db) async {
+      final exercise = ExercisesCompanion.insert(
+        id: 'CUSTOM_2',
+        name: 'Cable Fly',
+        category: 'Chest',
+        movementPattern: 'Push',
+        muscleGroups: 'Chest',
+        equipment: 'Cable Machine',
+        difficulty: 'Intermediate',
+        measurementType: 'Weight x Reps',
+        videoReference: const Value('https://www.youtube.com/watch?v=abc123'),
+        isCustom: const Value(true),
+      );
+      await db.exerciseDao.upsertExercise(exercise);
+      return (await db.exerciseDao.getExerciseById('CUSTOM_2'))!;
+    }
+
+    testWidgets(
+      'cancelling the activation notice leaves embedding off',
+      (tester) async {
+        final db = AppDatabase.forTesting(NativeDatabase.memory());
+        tester.view.physicalSize = const Size(1080, 3000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final seed = await seedCustom(db);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [appDatabaseProvider.overrideWithValue(db)],
+            child: MaterialApp(home: CreateExerciseScreen(existing: seed)),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Enable embedded playback (YouTube only)'));
+        await tester.pumpAndSettle();
+        expect(find.text('Enable embedded playback?'), findsOneWidget);
+
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+
+        final checkbox = tester.widget<CheckboxListTile>(
+          find.byType(CheckboxListTile),
+        );
+        expect(checkbox.value, isFalse);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await db.close();
+      },
+    );
+
+    testWidgets(
+      'accepting the activation notice turns embedding on and persists it',
+      (tester) async {
+        final db = AppDatabase.forTesting(NativeDatabase.memory());
+        tester.view.physicalSize = const Size(1080, 3000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final seed = await seedCustom(db);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [appDatabaseProvider.overrideWithValue(db)],
+            child: MaterialApp(home: CreateExerciseScreen(existing: seed)),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Enable embedded playback (YouTube only)'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('I understand, enable it'));
+        await tester.pumpAndSettle();
+
+        final checkbox = tester.widget<CheckboxListTile>(
+          find.byType(CheckboxListTile),
+        );
+        expect(checkbox.value, isTrue);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Preview'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Embedded playback enabled (personal use only)'),
+          findsOneWidget,
+        );
+        await tester.tap(find.widgetWithText(FilledButton, 'Save changes'));
+        await tester.pumpAndSettle();
+
+        final saved = await db.exerciseDao.getExerciseById('CUSTOM_2');
+        expect(saved!.embeddingAllowed, isTrue);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await db.close();
+      },
+    );
+  });
 }

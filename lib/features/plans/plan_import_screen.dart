@@ -505,6 +505,7 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
                     restSec: r.restSec,
                     notes: r.notes,
                     videoUrl: r.videoUrl,
+                    embeddingAllowed: r.embeddingAllowed,
                   ),
                 )
                 .toList(),

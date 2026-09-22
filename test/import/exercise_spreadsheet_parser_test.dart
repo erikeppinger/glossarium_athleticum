@@ -44,6 +44,18 @@ Hip Circles,Warm-up,Beginner,Time
       expect(row.description, isEmpty);
       expect(row.safetyNotes, isEmpty);
       expect(row.videoReference, isEmpty);
+      expect(row.embeddingAllowed, isFalse);
+    });
+
+    test('parses the optional Embedding column (yes/y/1/true, case-insensitive)', () {
+      final csv =
+          '$_header,Embedding\n'
+          'Bench Press,Main Lift,Push,Chest,Barbell,Intermediate,Weight x Reps,,,https://example.com/v,yes\n'
+          'Squat,Main Lift,Squat,Legs,Barbell,Intermediate,Weight x Reps,,,,\n';
+      final result = parseExerciseCsv(csv);
+      expect(result.hasErrors, isFalse);
+      expect(result.rows[0].embeddingAllowed, isTrue);
+      expect(result.rows[1].embeddingAllowed, isFalse);
     });
 
     test('skips fully empty rows without reporting them as errors', () {
@@ -158,6 +170,7 @@ Atlas Stone to Platform,Odd Object Lift,Squat/Hinge,Full Body,Atlas Stones,Advan
       description: '',
       safetyNotes: '',
       videoReference: '',
+      embeddingAllowed: false,
       isCustom: false,
       isFavorite: false,
     );

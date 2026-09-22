@@ -43,7 +43,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -156,6 +156,15 @@ class AppDatabase extends _$AppDatabase {
         // Plan-level authorship (e.g. a trainer's name), for a plan handed
         // off as a file to a client - see Plans.createdBy's own doc comment.
         await m.addColumn(plans, plans.createdBy);
+      }
+      if (from < 16) {
+        // Opt-in YouTube-embedding flag, one per video-URL-bearing table -
+        // see each column's own doc comment. Three independent additive
+        // columns combined into one migration step, same shape as the
+        // schema 12->13 bump above.
+        await m.addColumn(exercises, exercises.embeddingAllowed);
+        await m.addColumn(planExercises, planExercises.embeddingAllowed);
+        await m.addColumn(blockExercises, blockExercises.embeddingAllowed);
       }
     },
   );

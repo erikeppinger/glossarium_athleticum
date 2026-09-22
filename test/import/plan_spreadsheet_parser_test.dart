@@ -46,6 +46,27 @@ $_header
       },
     );
 
+    test(
+      'reads an optional "Embedding" column (yes/y/1/true, case-insensitive), '
+      'blank/absent means false',
+      () {
+        final csv =
+            '$_header,Embedding\n'
+            '1,Mon,Push Day,1,Bench Press,4,8-10,60kg,90,,https://example.com/v,yes\n'
+            '1,Mon,Push Day,2,Overhead Press,3,8-10,35kg,90,,,\n';
+        final result = parsePlanCsv(csv);
+        expect(result.hasErrors, isFalse);
+        expect(result.rows[0].embeddingAllowed, isTrue);
+        expect(result.rows[1].embeddingAllowed, isFalse);
+
+        const plainCsv = '''
+$_header
+1,Mon,Push Day,1,Bench Press,4,8-10,60kg,90,,
+''';
+        expect(parsePlanCsv(plainCsv).rows.single.embeddingAllowed, isFalse);
+      },
+    );
+
     test('skips fully empty rows without reporting them as errors', () {
       const csv = '''
 $_header
@@ -154,6 +175,7 @@ $_header
           description: '',
           safetyNotes: '',
           videoReference: '',
+          embeddingAllowed: false,
           isCustom: false,
           isFavorite: false,
         );

@@ -530,6 +530,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
           restSec: 90,
           notes: '',
           videoUrl: '',
+          embeddingAllowed: false,
         ),
       );
     });

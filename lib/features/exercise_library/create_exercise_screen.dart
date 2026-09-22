@@ -8,6 +8,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/local_storage.dart';
 import '../../logic/exercise_images.dart';
+import '../../logic/video_embedding.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart';
 import '../shared/attachment_image.dart';
@@ -72,6 +73,14 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
   late final String? _initialMeasurementType = _existing?.measurementType;
   late final List<String> _initialImagePaths = List.of(_imagePaths);
 
+  // A fork never starts with the original's embedding opt-in either (same
+  // reasoning as photos, just above) - forking asserts the video is now
+  // this new exercise's own, so re-confirming the activation notice is
+  // deliberate, not an oversight.
+  late bool _embeddingAllowed =
+      _willFork ? false : (_existing?.embeddingAllowed ?? false);
+  late final bool _initialEmbeddingAllowed = _embeddingAllowed;
+
   late final _nameController = TextEditingController(
     text: _willFork ? '${_existing!.name} (edited)' : (_existing?.name ?? ''),
   );
@@ -115,6 +124,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
     if (_category != _initialCategory) return true;
     if (_difficulty != _initialDifficulty) return true;
     if (_measurementType != _initialMeasurementType) return true;
+    if (_embeddingAllowed != _initialEmbeddingAllowed) return true;
     if (_imagePaths.length != _initialImagePaths.length ||
         !_imagePaths.every(
           (p) => _initialImagePaths.contains(p),
@@ -141,6 +151,37 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
       _category!.isNotEmpty &&
       _difficulty != null &&
       _measurementType != null;
+
+  /// Turning embedding *off* needs no confirmation - only activating it does,
+  /// per the feature's own "notice on creation/activation" requirement.
+  /// Cancelling the notice leaves the checkbox unchecked rather than
+  /// reverting silently, so there's no state where embedding ends up on
+  /// without the notice having actually been accepted.
+  Future<void> _onEmbeddingToggled(bool? value) async {
+    if (value != true) {
+      setState(() => _embeddingAllowed = false);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable embedded playback?'),
+        content: const Text(embeddingActivationNote),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('I understand, enable it'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _embeddingAllowed = confirmed ?? false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -343,6 +384,16 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
             border: OutlineInputBorder(),
           ),
         ),
+        CheckboxListTile(
+          value: _embeddingAllowed,
+          onChanged: _onEmbeddingToggled,
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: const Text('Enable embedded playback (YouTube only)'),
+          subtitle: const Text(
+            'Personal use only - see the notice shown when you turn this on.',
+          ),
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: _authorController,
@@ -434,6 +485,13 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(_videoReferenceController.text.trim()),
+                if (_embeddingAllowed) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Embedded playback enabled (personal use only)',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ],
               if (_authorController.text.trim().isNotEmpty) ...[
                 const SizedBox(height: 20),
@@ -599,6 +657,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
         description: Value(_descriptionController.text.trim()),
         safetyNotes: Value(_safetyNotesController.text.trim()),
         videoReference: Value(_videoReferenceController.text.trim()),
+        embeddingAllowed: Value(_embeddingAllowed),
         isCustom: const Value(true),
         author: Value(
           _authorController.text.trim().isEmpty

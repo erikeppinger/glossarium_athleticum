@@ -123,6 +123,7 @@ Future<String> importPlanJson(
             restSec: exerciseJson['rest_sec'] as int?,
             notes: exerciseJson['notes'] as String? ?? '',
             videoUrl: exerciseJson['video_url'] as String? ?? '',
+            embeddingAllowed: exerciseJson['embedding_allowed'] as bool? ?? false,
           ),
         );
       }

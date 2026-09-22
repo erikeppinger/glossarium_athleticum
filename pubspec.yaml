@@ -58,6 +58,13 @@ dependencies:
   xml: ^7.0.1
   pdf: ^3.13.0
   archive: 4.0.9
+  # Android-only in this app (see lib/features/shared/youtube_embed.dart) -
+  # no maintained Windows/Linux Flutter WebView implementation exists, so
+  # embedding is guarded to Android and falls back to a thumbnail + external
+  # open elsewhere. Depending on it doesn't affect the Windows/Linux builds
+  # (federated plugin architecture - see the receive_sharing_intent
+  # precedent in CLAUDE.md for the same shape of platform gap).
+  youtube_player_iframe: ^6.0.2
 
 dev_dependencies:
   flutter_test:

@@ -20,6 +20,9 @@ class PlanExerciseInput {
   final String notes;
   final String videoUrl;
 
+  /// See `PlanExercises.embeddingAllowed`'s own doc comment.
+  final bool embeddingAllowed;
+
   /// See `PlanExercises.supersetGroupId`'s own doc comment - a small
   /// integer scoped to this session only, not a foreign key.
   final int? supersetGroupId;
@@ -34,6 +37,7 @@ class PlanExerciseInput {
     this.restSec,
     this.notes = '',
     this.videoUrl = '',
+    this.embeddingAllowed = false,
     this.supersetGroupId,
   });
 
@@ -50,6 +54,7 @@ class PlanExerciseInput {
     restSec: restSec,
     notes: notes,
     videoUrl: videoUrl,
+    embeddingAllowed: embeddingAllowed,
     supersetGroupId: supersetGroupId,
   );
 
@@ -67,6 +72,7 @@ class PlanExerciseInput {
         restSec: restSec,
         notes: notes,
         videoUrl: videoUrl,
+        embeddingAllowed: embeddingAllowed,
         supersetGroupId: supersetGroupId,
       );
 }
@@ -86,6 +92,7 @@ extension PlanExerciseToInput on PlanExercise {
     restSec: restSec,
     notes: notes,
     videoUrl: videoUrl,
+    embeddingAllowed: embeddingAllowed,
     supersetGroupId: supersetGroupId,
   );
 }
@@ -249,6 +256,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
               restSec: Value(e.restSec),
               notes: Value(e.notes),
               videoUrl: Value(e.videoUrl),
+              embeddingAllowed: Value(e.embeddingAllowed),
               supersetGroupId: Value(e.supersetGroupId),
             ),
           );
@@ -319,6 +327,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           restSec: Value(input.restSec),
           notes: Value(input.notes),
           videoUrl: Value(input.videoUrl),
+          embeddingAllowed: Value(input.embeddingAllowed),
           supersetGroupId: Value(input.supersetGroupId),
         ),
       );
@@ -382,6 +391,7 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
               restSec: Value(exercise.restSec),
               notes: Value(exercise.notes),
               videoUrl: Value(exercise.videoUrl),
+              embeddingAllowed: Value(exercise.embeddingAllowed),
               supersetGroupId: Value(exercise.supersetGroupId),
             ),
           );

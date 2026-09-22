@@ -1,12 +1,16 @@
 # Privacy Policy
 
-**Last updated: 2026-09-03**
+**Last updated: 2026-09-22**
 
-This app is local-first: it works entirely on your device, does not require an account, and does not send your data anywhere. This policy explains exactly what that means.
+This app is local-first: it works entirely on your device, does not require an account, and does not send your data anywhere - with one narrow, opt-in exception (embedded video, see below) that doesn't involve the developer either. This policy explains exactly what that means.
 
 ## What we collect
 
 Nothing. The app has no analytics, no crash-reporting service, no advertising SDK, and no server of any kind. The developer never receives any information about you or your use of the app.
+
+## Embedded video (opt-in, Android only)
+
+If you turn on embedded playback for a specific exercise's video (see the Disclaimer's "Embedded video" section for what that means and who's responsible for what), your device loads that video directly from YouTube when you view it - the same as opening the video link in your browser would, just without leaving the app. This is the one feature in the app that talks to a network at all, and it never routes through any server operated by this app; YouTube/Google receives the request the same way it would from any browser, subject to their own privacy policy, not this one. It's off by default for every video, on every exercise, until someone explicitly turns it on.
 
 ## What's stored, and where
 

@@ -27,6 +27,7 @@ Exercise _exercise({
     description: '',
     safetyNotes: '',
     videoReference: '',
+    embeddingAllowed: false,
     isCustom: isCustom,
     sourcePlanName: sourcePlanName,
     author: author,

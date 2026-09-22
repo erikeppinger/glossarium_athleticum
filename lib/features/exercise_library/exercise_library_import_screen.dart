@@ -185,6 +185,7 @@ class _ExerciseLibraryImportScreenState
           description: Value(row.description),
           safetyNotes: Value(row.safetyNotes),
           videoReference: Value(row.videoReference),
+          embeddingAllowed: Value(row.embeddingAllowed),
           isCustom: const Value(true),
         ),
       );

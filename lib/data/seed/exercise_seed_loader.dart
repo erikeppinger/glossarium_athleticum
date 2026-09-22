@@ -2,14 +2,15 @@ import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import '../../logic/video_embedding.dart';
 import '../app_database.dart';
 
 const seedExerciseCsvAsset = 'assets/seed-data/strongman_exercise_database.csv';
 
 /// Parses the seed exercise CSV (columns: Exercise ID, Exercise Name,
 /// Category, Movement Pattern, Muscle Group(s), Equipment, Difficulty,
-/// Measurement Type, Description / Cues, Safety Notes, Video Reference)
-/// into rows ready to upsert into the Exercises table.
+/// Measurement Type, Description / Cues, Safety Notes, Video Reference,
+/// Embedding) into rows ready to upsert into the Exercises table.
 List<ExercisesCompanion> parseExerciseSeedCsv(String csvContent) {
   final rows = Csv(
     lineDelimiter: '\n',
@@ -33,6 +34,7 @@ List<ExercisesCompanion> parseExerciseSeedCsv(String csvContent) {
           description: Value(cell(8)),
           safetyNotes: Value(cell(9)),
           videoReference: Value(cell(10)),
+          embeddingAllowed: Value(parseEmbeddingFlag(cell(11))),
           isCustom: const Value(false),
         );
       })

@@ -1,6 +1,6 @@
 # Disclaimer
 
-**Last updated: 2026-09-17**
+**Last updated: 2026-09-22**
 
 ## Not medical or professional advice
 
@@ -13,6 +13,12 @@ Strength and fitness training can cause injury, including serious injury, even w
 ## Third-party links and content
 
 Exercise entries may include reference video links or descriptions - some bundled with the app, some added by you or another user of a shared exercise library file. These links point to content the developer doesn't control, host, or verify for accuracy or safety. Following a link, or following any technique it shows, is entirely at your own judgment and risk.
+
+## Embedded video (personal use only)
+
+An exercise's reference video can optionally be shown as an embedded player instead of just a link, when whoever added that video has explicitly turned this on for it. Embedding is for your own personal use - it does not give you, or anyone you share a plan/library with, any right to redistribute the underlying video. This app doesn't review the content of any plan or exercise library you create, import, or receive from someone else, and only ever provides the platform - so if you share a plan or library with embedding turned on, **you are responsible** for making sure you have the right to embed that specific video, or for citing it properly, before sharing it with others. Turning embedding on for a video is your own confirmation that you've considered this.
+
+Embedded playback works by loading the video directly from YouTube on your device - unlike the rest of this app, which works entirely offline, using this feature means your device communicates directly with YouTube/Google, the same as opening the video link in a browser would. See the Privacy Policy's "Embedded video" section for what that involves.
 
 ## No liability
 

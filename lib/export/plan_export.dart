@@ -4,6 +4,7 @@ import 'package:csv/csv.dart';
 
 import '../data/app_database.dart';
 import '../data/daos/plan_dao.dart';
+import '../logic/video_embedding.dart';
 import 'exercise_json.dart';
 
 /// File extension for a passphrase-encrypted single-plan export - the plan
@@ -60,6 +61,7 @@ Map<String, dynamic> planToJson(PlanDetails details) {
                       'rest_sec': exercise.restSec,
                       'notes': exercise.notes,
                       'video_url': exercise.videoUrl,
+                      'embedding_allowed': exercise.embeddingAllowed,
                     },
                 ],
               },
@@ -118,6 +120,7 @@ const planCsvHeader = [
   'Rest (sec)',
   'Notes',
   'Video URL',
+  'Embedding',
 ];
 
 /// Exports a plan back to the flat spreadsheet template shape (Phase 1/3) -
@@ -143,6 +146,7 @@ String planToCsv(PlanDetails details) {
         exercise.restSec ?? '',
         exercise.notes,
         exercise.videoUrl,
+        formatEmbeddingFlag(exercise.embeddingAllowed),
       ]);
     }
   }

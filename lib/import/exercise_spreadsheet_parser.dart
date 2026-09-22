@@ -6,6 +6,7 @@ import '../data/app_database.dart';
 import '../features/exercise_library/create_exercise_screen.dart'
     show difficulties;
 import '../logic/exercise_name_matching.dart';
+import '../logic/video_embedding.dart';
 import 'xlsx_reader.dart';
 
 /// Column names the template defines, in the order documented in
@@ -46,6 +47,12 @@ class ExerciseImportRow {
   final String safetyNotes;
   final String videoReference;
 
+  /// From the optional "Embedding" column - see parseEmbeddingFlag's own
+  /// doc comment for the yes/y/1/true (case-insensitive) convention. Left
+  /// blank or any other value means false; there is no way for embedding to
+  /// turn on by accident.
+  final bool embeddingAllowed;
+
   const ExerciseImportRow({
     required this.rowNumber,
     required this.name,
@@ -58,6 +65,7 @@ class ExerciseImportRow {
     this.description = '',
     this.safetyNotes = '',
     this.videoReference = '',
+    this.embeddingAllowed = false,
   });
 }
 
@@ -212,6 +220,7 @@ ExerciseImportResult _parseExerciseRows(List<List<dynamic>> rawRows) {
         description: cell('Description / Cues'),
         safetyNotes: cell('Safety Notes'),
         videoReference: cell('Video Reference'),
+        embeddingAllowed: parseEmbeddingFlag(cell('Embedding')),
       ),
     );
   }

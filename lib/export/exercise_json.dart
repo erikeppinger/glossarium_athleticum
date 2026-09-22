@@ -29,6 +29,7 @@ Map<String, dynamic> exerciseToJson(Exercise exercise) {
     'description': exercise.description,
     'safety_notes': exercise.safetyNotes,
     'video_reference': exercise.videoReference,
+    'embedding_allowed': exercise.embeddingAllowed,
     'is_custom': exercise.isCustom,
     // Attribution was previously dropped by backup/restore, so a restored
     // library lost track of which plan an exercise came from and who wrote it.
@@ -67,6 +68,10 @@ ExercisesCompanion exerciseFromJson(Map<String, dynamic> json) {
     description: Value(json['description'] as String? ?? ''),
     safetyNotes: Value(json['safety_notes'] as String? ?? ''),
     videoReference: Value(json['video_reference'] as String? ?? ''),
+    // Absent in a file exported before this field existed - false (never
+    // implicitly on) is the correct default, matching the schema column's
+    // own default and parseEmbeddingFlag's "unrecognized means off" rule.
+    embeddingAllowed: Value(json['embedding_allowed'] as bool? ?? false),
     isCustom: Value(json['is_custom'] as bool? ?? true),
     // Absent in files produced before these fields existed - null is the
     // correct "not recorded" value, so no special-casing is needed.

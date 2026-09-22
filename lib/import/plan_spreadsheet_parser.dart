@@ -4,6 +4,7 @@ import 'package:csv/csv.dart';
 
 import '../data/app_database.dart';
 import '../logic/exercise_name_matching.dart';
+import '../logic/video_embedding.dart';
 import 'xlsx_reader.dart';
 
 /// Column names the template defines, in the order documented in
@@ -50,6 +51,11 @@ class PlanImportRow {
   final int? restSec;
   final String notes;
   final String videoUrl;
+
+  /// From the optional "Embedding" column - see parseEmbeddingFlag's own
+  /// doc comment. Not one of `_requiredColumns`, so a template without it
+  /// parses exactly as before with this simply false.
+  final bool embeddingAllowed;
   final String? matchedExerciseId;
 
   /// Filename of a photo for this exercise, from an optional "Picture"
@@ -74,6 +80,7 @@ class PlanImportRow {
     this.restSec,
     this.notes = '',
     this.videoUrl = '',
+    this.embeddingAllowed = false,
     this.matchedExerciseId,
     this.picture = '',
   });
@@ -91,6 +98,7 @@ class PlanImportRow {
         restSec: restSec,
         notes: notes,
         videoUrl: videoUrl,
+        embeddingAllowed: embeddingAllowed,
         matchedExerciseId: id,
         picture: picture,
       );
@@ -245,6 +253,7 @@ PlanImportResult _parsePlanRows(List<List<dynamic>> rawRows) {
         restSec: restSec,
         notes: cell('Notes'),
         videoUrl: cell('Video URL'),
+        embeddingAllowed: parseEmbeddingFlag(cell('Embedding')),
         picture: cell('Picture'),
       ),
     );

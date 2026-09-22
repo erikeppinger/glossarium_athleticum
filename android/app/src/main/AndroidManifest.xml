@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Re-registers pending reminders after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The one network-touching feature in this otherwise fully offline
+         app: embedded YouTube playback (see lib/features/shared/youtube_embed.dart),
+         off by default and only ever active for a video someone explicitly
+         opted in - see docs/PRIVACY_POLICY.md's "Embedded video" section. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="training_app"

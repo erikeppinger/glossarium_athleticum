@@ -45,6 +45,7 @@ PlanExercise _fakeExercise({
     restSec: restSec,
     notes: '',
     videoUrl: '',
+    embeddingAllowed: false,
   );
 }
 
@@ -128,7 +129,7 @@ void main() {
       final firstLine = csv.split('\r\n').first;
       expect(
         firstLine,
-        'Week,Day,Session Name,Order,Exercise Name,Sets,Reps,Weight/Intensity,Rest (sec),Notes,Video URL',
+        'Week,Day,Session Name,Order,Exercise Name,Sets,Reps,Weight/Intensity,Rest (sec),Notes,Video URL,Embedding',
       );
     });
   });

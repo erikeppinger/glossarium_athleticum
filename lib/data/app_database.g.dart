@@ -201,6 +201,21 @@ class $ExercisesTable extends Exercises
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _embeddingAllowedMeta = const VerificationMeta(
+    'embeddingAllowed',
+  );
+  @override
+  late final GeneratedColumn<bool> embeddingAllowed = GeneratedColumn<bool>(
+    'embedding_allowed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("embedding_allowed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -220,6 +235,7 @@ class $ExercisesTable extends Exercises
     imagePath,
     imagePaths,
     isFavorite,
+    embeddingAllowed,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -369,6 +385,15 @@ class $ExercisesTable extends Exercises
         isFavorite.isAcceptableOrUnknown(data['is_favorite']!, _isFavoriteMeta),
       );
     }
+    if (data.containsKey('embedding_allowed')) {
+      context.handle(
+        _embeddingAllowedMeta,
+        embeddingAllowed.isAcceptableOrUnknown(
+          data['embedding_allowed']!,
+          _embeddingAllowedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -446,6 +471,10 @@ class $ExercisesTable extends Exercises
         DriftSqlType.bool,
         data['${effectivePrefix}is_favorite'],
       )!,
+      embeddingAllowed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}embedding_allowed'],
+      )!,
     );
   }
 
@@ -507,6 +536,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   /// chip on the Exercise Library screen - purely a personal-device
   /// convenience, not part of any exported plan/backup JSON.
   final bool isFavorite;
+
+  /// Opt-in to show [videoReference] as an embedded player (YouTube only -
+  /// see lib/logic/video_embedding.dart) instead of just a tappable link.
+  /// Defaults to false: embedding is never turned on implicitly, including
+  /// on import, since whoever adds a video is asserting they have the right
+  /// to embed it - see docs/DISCLAIMER.md's "Embedded video" section. This
+  /// travels with the exercise through export/import/backup exactly like
+  /// [videoReference] itself, so a shared library preserves the author's
+  /// own choice rather than resetting it.
+  final bool embeddingAllowed;
   const Exercise({
     required this.id,
     required this.name,
@@ -525,6 +564,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     this.imagePath,
     this.imagePaths,
     required this.isFavorite,
+    required this.embeddingAllowed,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -554,6 +594,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       map['image_paths'] = Variable<String>(imagePaths);
     }
     map['is_favorite'] = Variable<bool>(isFavorite);
+    map['embedding_allowed'] = Variable<bool>(embeddingAllowed);
     return map;
   }
 
@@ -584,6 +625,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ? const Value.absent()
           : Value(imagePaths),
       isFavorite: Value(isFavorite),
+      embeddingAllowed: Value(embeddingAllowed),
     );
   }
 
@@ -610,6 +652,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       imagePath: serializer.fromJson<String?>(json['imagePath']),
       imagePaths: serializer.fromJson<String?>(json['imagePaths']),
       isFavorite: serializer.fromJson<bool>(json['isFavorite']),
+      embeddingAllowed: serializer.fromJson<bool>(json['embeddingAllowed']),
     );
   }
   @override
@@ -633,6 +676,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'imagePath': serializer.toJson<String?>(imagePath),
       'imagePaths': serializer.toJson<String?>(imagePaths),
       'isFavorite': serializer.toJson<bool>(isFavorite),
+      'embeddingAllowed': serializer.toJson<bool>(embeddingAllowed),
     };
   }
 
@@ -654,6 +698,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     Value<String?> imagePath = const Value.absent(),
     Value<String?> imagePaths = const Value.absent(),
     bool? isFavorite,
+    bool? embeddingAllowed,
   }) => Exercise(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -674,6 +719,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     imagePath: imagePath.present ? imagePath.value : this.imagePath,
     imagePaths: imagePaths.present ? imagePaths.value : this.imagePaths,
     isFavorite: isFavorite ?? this.isFavorite,
+    embeddingAllowed: embeddingAllowed ?? this.embeddingAllowed,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -714,6 +760,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       isFavorite: data.isFavorite.present
           ? data.isFavorite.value
           : this.isFavorite,
+      embeddingAllowed: data.embeddingAllowed.present
+          ? data.embeddingAllowed.value
+          : this.embeddingAllowed,
     );
   }
 
@@ -736,7 +785,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('author: $author, ')
           ..write('imagePath: $imagePath, ')
           ..write('imagePaths: $imagePaths, ')
-          ..write('isFavorite: $isFavorite')
+          ..write('isFavorite: $isFavorite, ')
+          ..write('embeddingAllowed: $embeddingAllowed')
           ..write(')'))
         .toString();
   }
@@ -760,6 +810,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     imagePath,
     imagePaths,
     isFavorite,
+    embeddingAllowed,
   );
   @override
   bool operator ==(Object other) =>
@@ -781,7 +832,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.author == this.author &&
           other.imagePath == this.imagePath &&
           other.imagePaths == this.imagePaths &&
-          other.isFavorite == this.isFavorite);
+          other.isFavorite == this.isFavorite &&
+          other.embeddingAllowed == this.embeddingAllowed);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -802,6 +854,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<String?> imagePath;
   final Value<String?> imagePaths;
   final Value<bool> isFavorite;
+  final Value<bool> embeddingAllowed;
   final Value<int> rowid;
   const ExercisesCompanion({
     this.id = const Value.absent(),
@@ -821,6 +874,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.imagePath = const Value.absent(),
     this.imagePaths = const Value.absent(),
     this.isFavorite = const Value.absent(),
+    this.embeddingAllowed = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExercisesCompanion.insert({
@@ -841,6 +895,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.imagePath = const Value.absent(),
     this.imagePaths = const Value.absent(),
     this.isFavorite = const Value.absent(),
+    this.embeddingAllowed = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -868,6 +923,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<String>? imagePath,
     Expression<String>? imagePaths,
     Expression<bool>? isFavorite,
+    Expression<bool>? embeddingAllowed,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -888,6 +944,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (imagePath != null) 'image_path': imagePath,
       if (imagePaths != null) 'image_paths': imagePaths,
       if (isFavorite != null) 'is_favorite': isFavorite,
+      if (embeddingAllowed != null) 'embedding_allowed': embeddingAllowed,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -910,6 +967,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<String?>? imagePath,
     Value<String?>? imagePaths,
     Value<bool>? isFavorite,
+    Value<bool>? embeddingAllowed,
     Value<int>? rowid,
   }) {
     return ExercisesCompanion(
@@ -930,6 +988,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       imagePath: imagePath ?? this.imagePath,
       imagePaths: imagePaths ?? this.imagePaths,
       isFavorite: isFavorite ?? this.isFavorite,
+      embeddingAllowed: embeddingAllowed ?? this.embeddingAllowed,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -988,6 +1047,9 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (isFavorite.present) {
       map['is_favorite'] = Variable<bool>(isFavorite.value);
     }
+    if (embeddingAllowed.present) {
+      map['embedding_allowed'] = Variable<bool>(embeddingAllowed.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1014,6 +1076,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('imagePath: $imagePath, ')
           ..write('imagePaths: $imagePaths, ')
           ..write('isFavorite: $isFavorite, ')
+          ..write('embeddingAllowed: $embeddingAllowed, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2426,6 +2489,21 @@ class $PlanExercisesTable extends PlanExercises
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _embeddingAllowedMeta = const VerificationMeta(
+    'embeddingAllowed',
+  );
+  @override
+  late final GeneratedColumn<bool> embeddingAllowed = GeneratedColumn<bool>(
+    'embedding_allowed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("embedding_allowed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2440,6 +2518,7 @@ class $PlanExercisesTable extends PlanExercises
     notes,
     videoUrl,
     supersetGroupId,
+    embeddingAllowed,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2541,6 +2620,15 @@ class $PlanExercisesTable extends PlanExercises
         ),
       );
     }
+    if (data.containsKey('embedding_allowed')) {
+      context.handle(
+        _embeddingAllowedMeta,
+        embeddingAllowed.isAcceptableOrUnknown(
+          data['embedding_allowed']!,
+          _embeddingAllowedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2598,6 +2686,10 @@ class $PlanExercisesTable extends PlanExercises
         DriftSqlType.int,
         data['${effectivePrefix}superset_group_id'],
       ),
+      embeddingAllowed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}embedding_allowed'],
+      )!,
     );
   }
 
@@ -2636,6 +2728,15 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
   /// cloning a session (duplicateSessionToWeeks) or forking a plan for
   /// free. Set/cleared via PlanDao.setSupersetGroup/clearSupersetGroup.
   final int? supersetGroupId;
+
+  /// Same opt-in as Exercises.embeddingAllowed, but for this specific
+  /// prescription's own [videoUrl] - a plan's video can differ from the
+  /// library exercise's own (e.g. a trainer's demo of this exact variation),
+  /// so it carries its own independent flag rather than inheriting the
+  /// library exercise's. Note: nothing renders a plan exercise's video today
+  /// (see execution_screen.dart) - this only stamps the author's choice
+  /// through import/fork/export so it isn't lost once a display exists.
+  final bool embeddingAllowed;
   const PlanExercise({
     required this.id,
     required this.sessionId,
@@ -2649,6 +2750,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     required this.notes,
     required this.videoUrl,
     this.supersetGroupId,
+    required this.embeddingAllowed,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2671,6 +2773,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     if (!nullToAbsent || supersetGroupId != null) {
       map['superset_group_id'] = Variable<int>(supersetGroupId);
     }
+    map['embedding_allowed'] = Variable<bool>(embeddingAllowed);
     return map;
   }
 
@@ -2694,6 +2797,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       supersetGroupId: supersetGroupId == null && nullToAbsent
           ? const Value.absent()
           : Value(supersetGroupId),
+      embeddingAllowed: Value(embeddingAllowed),
     );
   }
 
@@ -2715,6 +2819,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       notes: serializer.fromJson<String>(json['notes']),
       videoUrl: serializer.fromJson<String>(json['videoUrl']),
       supersetGroupId: serializer.fromJson<int?>(json['supersetGroupId']),
+      embeddingAllowed: serializer.fromJson<bool>(json['embeddingAllowed']),
     );
   }
   @override
@@ -2733,6 +2838,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       'notes': serializer.toJson<String>(notes),
       'videoUrl': serializer.toJson<String>(videoUrl),
       'supersetGroupId': serializer.toJson<int?>(supersetGroupId),
+      'embeddingAllowed': serializer.toJson<bool>(embeddingAllowed),
     };
   }
 
@@ -2749,6 +2855,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     String? notes,
     String? videoUrl,
     Value<int?> supersetGroupId = const Value.absent(),
+    bool? embeddingAllowed,
   }) => PlanExercise(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -2764,6 +2871,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     supersetGroupId: supersetGroupId.present
         ? supersetGroupId.value
         : this.supersetGroupId,
+    embeddingAllowed: embeddingAllowed ?? this.embeddingAllowed,
   );
   PlanExercise copyWithCompanion(PlanExercisesCompanion data) {
     return PlanExercise(
@@ -2787,6 +2895,9 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
       supersetGroupId: data.supersetGroupId.present
           ? data.supersetGroupId.value
           : this.supersetGroupId,
+      embeddingAllowed: data.embeddingAllowed.present
+          ? data.embeddingAllowed.value
+          : this.embeddingAllowed,
     );
   }
 
@@ -2804,7 +2915,8 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
           ..write('restSec: $restSec, ')
           ..write('notes: $notes, ')
           ..write('videoUrl: $videoUrl, ')
-          ..write('supersetGroupId: $supersetGroupId')
+          ..write('supersetGroupId: $supersetGroupId, ')
+          ..write('embeddingAllowed: $embeddingAllowed')
           ..write(')'))
         .toString();
   }
@@ -2823,6 +2935,7 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
     notes,
     videoUrl,
     supersetGroupId,
+    embeddingAllowed,
   );
   @override
   bool operator ==(Object other) =>
@@ -2839,7 +2952,8 @@ class PlanExercise extends DataClass implements Insertable<PlanExercise> {
           other.restSec == this.restSec &&
           other.notes == this.notes &&
           other.videoUrl == this.videoUrl &&
-          other.supersetGroupId == this.supersetGroupId);
+          other.supersetGroupId == this.supersetGroupId &&
+          other.embeddingAllowed == this.embeddingAllowed);
 }
 
 class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
@@ -2855,6 +2969,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
   final Value<String> notes;
   final Value<String> videoUrl;
   final Value<int?> supersetGroupId;
+  final Value<bool> embeddingAllowed;
   const PlanExercisesCompanion({
     this.id = const Value.absent(),
     this.sessionId = const Value.absent(),
@@ -2868,6 +2983,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     this.notes = const Value.absent(),
     this.videoUrl = const Value.absent(),
     this.supersetGroupId = const Value.absent(),
+    this.embeddingAllowed = const Value.absent(),
   });
   PlanExercisesCompanion.insert({
     this.id = const Value.absent(),
@@ -2882,6 +2998,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     this.notes = const Value.absent(),
     this.videoUrl = const Value.absent(),
     this.supersetGroupId = const Value.absent(),
+    this.embeddingAllowed = const Value.absent(),
   }) : sessionId = Value(sessionId),
        order = Value(order),
        exerciseName = Value(exerciseName),
@@ -2900,6 +3017,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     Expression<String>? notes,
     Expression<String>? videoUrl,
     Expression<int>? supersetGroupId,
+    Expression<bool>? embeddingAllowed,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2914,6 +3032,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
       if (notes != null) 'notes': notes,
       if (videoUrl != null) 'video_url': videoUrl,
       if (supersetGroupId != null) 'superset_group_id': supersetGroupId,
+      if (embeddingAllowed != null) 'embedding_allowed': embeddingAllowed,
     });
   }
 
@@ -2930,6 +3049,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     Value<String>? notes,
     Value<String>? videoUrl,
     Value<int?>? supersetGroupId,
+    Value<bool>? embeddingAllowed,
   }) {
     return PlanExercisesCompanion(
       id: id ?? this.id,
@@ -2944,6 +3064,7 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
       notes: notes ?? this.notes,
       videoUrl: videoUrl ?? this.videoUrl,
       supersetGroupId: supersetGroupId ?? this.supersetGroupId,
+      embeddingAllowed: embeddingAllowed ?? this.embeddingAllowed,
     );
   }
 
@@ -2986,6 +3107,9 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
     if (supersetGroupId.present) {
       map['superset_group_id'] = Variable<int>(supersetGroupId.value);
     }
+    if (embeddingAllowed.present) {
+      map['embedding_allowed'] = Variable<bool>(embeddingAllowed.value);
+    }
     return map;
   }
 
@@ -3003,7 +3127,8 @@ class PlanExercisesCompanion extends UpdateCompanion<PlanExercise> {
           ..write('restSec: $restSec, ')
           ..write('notes: $notes, ')
           ..write('videoUrl: $videoUrl, ')
-          ..write('supersetGroupId: $supersetGroupId')
+          ..write('supersetGroupId: $supersetGroupId, ')
+          ..write('embeddingAllowed: $embeddingAllowed')
           ..write(')'))
         .toString();
   }
@@ -5276,6 +5401,21 @@ class $BlockExercisesTable extends BlockExercises
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _embeddingAllowedMeta = const VerificationMeta(
+    'embeddingAllowed',
+  );
+  @override
+  late final GeneratedColumn<bool> embeddingAllowed = GeneratedColumn<bool>(
+    'embedding_allowed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("embedding_allowed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -5289,6 +5429,7 @@ class $BlockExercisesTable extends BlockExercises
     restSec,
     notes,
     videoUrl,
+    embeddingAllowed,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5381,6 +5522,15 @@ class $BlockExercisesTable extends BlockExercises
         videoUrl.isAcceptableOrUnknown(data['video_url']!, _videoUrlMeta),
       );
     }
+    if (data.containsKey('embedding_allowed')) {
+      context.handle(
+        _embeddingAllowedMeta,
+        embeddingAllowed.isAcceptableOrUnknown(
+          data['embedding_allowed']!,
+          _embeddingAllowedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -5434,6 +5584,10 @@ class $BlockExercisesTable extends BlockExercises
         DriftSqlType.string,
         data['${effectivePrefix}video_url'],
       )!,
+      embeddingAllowed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}embedding_allowed'],
+      )!,
     );
   }
 
@@ -5457,6 +5611,11 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
   final int? restSec;
   final String notes;
   final String videoUrl;
+
+  /// Same opt-in as `Exercises.embeddingAllowed`/`PlanExercises.embeddingAllowed`,
+  /// carried through the block's own stamp-on-insert copy (see
+  /// `BlockExerciseToPlanInput.toPlanInput()`) so it isn't silently reset.
+  final bool embeddingAllowed;
   const BlockExercise({
     required this.id,
     required this.blockId,
@@ -5469,6 +5628,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
     this.restSec,
     required this.notes,
     required this.videoUrl,
+    required this.embeddingAllowed,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5488,6 +5648,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
     }
     map['notes'] = Variable<String>(notes);
     map['video_url'] = Variable<String>(videoUrl);
+    map['embedding_allowed'] = Variable<bool>(embeddingAllowed);
     return map;
   }
 
@@ -5508,6 +5669,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
           : Value(restSec),
       notes: Value(notes),
       videoUrl: Value(videoUrl),
+      embeddingAllowed: Value(embeddingAllowed),
     );
   }
 
@@ -5528,6 +5690,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
       restSec: serializer.fromJson<int?>(json['restSec']),
       notes: serializer.fromJson<String>(json['notes']),
       videoUrl: serializer.fromJson<String>(json['videoUrl']),
+      embeddingAllowed: serializer.fromJson<bool>(json['embeddingAllowed']),
     );
   }
   @override
@@ -5545,6 +5708,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
       'restSec': serializer.toJson<int?>(restSec),
       'notes': serializer.toJson<String>(notes),
       'videoUrl': serializer.toJson<String>(videoUrl),
+      'embeddingAllowed': serializer.toJson<bool>(embeddingAllowed),
     };
   }
 
@@ -5560,6 +5724,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
     Value<int?> restSec = const Value.absent(),
     String? notes,
     String? videoUrl,
+    bool? embeddingAllowed,
   }) => BlockExercise(
     id: id ?? this.id,
     blockId: blockId ?? this.blockId,
@@ -5572,6 +5737,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
     restSec: restSec.present ? restSec.value : this.restSec,
     notes: notes ?? this.notes,
     videoUrl: videoUrl ?? this.videoUrl,
+    embeddingAllowed: embeddingAllowed ?? this.embeddingAllowed,
   );
   BlockExercise copyWithCompanion(BlockExercisesCompanion data) {
     return BlockExercise(
@@ -5592,6 +5758,9 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
       restSec: data.restSec.present ? data.restSec.value : this.restSec,
       notes: data.notes.present ? data.notes.value : this.notes,
       videoUrl: data.videoUrl.present ? data.videoUrl.value : this.videoUrl,
+      embeddingAllowed: data.embeddingAllowed.present
+          ? data.embeddingAllowed.value
+          : this.embeddingAllowed,
     );
   }
 
@@ -5608,7 +5777,8 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
           ..write('weightIntensity: $weightIntensity, ')
           ..write('restSec: $restSec, ')
           ..write('notes: $notes, ')
-          ..write('videoUrl: $videoUrl')
+          ..write('videoUrl: $videoUrl, ')
+          ..write('embeddingAllowed: $embeddingAllowed')
           ..write(')'))
         .toString();
   }
@@ -5626,6 +5796,7 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
     restSec,
     notes,
     videoUrl,
+    embeddingAllowed,
   );
   @override
   bool operator ==(Object other) =>
@@ -5641,7 +5812,8 @@ class BlockExercise extends DataClass implements Insertable<BlockExercise> {
           other.weightIntensity == this.weightIntensity &&
           other.restSec == this.restSec &&
           other.notes == this.notes &&
-          other.videoUrl == this.videoUrl);
+          other.videoUrl == this.videoUrl &&
+          other.embeddingAllowed == this.embeddingAllowed);
 }
 
 class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
@@ -5656,6 +5828,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
   final Value<int?> restSec;
   final Value<String> notes;
   final Value<String> videoUrl;
+  final Value<bool> embeddingAllowed;
   const BlockExercisesCompanion({
     this.id = const Value.absent(),
     this.blockId = const Value.absent(),
@@ -5668,6 +5841,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
     this.restSec = const Value.absent(),
     this.notes = const Value.absent(),
     this.videoUrl = const Value.absent(),
+    this.embeddingAllowed = const Value.absent(),
   });
   BlockExercisesCompanion.insert({
     this.id = const Value.absent(),
@@ -5681,6 +5855,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
     this.restSec = const Value.absent(),
     this.notes = const Value.absent(),
     this.videoUrl = const Value.absent(),
+    this.embeddingAllowed = const Value.absent(),
   }) : blockId = Value(blockId),
        order = Value(order),
        exerciseName = Value(exerciseName),
@@ -5698,6 +5873,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
     Expression<int>? restSec,
     Expression<String>? notes,
     Expression<String>? videoUrl,
+    Expression<bool>? embeddingAllowed,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -5711,6 +5887,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
       if (restSec != null) 'rest_sec': restSec,
       if (notes != null) 'notes': notes,
       if (videoUrl != null) 'video_url': videoUrl,
+      if (embeddingAllowed != null) 'embedding_allowed': embeddingAllowed,
     });
   }
 
@@ -5726,6 +5903,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
     Value<int?>? restSec,
     Value<String>? notes,
     Value<String>? videoUrl,
+    Value<bool>? embeddingAllowed,
   }) {
     return BlockExercisesCompanion(
       id: id ?? this.id,
@@ -5739,6 +5917,7 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
       restSec: restSec ?? this.restSec,
       notes: notes ?? this.notes,
       videoUrl: videoUrl ?? this.videoUrl,
+      embeddingAllowed: embeddingAllowed ?? this.embeddingAllowed,
     );
   }
 
@@ -5778,6 +5957,9 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
     if (videoUrl.present) {
       map['video_url'] = Variable<String>(videoUrl.value);
     }
+    if (embeddingAllowed.present) {
+      map['embedding_allowed'] = Variable<bool>(embeddingAllowed.value);
+    }
     return map;
   }
 
@@ -5794,7 +5976,8 @@ class BlockExercisesCompanion extends UpdateCompanion<BlockExercise> {
           ..write('weightIntensity: $weightIntensity, ')
           ..write('restSec: $restSec, ')
           ..write('notes: $notes, ')
-          ..write('videoUrl: $videoUrl')
+          ..write('videoUrl: $videoUrl, ')
+          ..write('embeddingAllowed: $embeddingAllowed')
           ..write(')'))
         .toString();
   }
@@ -5908,6 +6091,7 @@ typedef $$ExercisesTableCreateCompanionBuilder = ExercisesCompanion Function({
   Value<String?> imagePath,
   Value<String?> imagePaths,
   Value<bool> isFavorite,
+  Value<bool> embeddingAllowed,
   Value<int> rowid,
 });
 typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
@@ -5928,6 +6112,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder = ExercisesCompanion Function({
   Value<String?> imagePath,
   Value<String?> imagePaths,
   Value<bool> isFavorite,
+  Value<bool> embeddingAllowed,
   Value<int> rowid,
 });
 
@@ -6081,6 +6266,11 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<bool> get isFavorite => $composableBuilder(
     column: $table.isFavorite,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6253,6 +6443,11 @@ class $$ExercisesTableOrderingComposer
     column: $table.isFavorite,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -6332,6 +6527,11 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<bool> get isFavorite => $composableBuilder(
     column: $table.isFavorite,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
     builder: (column) => column,
   );
 
@@ -6460,6 +6660,7 @@ class $$ExercisesTableTableManager
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> imagePaths = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
+                Value<bool> embeddingAllowed = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
@@ -6479,6 +6680,7 @@ class $$ExercisesTableTableManager
                 imagePath: imagePath,
                 imagePaths: imagePaths,
                 isFavorite: isFavorite,
+                embeddingAllowed: embeddingAllowed,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -6500,6 +6702,7 @@ class $$ExercisesTableTableManager
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> imagePaths = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
+                Value<bool> embeddingAllowed = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
@@ -6519,6 +6722,7 @@ class $$ExercisesTableTableManager
                 imagePath: imagePath,
                 imagePaths: imagePaths,
                 isFavorite: isFavorite,
+                embeddingAllowed: embeddingAllowed,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -7925,6 +8129,7 @@ typedef $$PlanExercisesTableCreateCompanionBuilder =
       Value<String> notes,
       Value<String> videoUrl,
       Value<int?> supersetGroupId,
+      Value<bool> embeddingAllowed,
     });
 typedef $$PlanExercisesTableUpdateCompanionBuilder =
     PlanExercisesCompanion Function({
@@ -7940,6 +8145,7 @@ typedef $$PlanExercisesTableUpdateCompanionBuilder =
       Value<String> notes,
       Value<String> videoUrl,
       Value<int?> supersetGroupId,
+      Value<bool> embeddingAllowed,
     });
 
 final class $$PlanExercisesTableReferences
@@ -8041,6 +8247,11 @@ class $$PlanExercisesTableFilterComposer
 
   ColumnFilters<int> get supersetGroupId => $composableBuilder(
     column: $table.supersetGroupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8150,6 +8361,11 @@ class $$PlanExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PlanSessionsTableOrderingComposer get sessionId {
     final $$PlanSessionsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -8242,6 +8458,11 @@ class $$PlanExercisesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
+    builder: (column) => column,
+  );
+
   $$PlanSessionsTableAnnotationComposer get sessionId {
     final $$PlanSessionsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -8329,6 +8550,7 @@ class $$PlanExercisesTableTableManager
                 Value<String> notes = const Value.absent(),
                 Value<String> videoUrl = const Value.absent(),
                 Value<int?> supersetGroupId = const Value.absent(),
+                Value<bool> embeddingAllowed = const Value.absent(),
               }) => PlanExercisesCompanion(
                 id: id,
                 sessionId: sessionId,
@@ -8342,6 +8564,7 @@ class $$PlanExercisesTableTableManager
                 notes: notes,
                 videoUrl: videoUrl,
                 supersetGroupId: supersetGroupId,
+                embeddingAllowed: embeddingAllowed,
               ),
           createCompanionCallback:
               ({
@@ -8357,6 +8580,7 @@ class $$PlanExercisesTableTableManager
                 Value<String> notes = const Value.absent(),
                 Value<String> videoUrl = const Value.absent(),
                 Value<int?> supersetGroupId = const Value.absent(),
+                Value<bool> embeddingAllowed = const Value.absent(),
               }) => PlanExercisesCompanion.insert(
                 id: id,
                 sessionId: sessionId,
@@ -8370,6 +8594,7 @@ class $$PlanExercisesTableTableManager
                 notes: notes,
                 videoUrl: videoUrl,
                 supersetGroupId: supersetGroupId,
+                embeddingAllowed: embeddingAllowed,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -10033,6 +10258,7 @@ typedef $$BlockExercisesTableCreateCompanionBuilder =
       Value<int?> restSec,
       Value<String> notes,
       Value<String> videoUrl,
+      Value<bool> embeddingAllowed,
     });
 typedef $$BlockExercisesTableUpdateCompanionBuilder =
     BlockExercisesCompanion Function({
@@ -10047,6 +10273,7 @@ typedef $$BlockExercisesTableUpdateCompanionBuilder =
       Value<int?> restSec,
       Value<String> notes,
       Value<String> videoUrl,
+      Value<bool> embeddingAllowed,
     });
 
 final class $$BlockExercisesTableReferences
@@ -10143,6 +10370,11 @@ class $$BlockExercisesTableFilterComposer
 
   ColumnFilters<String> get videoUrl => $composableBuilder(
     column: $table.videoUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10247,6 +10479,11 @@ class $$BlockExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$BlocksTableOrderingComposer get blockId {
     final $$BlocksTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -10333,6 +10570,11 @@ class $$BlockExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get videoUrl =>
       $composableBuilder(column: $table.videoUrl, builder: (column) => column);
+
+  GeneratedColumn<bool> get embeddingAllowed => $composableBuilder(
+    column: $table.embeddingAllowed,
+    builder: (column) => column,
+  );
 
   $$BlocksTableAnnotationComposer get blockId {
     final $$BlocksTableAnnotationComposer composer = $composerBuilder(
@@ -10422,6 +10664,7 @@ class $$BlockExercisesTableTableManager
                 Value<int?> restSec = const Value.absent(),
                 Value<String> notes = const Value.absent(),
                 Value<String> videoUrl = const Value.absent(),
+                Value<bool> embeddingAllowed = const Value.absent(),
               }) => BlockExercisesCompanion(
                 id: id,
                 blockId: blockId,
@@ -10434,6 +10677,7 @@ class $$BlockExercisesTableTableManager
                 restSec: restSec,
                 notes: notes,
                 videoUrl: videoUrl,
+                embeddingAllowed: embeddingAllowed,
               ),
           createCompanionCallback:
               ({
@@ -10448,6 +10692,7 @@ class $$BlockExercisesTableTableManager
                 Value<int?> restSec = const Value.absent(),
                 Value<String> notes = const Value.absent(),
                 Value<String> videoUrl = const Value.absent(),
+                Value<bool> embeddingAllowed = const Value.absent(),
               }) => BlockExercisesCompanion.insert(
                 id: id,
                 blockId: blockId,
@@ -10460,6 +10705,7 @@ class $$BlockExercisesTableTableManager
                 restSec: restSec,
                 notes: notes,
                 videoUrl: videoUrl,
+                embeddingAllowed: embeddingAllowed,
               ),
           withReferenceMapper: (p0) => p0
               .map(

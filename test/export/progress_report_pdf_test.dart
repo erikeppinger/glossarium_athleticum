@@ -339,6 +339,7 @@ void main() {
                 weightIntensity: '60kg',
                 notes: '',
                 videoUrl: '',
+                embeddingAllowed: false,
               ),
             ),
           ],

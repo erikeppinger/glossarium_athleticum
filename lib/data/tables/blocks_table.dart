@@ -38,4 +38,10 @@ class BlockExercises extends Table {
   IntColumn get restSec => integer().nullable()();
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get videoUrl => text().withDefault(const Constant(''))();
+
+  /// Same opt-in as `Exercises.embeddingAllowed`/`PlanExercises.embeddingAllowed`,
+  /// carried through the block's own stamp-on-insert copy (see
+  /// `BlockExerciseToPlanInput.toPlanInput()`) so it isn't silently reset.
+  BoolColumn get embeddingAllowed =>
+      boolean().withDefault(const Constant(false))();
 }

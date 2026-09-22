@@ -57,6 +57,17 @@ class Exercises extends Table {
   /// convenience, not part of any exported plan/backup JSON.
   BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
 
+  /// Opt-in to show [videoReference] as an embedded player (YouTube only -
+  /// see lib/logic/video_embedding.dart) instead of just a tappable link.
+  /// Defaults to false: embedding is never turned on implicitly, including
+  /// on import, since whoever adds a video is asserting they have the right
+  /// to embed it - see docs/DISCLAIMER.md's "Embedded video" section. This
+  /// travels with the exercise through export/import/backup exactly like
+  /// [videoReference] itself, so a shared library preserves the author's
+  /// own choice rather than resetting it.
+  BoolColumn get embeddingAllowed =>
+      boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

@@ -21,6 +21,7 @@ class BlockExerciseInput {
   final int? restSec;
   final String notes;
   final String videoUrl;
+  final bool embeddingAllowed;
 
   const BlockExerciseInput({
     required this.order,
@@ -32,6 +33,7 @@ class BlockExerciseInput {
     this.restSec,
     this.notes = '',
     this.videoUrl = '',
+    this.embeddingAllowed = false,
   });
 }
 
@@ -53,6 +55,7 @@ extension PlanExerciseToBlockInput on PlanExercise {
     restSec: restSec,
     notes: notes,
     videoUrl: videoUrl,
+    embeddingAllowed: embeddingAllowed,
   );
 }
 
@@ -71,6 +74,7 @@ extension BlockExerciseToPlanInput on BlockExercise {
     restSec: restSec,
     notes: notes,
     videoUrl: videoUrl,
+    embeddingAllowed: embeddingAllowed,
   );
 }
 
@@ -123,6 +127,7 @@ class BlockDao extends DatabaseAccessor<AppDatabase> with _$BlockDaoMixin {
             restSec: Value(e.restSec),
             notes: Value(e.notes),
             videoUrl: Value(e.videoUrl),
+            embeddingAllowed: Value(e.embeddingAllowed),
           ),
         );
       }
@@ -182,6 +187,7 @@ class BlockDao extends DatabaseAccessor<AppDatabase> with _$BlockDaoMixin {
           restSec: Value(input.restSec),
           notes: Value(input.notes),
           videoUrl: Value(input.videoUrl),
+          embeddingAllowed: Value(input.embeddingAllowed),
         ),
       );
       await _touchUpdatedAt(blockId);

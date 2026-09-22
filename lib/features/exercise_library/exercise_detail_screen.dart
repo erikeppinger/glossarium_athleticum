@@ -6,6 +6,7 @@ import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/local_storage.dart';
 import '../../logic/exercise_images.dart';
+import '../../logic/video_embedding.dart';
 import '../execution/start_session_helper.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
 import '../plans/plan_providers.dart' show allExercisesForMatchingProvider;
@@ -13,6 +14,7 @@ import '../history/history_screen.dart';
 import '../shared/attachment_image.dart';
 import '../shared/exercise_export_flow.dart';
 import '../shared/photo_viewer_screen.dart';
+import '../shared/youtube_embed.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_library_providers.dart';
 
@@ -147,24 +149,39 @@ class ExerciseDetailScreen extends ConsumerWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 4),
-            InkWell(
-              onTap: () => _openVideo(context, exercise.videoReference),
-              child: Text(
-                exercise.videoReference,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  decoration: TextDecoration.underline,
+            if (exercise.embeddingAllowed &&
+                extractYoutubeVideoId(exercise.videoReference) != null) ...[
+              YoutubeEmbed(
+                videoId: extractYoutubeVideoId(exercise.videoReference)!,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Embedded for personal use - not verified by this app, and '
+                "not yours to redistribute just because it's embedded here.",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'External link, not verified by this app - use your own '
-              'judgment and stop if something hurts.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ] else ...[
+              InkWell(
+                onTap: () => _openVideo(context, exercise.videoReference),
+                child: Text(
+                  exercise.videoReference,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                'External link, not verified by this app - use your own '
+                'judgment and stop if something hurts.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 32),
           // Reported live: wanting to do a couple of sets of something (e.g.
