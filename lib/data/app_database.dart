@@ -43,7 +43,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -165,6 +165,11 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(exercises, exercises.embeddingAllowed);
         await m.addColumn(planExercises, planExercises.embeddingAllowed);
         await m.addColumn(blockExercises, blockExercises.embeddingAllowed);
+      }
+      if (from < 17) {
+        // Trainee-to-trainer per-set feedback - see LoggedSets.notes' own
+        // doc comment.
+        await m.addColumn(loggedSets, loggedSets.notes);
       }
     },
   );

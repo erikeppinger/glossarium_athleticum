@@ -513,12 +513,20 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
         )
         .toList();
 
+    // "Created By" is plan-wide, not really per-row, but the spreadsheet
+    // has no separate place to put a plan-level field - take it from
+    // whichever row (if any) actually has it filled in.
+    final createdBy = matched
+        .map((r) => r.createdBy.trim())
+        .firstWhere((c) => c.isNotEmpty, orElse: () => '');
+
     await db.planDao.createPlan(
       id: const Uuid().v4(),
       name: _nameController.text.trim().isEmpty
           ? 'Imported plan'
           : _nameController.text.trim(),
       sessions: sessions,
+      createdBy: createdBy.isEmpty ? null : createdBy,
     );
 
     if (mounted) Navigator.of(context).pop();

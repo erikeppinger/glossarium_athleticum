@@ -405,6 +405,158 @@ void main() {
     },
   );
 
+  test('a trainer name renders an extra header line', () async {
+    const summary = PeriodSummary(
+      sessionsScheduled: 0,
+      sessionsCompleted: 0,
+      totalVolume: 0,
+      prCount: 0,
+    );
+    final withoutTrainer = await buildProgressReportPdf(
+      rangeLabel: 'Aug 31 - Sep 6',
+      summary: summary,
+      dailyTotals: const [],
+      dashboard: const [],
+      exerciseNames: const {},
+      unit: WeightUnit.kg,
+      generatedAt: DateTime(2026, 9, 6),
+    );
+    final withTrainer = await buildProgressReportPdf(
+      rangeLabel: 'Aug 31 - Sep 6',
+      summary: summary,
+      dailyTotals: const [],
+      dashboard: const [],
+      exerciseNames: const {},
+      unit: WeightUnit.kg,
+      generatedAt: DateTime(2026, 9, 6),
+      trainerName: 'Coach Erik',
+    );
+    expect(String.fromCharCodes(withTrainer.take(4)), '%PDF');
+    expect(withTrainer.length, greaterThan(withoutTrainer.length + 10));
+  });
+
+  group('the full log flags deviations from the prescription', () {
+    const emptySummary = PeriodSummary(
+      sessionsScheduled: 0,
+      sessionsCompleted: 0,
+      totalVolume: 0,
+      prCount: 0,
+    );
+
+    const defaultPrescription = PlanExercise(
+      id: 1,
+      sessionId: 1,
+      order: 1,
+      exerciseId: 'EX_BP',
+      exerciseName: 'Bench Press',
+      sets: 2,
+      reps: '8',
+      weightIntensity: '60kg',
+      notes: '',
+      videoUrl: '',
+      embeddingAllowed: false,
+    );
+
+    CompletedWorkout workoutWithSets(
+      List<LoggedSet> sets, {
+      required PlanExercise? prescription,
+    }) => CompletedWorkout(
+      log: SessionLog(
+        id: 'log-1',
+        planSessionId: 1,
+        loggedAt: DateTime(2026, 9, 1),
+        finishedAt: DateTime(2026, 9, 1),
+      ),
+      sessionName: 'Push Day',
+      exercises: [
+        CompletedExercise(
+          exerciseId: 'EX_BP',
+          exerciseName: 'Bench Press',
+          sets: sets,
+          prescription: prescription,
+        ),
+      ],
+    );
+
+    Future<int> pdfLengthFor(
+      List<LoggedSet> sets, {
+      PlanExercise? prescription = defaultPrescription,
+    }) async {
+      final bytes = await buildProgressReportPdf(
+        rangeLabel: 'Aug 31 - Sep 6',
+        summary: emptySummary,
+        dailyTotals: const [],
+        dashboard: const [],
+        exerciseNames: const {},
+        unit: WeightUnit.kg,
+        generatedAt: DateTime(2026, 9, 6),
+        fullLog: [workoutWithSets(sets, prescription: prescription)],
+      );
+      expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+      return bytes.length;
+    }
+
+    test('as-prescribed produces a smaller PDF than fewer-sets-than-Rx', () async {
+      final asPrescribed = await pdfLengthFor([
+        LoggedSet(id: 1, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60, isPr: false),
+        LoggedSet(id: 2, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60, isPr: false),
+      ]);
+      final fewerSets = await pdfLengthFor([
+        LoggedSet(id: 1, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60, isPr: false),
+      ]);
+      expect(fewerSets, greaterThan(asPrescribed + 10));
+    });
+
+    test('a set note produces a larger PDF than the same set with none', () async {
+      final withoutNote = await pdfLengthFor([
+        LoggedSet(id: 1, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60, isPr: false),
+        LoggedSet(id: 2, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60, isPr: false),
+      ]);
+      final withNote = await pdfLengthFor([
+        LoggedSet(
+          id: 1,
+          sessionLogId: 'log-1',
+          exerciseId: 'EX_BP',
+          setNumber: 1,
+          reps: 8,
+          weight: 60,
+          isPr: false,
+          notes: 'Left shoulder felt off',
+        ),
+        LoggedSet(id: 2, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60, isPr: false),
+      ]);
+      expect(withNote, greaterThan(withoutNote + 10));
+    });
+
+    test('a percentage prescription never flags a genuinely on-target set', () async {
+      // "70%" resolves to some real kg figure at logging time, but comparing
+      // the raw "70" against a logged weight in kg (e.g. 45) would be
+      // comparing incompatible units - this must not be flagged.
+      final length = await pdfLengthFor(
+        [LoggedSet(id: 1, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 45, isPr: false)],
+        prescription: const PlanExercise(
+          id: 1,
+          sessionId: 1,
+          order: 1,
+          exerciseId: 'EX_BP',
+          exerciseName: 'Bench Press',
+          sets: 1,
+          reps: '8',
+          weightIntensity: '70%',
+          notes: '',
+          videoUrl: '',
+          embeddingAllowed: false,
+        ),
+      );
+      final noPrescription = await pdfLengthFor([
+        LoggedSet(id: 1, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 45, isPr: false),
+      ], prescription: null);
+      // Should differ only by the "Prescribed: ..." line itself, not by an
+      // extra (wrongly-triggered) deviation tag on top of it.
+      expect(length - noPrescription, lessThan(60));
+    });
+  });
+
   test('many exercises (forcing a multi-page table) still produces a valid PDF', () async {
     final dashboard = [
       for (var i = 0; i < 60; i++)

@@ -67,6 +67,15 @@ class PlanImportRow {
   /// unused in that path.
   final String picture;
 
+  /// From the optional "Created By" column - a trainer's name, if this plan
+  /// was authored by one. Not one of `_requiredColumns`, so a template
+  /// without it parses exactly as before with this simply empty. Plan-wide,
+  /// not really per-row, but the spreadsheet has no separate place to put a
+  /// plan-level field - `plan_import_screen.dart` reads it off whichever row
+  /// (if any) actually has it filled in and uses that as the whole plan's
+  /// `Plans.createdBy`.
+  final String createdBy;
+
   const PlanImportRow({
     required this.rowNumber,
     required this.week,
@@ -83,6 +92,7 @@ class PlanImportRow {
     this.embeddingAllowed = false,
     this.matchedExerciseId,
     this.picture = '',
+    this.createdBy = '',
   });
 
   PlanImportRow withMatchedExerciseId(String? id) => PlanImportRow(
@@ -101,6 +111,7 @@ class PlanImportRow {
         embeddingAllowed: embeddingAllowed,
         matchedExerciseId: id,
         picture: picture,
+        createdBy: createdBy,
       );
 }
 
@@ -255,6 +266,7 @@ PlanImportResult _parsePlanRows(List<List<dynamic>> rawRows) {
         videoUrl: cell('Video URL'),
         embeddingAllowed: parseEmbeddingFlag(cell('Embedding')),
         picture: cell('Picture'),
+        createdBy: cell('Created By'),
       ),
     );
   }

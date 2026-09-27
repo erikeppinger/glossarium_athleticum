@@ -18,6 +18,10 @@ class LoggedSetInput {
   final double? rpe;
   final bool isPr;
 
+  /// See `LoggedSets.notes`' own doc comment - trainee-to-trainer feedback
+  /// on this specific set.
+  final String? notes;
+
   const LoggedSetInput({
     required this.exerciseId,
     required this.setNumber,
@@ -27,6 +31,7 @@ class LoggedSetInput {
     this.distance,
     this.rpe,
     this.isPr = false,
+    this.notes,
   });
 }
 
@@ -38,6 +43,7 @@ class LoggedSetInput {
     PlanSessionDates,
     PlanExercises,
     Exercises,
+    Plans,
   ],
 )
 class SessionLogDao extends DatabaseAccessor<AppDatabase>
@@ -80,6 +86,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
             distance: Value(e.distance),
             rpe: Value(e.rpe),
             isPr: Value(e.isPr),
+            notes: Value(e.notes),
           ),
         );
       }
@@ -153,6 +160,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
             distance: Value(e.distance),
             rpe: Value(e.rpe),
             isPr: Value(e.isPr),
+            notes: Value(e.notes),
           ),
         );
       }
@@ -634,6 +642,19 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
             planSessions,
           )..where((s) => s.id.equals(planSessionId))).getSingleOrNull();
 
+    // Who this workout's plan was created by (e.g. a trainer's name, see
+    // Plans.createdBy) - lets a multi-plan report (the Progress tab's
+    // export spans whatever's logged in the date range, not one plan) show
+    // the trainer's name in its header when every workout in range traces
+    // back to the same one. Null for an ad-hoc activity, an exercise added
+    // mid-session with no session at all, or a plan nobody set this on.
+    final planCreatedBy = session == null
+        ? null
+        : (await (select(
+                plans,
+              )..where((p) => p.id.equals(session.planId))).getSingleOrNull())
+              ?.createdBy;
+
     final sets = await (select(loggedSets)
           ..where((s) => s.sessionLogId.equals(sessionLogId))
           ..orderBy([(s) => OrderingTerm.asc(s.id)]))
@@ -674,6 +695,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return CompletedWorkout(
       log: log,
       sessionName: session?.sessionName ?? log.activityName ?? 'Workout',
+      planCreatedBy: planCreatedBy,
       exercises: [
         for (final entry in grouped.entries)
           CompletedExercise(
@@ -1013,10 +1035,15 @@ class CompletedWorkout {
   final String sessionName;
   final List<CompletedExercise> exercises;
 
+  /// See `SessionLogDao.getCompletedWorkout`'s own doc comment for why this
+  /// can be null.
+  final String? planCreatedBy;
+
   const CompletedWorkout({
     required this.log,
     required this.sessionName,
     required this.exercises,
+    this.planCreatedBy,
   });
 }
 

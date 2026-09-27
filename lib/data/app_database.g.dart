@@ -3813,6 +3813,15 @@ class $LoggedSetsTable extends LoggedSets
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3825,6 +3834,7 @@ class $LoggedSetsTable extends LoggedSets
     distance,
     rpe,
     isPr,
+    notes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3907,6 +3917,12 @@ class $LoggedSetsTable extends LoggedSets
         isPr.isAcceptableOrUnknown(data['is_pr']!, _isPrMeta),
       );
     }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
     return context;
   }
 
@@ -3956,6 +3972,10 @@ class $LoggedSetsTable extends LoggedSets
         DriftSqlType.bool,
         data['${effectivePrefix}is_pr'],
       )!,
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
     );
   }
 
@@ -3976,6 +3996,16 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
   final double? distance;
   final double? rpe;
   final bool isPr;
+
+  /// Free-text feedback the trainee attaches to this specific set while
+  /// logging it (e.g. "shoulder felt off on this one") - the trainee-to-
+  /// trainer counterpart of `PlanExercises.notes` (the trainer's own
+  /// prescription note, already shown in execution mode). Deliberately
+  /// per-set rather than a single per-exercise field, matching this table's
+  /// existing granularity (`rpe`/`isPr` are per set too) - a note meant for
+  /// the whole exercise is simply attached to its first set; the trainer
+  /// report renders any non-empty note under the exercise it belongs to.
+  final String? notes;
   const LoggedSet({
     required this.id,
     required this.sessionLogId,
@@ -3987,6 +4017,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
     this.distance,
     this.rpe,
     required this.isPr,
+    this.notes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4011,6 +4042,9 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
       map['rpe'] = Variable<double>(rpe);
     }
     map['is_pr'] = Variable<bool>(isPr);
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
     return map;
   }
 
@@ -4032,6 +4066,9 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
           : Value(distance),
       rpe: rpe == null && nullToAbsent ? const Value.absent() : Value(rpe),
       isPr: Value(isPr),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
     );
   }
 
@@ -4051,6 +4088,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
       distance: serializer.fromJson<double?>(json['distance']),
       rpe: serializer.fromJson<double?>(json['rpe']),
       isPr: serializer.fromJson<bool>(json['isPr']),
+      notes: serializer.fromJson<String?>(json['notes']),
     );
   }
   @override
@@ -4067,6 +4105,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
       'distance': serializer.toJson<double?>(distance),
       'rpe': serializer.toJson<double?>(rpe),
       'isPr': serializer.toJson<bool>(isPr),
+      'notes': serializer.toJson<String?>(notes),
     };
   }
 
@@ -4081,6 +4120,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
     Value<double?> distance = const Value.absent(),
     Value<double?> rpe = const Value.absent(),
     bool? isPr,
+    Value<String?> notes = const Value.absent(),
   }) => LoggedSet(
     id: id ?? this.id,
     sessionLogId: sessionLogId ?? this.sessionLogId,
@@ -4092,6 +4132,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
     distance: distance.present ? distance.value : this.distance,
     rpe: rpe.present ? rpe.value : this.rpe,
     isPr: isPr ?? this.isPr,
+    notes: notes.present ? notes.value : this.notes,
   );
   LoggedSet copyWithCompanion(LoggedSetsCompanion data) {
     return LoggedSet(
@@ -4111,6 +4152,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
       distance: data.distance.present ? data.distance.value : this.distance,
       rpe: data.rpe.present ? data.rpe.value : this.rpe,
       isPr: data.isPr.present ? data.isPr.value : this.isPr,
+      notes: data.notes.present ? data.notes.value : this.notes,
     );
   }
 
@@ -4126,7 +4168,8 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
           ..write('durationSec: $durationSec, ')
           ..write('distance: $distance, ')
           ..write('rpe: $rpe, ')
-          ..write('isPr: $isPr')
+          ..write('isPr: $isPr, ')
+          ..write('notes: $notes')
           ..write(')'))
         .toString();
   }
@@ -4143,6 +4186,7 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
     distance,
     rpe,
     isPr,
+    notes,
   );
   @override
   bool operator ==(Object other) =>
@@ -4157,7 +4201,8 @@ class LoggedSet extends DataClass implements Insertable<LoggedSet> {
           other.durationSec == this.durationSec &&
           other.distance == this.distance &&
           other.rpe == this.rpe &&
-          other.isPr == this.isPr);
+          other.isPr == this.isPr &&
+          other.notes == this.notes);
 }
 
 class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
@@ -4171,6 +4216,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
   final Value<double?> distance;
   final Value<double?> rpe;
   final Value<bool> isPr;
+  final Value<String?> notes;
   const LoggedSetsCompanion({
     this.id = const Value.absent(),
     this.sessionLogId = const Value.absent(),
@@ -4182,6 +4228,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
     this.distance = const Value.absent(),
     this.rpe = const Value.absent(),
     this.isPr = const Value.absent(),
+    this.notes = const Value.absent(),
   });
   LoggedSetsCompanion.insert({
     this.id = const Value.absent(),
@@ -4194,6 +4241,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
     this.distance = const Value.absent(),
     this.rpe = const Value.absent(),
     this.isPr = const Value.absent(),
+    this.notes = const Value.absent(),
   }) : sessionLogId = Value(sessionLogId),
        exerciseId = Value(exerciseId),
        setNumber = Value(setNumber);
@@ -4208,6 +4256,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
     Expression<double>? distance,
     Expression<double>? rpe,
     Expression<bool>? isPr,
+    Expression<String>? notes,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4220,6 +4269,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
       if (distance != null) 'distance': distance,
       if (rpe != null) 'rpe': rpe,
       if (isPr != null) 'is_pr': isPr,
+      if (notes != null) 'notes': notes,
     });
   }
 
@@ -4234,6 +4284,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
     Value<double?>? distance,
     Value<double?>? rpe,
     Value<bool>? isPr,
+    Value<String?>? notes,
   }) {
     return LoggedSetsCompanion(
       id: id ?? this.id,
@@ -4246,6 +4297,7 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
       distance: distance ?? this.distance,
       rpe: rpe ?? this.rpe,
       isPr: isPr ?? this.isPr,
+      notes: notes ?? this.notes,
     );
   }
 
@@ -4282,6 +4334,9 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
     if (isPr.present) {
       map['is_pr'] = Variable<bool>(isPr.value);
     }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
     return map;
   }
 
@@ -4297,7 +4352,8 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
           ..write('durationSec: $durationSec, ')
           ..write('distance: $distance, ')
           ..write('rpe: $rpe, ')
-          ..write('isPr: $isPr')
+          ..write('isPr: $isPr, ')
+          ..write('notes: $notes')
           ..write(')'))
         .toString();
   }
@@ -9153,6 +9209,7 @@ typedef $$LoggedSetsTableCreateCompanionBuilder = LoggedSetsCompanion Function({
   Value<double?> distance,
   Value<double?> rpe,
   Value<bool> isPr,
+  Value<String?> notes,
 });
 typedef $$LoggedSetsTableUpdateCompanionBuilder = LoggedSetsCompanion Function({
   Value<int> id,
@@ -9165,6 +9222,7 @@ typedef $$LoggedSetsTableUpdateCompanionBuilder = LoggedSetsCompanion Function({
   Value<double?> distance,
   Value<double?> rpe,
   Value<bool> isPr,
+  Value<String?> notes,
 });
 
 final class $$LoggedSetsTableReferences
@@ -9253,6 +9311,11 @@ class $$LoggedSetsTableFilterComposer
 
   ColumnFilters<bool> get isPr => $composableBuilder(
     column: $table.isPr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9352,6 +9415,11 @@ class $$LoggedSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SessionLogsTableOrderingComposer get sessionLogId {
     final $$SessionLogsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9433,6 +9501,9 @@ class $$LoggedSetsTableAnnotationComposer
 
   GeneratedColumn<bool> get isPr =>
       $composableBuilder(column: $table.isPr, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
 
   $$SessionLogsTableAnnotationComposer get sessionLogId {
     final $$SessionLogsTableAnnotationComposer composer = $composerBuilder(
@@ -9519,6 +9590,7 @@ class $$LoggedSetsTableTableManager
                 Value<double?> distance = const Value.absent(),
                 Value<double?> rpe = const Value.absent(),
                 Value<bool> isPr = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
               }) => LoggedSetsCompanion(
                 id: id,
                 sessionLogId: sessionLogId,
@@ -9530,6 +9602,7 @@ class $$LoggedSetsTableTableManager
                 distance: distance,
                 rpe: rpe,
                 isPr: isPr,
+                notes: notes,
               ),
           createCompanionCallback:
               ({
@@ -9543,6 +9616,7 @@ class $$LoggedSetsTableTableManager
                 Value<double?> distance = const Value.absent(),
                 Value<double?> rpe = const Value.absent(),
                 Value<bool> isPr = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
               }) => LoggedSetsCompanion.insert(
                 id: id,
                 sessionLogId: sessionLogId,
@@ -9554,6 +9628,7 @@ class $$LoggedSetsTableTableManager
                 distance: distance,
                 rpe: rpe,
                 isPr: isPr,
+                notes: notes,
               ),
           withReferenceMapper: (p0) => p0
               .map(

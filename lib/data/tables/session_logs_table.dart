@@ -73,4 +73,14 @@ class LoggedSets extends Table {
   RealColumn get distance => real().nullable()();
   RealColumn get rpe => real().nullable()();
   BoolColumn get isPr => boolean().withDefault(const Constant(false))();
+
+  /// Free-text feedback the trainee attaches to this specific set while
+  /// logging it (e.g. "shoulder felt off on this one") - the trainee-to-
+  /// trainer counterpart of `PlanExercises.notes` (the trainer's own
+  /// prescription note, already shown in execution mode). Deliberately
+  /// per-set rather than a single per-exercise field, matching this table's
+  /// existing granularity (`rpe`/`isPr` are per set too) - a note meant for
+  /// the whole exercise is simply attached to its first set; the trainer
+  /// report renders any non-empty note under the exercise it belongs to.
+  TextColumn get notes => text().nullable()();
 }

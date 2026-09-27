@@ -666,6 +666,16 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       start: range.start,
       end: range.end,
     );
+    // Only claim a trainer's name in the header when every workout in range
+    // traces back to the same one plan-level `createdBy` - a report mixing
+    // several plans/trainers (or one that never set this) shouldn't
+    // attribute itself to just whichever happened to be logged first.
+    final creators = fullLog
+        .map((w) => w.planCreatedBy)
+        .whereType<String>()
+        .where((c) => c.isNotEmpty)
+        .toSet();
+    final trainerName = creators.length == 1 ? creators.first : null;
 
     final bytes = await buildProgressReportPdf(
       rangeLabel: _formatRange(range, mode),
@@ -677,6 +687,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       weightChange: weightChange,
       includeExerciseDashboard: false,
       fullLog: fullLog,
+      trainerName: trainerName,
     );
 
     if (!context.mounted) return;

@@ -8,6 +8,7 @@ import '../data/app_database.dart' show LoggedSet, PlanExercise;
 import '../data/daos/session_log_dao.dart';
 import '../logic/body_weight_trend.dart';
 import '../logic/chart_axis.dart';
+import '../logic/rx_deviation.dart';
 import '../logic/units.dart';
 
 /// Builds the "hand this to a coach" PDF version of the Progress tab's
@@ -41,6 +42,14 @@ Future<Uint8List> buildProgressReportPdf({
   // [_summaryStats]). Null/empty renders nothing extra - the existing
   // summary report is unaffected when a caller never passes this.
   List<CompletedWorkout>? fullLog,
+  // Who the plan(s) behind [fullLog] were created by (e.g. a trainer's own
+  // name - see `Plans.createdBy`) - shown in the header when the caller can
+  // confidently attribute the whole report to one person. Left for the
+  // caller to resolve (typically "the one non-null value shared by every
+  // workout in range, or null if the range mixes plans/trainers or has
+  // none") rather than decided here, since that's a policy call about
+  // multi-plan reports, not something this pure PDF builder should guess at.
+  String? trainerName,
 }) async {
   final doc = pw.Document();
   final now = generatedAt ?? DateTime.now();
@@ -50,7 +59,7 @@ Future<Uint8List> buildProgressReportPdf({
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(32),
       build: (context) => [
-        _header(rangeLabel, now),
+        _header(rangeLabel, now, trainerName),
         pw.SizedBox(height: 18),
         _summaryStats(summary, unit, weightChange),
         pw.SizedBox(height: 24),
@@ -83,14 +92,25 @@ Future<Uint8List> buildProgressReportPdf({
             'Full training log',
             style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
           ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Flagged rows (colored) differ from what was prescribed - '
+            'fewer sets, under target, a near-failure effort, or a note '
+            'from the trainee. Everything else went as planned.',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
           pw.SizedBox(height: 8),
-          // Each workout is its own top-level MultiPage child (not nested in
-          // one big Column) for the same page-splitting reason as the
-          // exercise table above - a long log blows past a single page.
-          for (final workout in fullLog) ...[
-            _workoutLogEntry(workout, unit),
-            pw.SizedBox(height: 12),
-          ],
+          // A single Table, one row per exercise (or per ad-hoc activity) -
+          // not one bordered Container per workout. A Table is the one
+          // widget in this package that's page-break-aware as a direct
+          // MultiPage child (see the exercise-dashboard table above): a
+          // Container/Column holding a whole multi-exercise workout doesn't
+          // get that treatment and can split mid-exercise, with its border
+          // left open on one side - confirmed live on a real multi-page
+          // export. Visual grouping into "workouts" comes from an alternating
+          // light background per workout and the session header appearing
+          // once per group, not from a border around the whole thing.
+          _fullLogTable(fullLog, unit),
         ] else if (fullLog != null)
           pw.Text(
             'Nothing logged in this period.',
@@ -116,7 +136,7 @@ String _pdfSafeWeightChange(BodyWeightChange change, WeightUnit unit) {
   ).replaceFirst('↓', 'Down ').replaceFirst('↑', 'Up ');
 }
 
-pw.Widget _header(String rangeLabel, DateTime generatedAt) {
+pw.Widget _header(String rangeLabel, DateTime generatedAt, String? trainerName) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
@@ -126,6 +146,13 @@ pw.Widget _header(String rangeLabel, DateTime generatedAt) {
       ),
       pw.SizedBox(height: 4),
       pw.Text(rangeLabel, style: const pw.TextStyle(fontSize: 13, color: PdfColors.grey700)),
+      if (trainerName != null && trainerName.isNotEmpty) ...[
+        pw.SizedBox(height: 2),
+        pw.Text(
+          'Plan by $trainerName',
+          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+        ),
+      ],
       pw.SizedBox(height: 2),
       pw.Text(
         'Generated ${DateFormat.yMMMd().add_jm().format(generatedAt)}',
@@ -341,85 +368,166 @@ pw.Widget _exerciseTable(
   );
 }
 
-/// One workout's full detail for the "Full training log" section - date,
-/// name, and (for a plan-based session) every exercise with every set, or
-/// (for an ad-hoc activity) its duration/distance/notes, matching what
-/// `CompletedWorkoutScreen` already shows in-app for the same log.
-pw.Widget _workoutLogEntry(CompletedWorkout workout, WeightUnit unit) {
-  final log = workout.log;
-  final isAdHoc = log.planSessionId == null;
-  final detailParts = <String>[
-    if (log.durationSec != null) formatDurationSec(log.durationSec!),
-    if (log.distance != null) formatDistanceMeters(log.distance!),
-  ];
+/// The "Full training log" section - one [pw.Table] with one row per
+/// exercise (or per ad-hoc activity), grouped visually into workouts via an
+/// alternating light background and a header shown once per group, rather
+/// than one bordered [pw.Container] per workout (see the call site's own
+/// comment for why a Container-based card could split mid-exercise across a
+/// page boundary with its border left open on one side).
+pw.Widget _fullLogTable(List<CompletedWorkout> fullLog, WeightUnit unit) {
+  final rows = <pw.TableRow>[];
+  for (var w = 0; w < fullLog.length; w++) {
+    final workout = fullLog[w];
+    final background = w.isEven ? PdfColors.white : PdfColors.grey50;
+    final log = workout.log;
+    final detailParts = <String>[
+      if (log.durationSec != null) formatDurationSec(log.durationSec!),
+      if (log.distance != null) formatDistanceMeters(log.distance!),
+    ];
 
-  return pw.Container(
-    padding: const pw.EdgeInsets.all(10),
-    decoration: pw.BoxDecoration(
-      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-      borderRadius: pw.BorderRadius.circular(4),
-    ),
-    child: pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
+    if (workout.exercises.isEmpty) {
+      // An ad-hoc activity (or, in principle, an empty plan session) has no
+      // per-exercise rows to fan out into - one row for the whole thing.
+      rows.add(
+        _logRow(background, [
+          _workoutHeader(workout.sessionName, log.loggedAt),
+          if (detailParts.isNotEmpty)
             pw.Text(
-              workout.sessionName,
-              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+              detailParts.join(', '),
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
             ),
-            pw.Text(
-              DateFormat.yMMMd().format(log.loggedAt),
-              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-            ),
-          ],
-        ),
-        if (detailParts.isNotEmpty) ...[
-          pw.SizedBox(height: 2),
-          pw.Text(
-            // A plain comma, not '•' - the pdf package's default Helvetica
-            // font has no glyph for it (confirmed via a "no font to draw"
-            // warning), unlike '×' below which WinAnsi does cover.
-            detailParts.join(', '),
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-          ),
-        ],
-        if (log.notes != null && log.notes!.isNotEmpty) ...[
-          pw.SizedBox(height: 4),
-          pw.Text(
-            log.notes!,
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-          ),
-        ],
-        if (!isAdHoc)
-          for (final exercise in workout.exercises) ...[
-            pw.SizedBox(height: 6),
-            pw.Text(
-              exercise.exerciseName,
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-            ),
-            // What the plan actually called for, directly above what was
-            // logged - the point of a trainer-facing report is seeing
-            // prescribed vs. actual together, not hunting up the plan
-            // separately. Absent for an exercise added mid-session with no
-            // template row to compare against (see getCompletedWorkout's own
-            // doc comment).
-            if (exercise.prescription != null) ...[
-              pw.Text(
-                'Prescribed: ${_formatPrescription(exercise.prescription!)}',
-                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          if (log.notes != null && log.notes!.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 2),
+              child: pw.Text(
+                log.notes!,
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
               ),
-              pw.SizedBox(height: 2),
-            ],
-            pw.Text(
-              [
-                for (final set in exercise.sets) _formatLoggedSet(set, unit),
-              ].join(',   '),
-              style: const pw.TextStyle(fontSize: 9),
             ),
+        ]),
+      );
+      continue;
+    }
+
+    for (var e = 0; e < workout.exercises.length; e++) {
+      final exercise = workout.exercises[e];
+      final setNote = exercise.sets
+          .map((s) => s.notes)
+          .firstWhere((n) => n != null && n.isNotEmpty, orElse: () => null);
+      final deviations = computeRxDeviations(
+        prescription: exercise.prescription,
+        actual: exercise.sets,
+        noteText: setNote,
+      );
+
+      rows.add(
+        _logRow(background, [
+          // The workout header (and its own whole-session note, if any)
+          // only appears once, above the first exercise in the group.
+          if (e == 0) ...[
+            _workoutHeader(workout.sessionName, log.loggedAt),
+            if (log.notes != null && log.notes!.isNotEmpty)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(top: 2),
+                child: pw.Text(
+                  log.notes!,
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    fontStyle: pw.FontStyle.italic,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+              ),
+            pw.SizedBox(height: 4),
           ],
-      ],
+          pw.Text(
+            exercise.exerciseName,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+          // What the plan actually called for, directly above what was
+          // logged - the point of a trainer-facing report is seeing
+          // prescribed vs. actual together, not hunting up the plan
+          // separately. Absent for an exercise added mid-session with no
+          // template row to compare against (see getCompletedWorkout's own
+          // doc comment).
+          if (exercise.prescription != null)
+            pw.Text(
+              'Prescribed: ${_formatPrescription(exercise.prescription!)}',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
+          pw.Text(
+            [for (final set in exercise.sets) _formatLoggedSet(set, unit)].join(',   '),
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+          for (final deviation in deviations)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 3),
+              child: _deviationTag(deviation),
+            ),
+        ]),
+      );
+    }
+  }
+
+  return pw.Table(
+    columnWidths: const {0: pw.FlexColumnWidth(1)},
+    children: rows,
+  );
+}
+
+pw.TableRow _logRow(PdfColor background, List<pw.Widget> children) {
+  return pw.TableRow(
+    decoration: pw.BoxDecoration(color: background),
+    children: [
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: children),
+      ),
+    ],
+  );
+}
+
+pw.Widget _workoutHeader(String sessionName, DateTime loggedAt) {
+  return pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+      pw.Text(
+        sessionName,
+        style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+      ),
+      pw.Text(
+        DateFormat.yMMMd().format(loggedAt),
+        style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+      ),
+    ],
+  );
+}
+
+/// A small colored label calling out one way an exercise's actual sets
+/// differ from what was prescribed (or a trainee's own note) - the point is
+/// letting a trainer's eye jump straight to these across a long report,
+/// rather than reading every prescribed/actual line pair to spot a
+/// difference. Nothing renders at all for an exercise that matches its
+/// prescription - see `computeRxDeviations`' own doc comment.
+pw.Widget _deviationTag(RxDeviation deviation) {
+  final (background, foreground) = switch (deviation.kind) {
+    RxDeviationKind.hasNote => (PdfColors.blue50, PdfColors.blue900),
+    RxDeviationKind.nearFailure => (PdfColors.red50, PdfColors.red900),
+    RxDeviationKind.fewerSets ||
+    RxDeviationKind.belowTarget => (PdfColors.orange50, PdfColors.orange900),
+  };
+  final label = deviation.kind == RxDeviationKind.hasNote
+      ? 'Note: ${deviation.label}'
+      : deviation.label;
+  return pw.Container(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    decoration: pw.BoxDecoration(
+      color: background,
+      borderRadius: pw.BorderRadius.circular(3),
+    ),
+    child: pw.Text(
+      label,
+      style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: foreground),
     ),
   );
 }

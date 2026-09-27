@@ -123,6 +123,12 @@ class _InProgressSession {
   final List<PlanExercise> adHocExercises = [];
   int nextAdHocExerciseId = -1;
 
+  /// Trainee-to-trainer feedback on one exercise in this session (e.g.
+  /// "left shoulder felt off"), keyed by the plan-exercise row id - see
+  /// `LoggedSets.notes`' own doc comment for why this is attached to that
+  /// exercise's first logged set rather than living in its own table.
+  final Map<int, String> notesByExerciseRowId = {};
+
   /// Only ever called on a genuine end - finishing successfully or
   /// discarding - never on a plain navigation-away, which is the entire
   /// point of pulling this out of `State.dispose()`.
@@ -213,6 +219,8 @@ List<LoggedSetInput> _loggedEntriesFor(
     if (exercise.exerciseId == null) continue;
     final forms = session.formsByExerciseRowId[exercise.id];
     if (forms == null) continue;
+    final note = session.notesByExerciseRowId[exercise.id];
+    var noteAttached = false;
     for (var i = 0; i < forms.length; i++) {
       final form = forms[i];
       if (!form.logged) continue;
@@ -227,8 +235,16 @@ List<LoggedSetInput> _loggedEntriesFor(
               : displayToKg(typedWeight, unit),
           rpe: double.tryParse(form.rpe.text),
           isPr: form.isPr,
+          // Attached to whichever logged set for this exercise comes first
+          // in the saved list, regardless of its literal set number - the
+          // note is about the exercise as a whole, and there's no separate
+          // per-exercise row to hang it off instead (see LoggedSets.notes).
+          notes: (!noteAttached && note != null && note.isNotEmpty)
+              ? note
+              : null,
         ),
       );
+      noteAttached = true;
     }
   }
   return entries;
@@ -504,6 +520,30 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     });
   }
 
+  /// Lets the trainee attach a short note to one exercise for this session
+  /// (e.g. "left shoulder felt off") - surfaced to a trainer via the
+  /// Progress tab's "Full training log" PDF export, next to that exercise's
+  /// actual sets. Purely in-memory until "Finish session" writes it onto
+  /// that exercise's first logged set (see `_loggedEntriesFor`); leaving
+  /// without finishing loses it the same way an unfinished session's sets
+  /// are lost, which is consistent with everything else here.
+  Future<void> _editExerciseNote(PlanExercise exercise) async {
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) => _ExerciseNoteDialog(
+        initialValue: _session.notesByExerciseRowId[exercise.id] ?? '',
+      ),
+    );
+    if (note == null || !mounted) return;
+    setState(() {
+      if (note.isEmpty) {
+        _session.notesByExerciseRowId.remove(exercise.id);
+      } else {
+        _session.notesByExerciseRowId[exercise.id] = note;
+      }
+    });
+  }
+
   Future<void> _addExerciseMidSession(int sessionId) async {
     final library = ref.read(exerciseLookupProvider).valueOrNull;
     if (library == null || !mounted) return;
@@ -624,6 +664,9 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                               _removeSet(renderUnit.exercise, unit, index),
                           onToggleSkip: () =>
                               _toggleSkip(renderUnit.exercise.id),
+                          traineeNote: _session.notesByExerciseRowId[renderUnit.exercise.id],
+                          onEditNote: () =>
+                              _editExerciseNote(renderUnit.exercise),
                         )
                       else if (renderUnit is _SupersetUnit)
                         _SupersetCard(
@@ -1192,6 +1235,53 @@ class _SessionReviewScreenState extends State<_SessionReviewScreen> {
   }
 }
 
+/// Owns its own controller (same reasoning as `_NotePromptDialog` below) -
+/// used for a trainee's note on one specific exercise, as opposed to that
+/// dialog's whole-session note shown once after finishing.
+class _ExerciseNoteDialog extends StatefulWidget {
+  final String initialValue;
+  const _ExerciseNoteDialog({required this.initialValue});
+
+  @override
+  State<_ExerciseNoteDialog> createState() => _ExerciseNoteDialogState();
+}
+
+class _ExerciseNoteDialogState extends State<_ExerciseNoteDialog> {
+  late final _controller = TextEditingController(text: widget.initialValue);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Note for your trainer'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: 3,
+        decoration: const InputDecoration(
+          hintText: 'e.g. "Left shoulder felt off on this one"',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _NotePromptDialog extends StatefulWidget {
   const _NotePromptDialog();
 
@@ -1372,6 +1462,13 @@ class _ExerciseCard extends ConsumerWidget {
   final void Function(int index) onRemoveSet;
   final VoidCallback onToggleSkip;
 
+  /// The trainee's own note on this exercise for this session, if any (see
+  /// `_ExecutionScreenState._editExerciseNote`) - distinct from
+  /// [exercise]'s own `notes` field, which is the trainer's prescription
+  /// note authored into the plan, not something set here.
+  final String? traineeNote;
+  final VoidCallback onEditNote;
+
   /// A percentage prescription (e.g. "70%") resolved against the
   /// exercise's current best estimated 1RM, in kg - null either because
   /// this isn't a percentage prescription or because there's no logged
@@ -1391,6 +1488,8 @@ class _ExerciseCard extends ConsumerWidget {
     required this.onAddSet,
     required this.onRemoveSet,
     required this.onToggleSkip,
+    required this.onEditNote,
+    this.traineeNote,
     this.resolvedWeightKg,
   });
 
@@ -1421,6 +1520,17 @@ class _ExerciseCard extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       decoration: skipped ? TextDecoration.lineThrough : null,
                     ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onEditNote,
+                  tooltip: traineeNote != null && traineeNote!.isNotEmpty
+                      ? 'Edit your note for the trainer'
+                      : 'Add a note for your trainer',
+                  icon: Icon(
+                    traineeNote != null && traineeNote!.isNotEmpty
+                        ? Icons.sticky_note_2
+                        : Icons.sticky_note_2_outlined,
                   ),
                 ),
                 IconButton(
@@ -1460,6 +1570,16 @@ class _ExerciseCard extends ConsumerWidget {
                 child: Text(
                   exercise.notes,
                   style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            if (traineeNote != null && traineeNote!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Your note: $traineeNote',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ),
             if (skipped)
