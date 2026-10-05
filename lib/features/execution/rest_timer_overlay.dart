@@ -66,14 +66,14 @@ class RestTimerOverlay extends ConsumerWidget {
 }
 
 // Uses main.dart's global navigatorKey rather than Navigator.of(context) -
-// both callers (_RestTimerChip and _ResumeSessionBanner) live inside
-// RestTimerOverlay, itself a *sibling* of the app's actual routed content
-// within MaterialApp.builder's own Stack (see main.dart), not a descendant
-// of it. Navigator.of(context) from either widget's own context has no
-// Navigator ancestor to find - confirmed live via a full flutter run log,
-// where it crashed with "Null check operator used on a null value" inside
-// Navigator.of every time either was tapped (a release APK's own on-device
-// log only showed a terse, unhelpful "Another exception was thrown").
+// the caller (_RestTimerChip) lives inside RestTimerOverlay, itself a
+// *sibling* of the app's actual routed content within MaterialApp.builder's
+// own Stack (see main.dart), not a descendant of it. Navigator.of(context)
+// from the chip's own context has no Navigator ancestor to find - confirmed
+// live via a full flutter run log, where it crashed with "Null check
+// operator used on a null value" inside Navigator.of on every tap (a release
+// APK's own on-device log only showed a terse, unhelpful "Another exception
+// was thrown").
 void _openSession(int planSessionId) {
   navigatorKey.currentState?.push(
     MaterialPageRoute(
