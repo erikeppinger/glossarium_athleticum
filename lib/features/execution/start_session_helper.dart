@@ -109,8 +109,12 @@ Future<void> startSessionWithMoveToTodayPrompt(
 Future<void> startNowWithExercise(
   BuildContext context,
   WidgetRef ref,
-  Exercise exercise,
-) async {
+  Exercise exercise, {
+  int sets = 3,
+  String reps = '8-10',
+  String weightIntensity = '',
+  int? restSec,
+}) async {
   final db = ref.read(appDatabaseProvider);
   const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   final now = DateTime.now();
@@ -130,8 +134,10 @@ Future<void> startNowWithExercise(
             order: 1,
             exerciseId: exercise.id,
             exerciseName: exercise.name,
-            sets: 3,
-            reps: '8-10',
+            sets: sets,
+            reps: reps,
+            weightIntensity: weightIntensity,
+            restSec: restSec,
           ),
         ],
       ),

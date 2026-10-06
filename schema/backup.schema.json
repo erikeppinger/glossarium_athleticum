@@ -46,7 +46,29 @@
         "entries": {
           "type": "array",
           "items": { "$ref": "#/definitions/loggedSet" }
+        },
+        "skipped_exercises": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/skippedExercise" },
+          "description": "Optional. Prescribed exercises skipped in this session; absent in backups taken before skip tracking existed."
         }
+      }
+    },
+    "skippedExercise": {
+      "type": "object",
+      "required": ["exercise_id", "exercise_name", "prescribed_sets", "prescribed_reps"],
+      "properties": {
+        "exercise_id": { "type": "string" },
+        "exercise_name": { "type": "string", "description": "Snapshot at the time of the skip." },
+        "prescribed_sets": { "type": "integer", "minimum": 0 },
+        "prescribed_reps": { "type": "string" },
+        "prescribed_weight_intensity": { "type": "string" },
+        "prescribed_rest_sec": { "type": "integer" },
+        "reason": { "type": "string", "enum": ["machine_busy", "pain_or_injury", "no_equipment", "other"] },
+        "replaced_by_exercise_id": { "type": "string" },
+        "replaced_by_exercise_name": { "type": "string" },
+        "queued_for_next_session": { "type": "boolean", "default": false },
+        "dismissed_at": { "type": "string", "format": "date-time" }
       }
     },
     "loggedSet": {
@@ -60,7 +82,8 @@
         "duration_sec": { "type": ["number", "null"], "description": "For Time-measured exercises." },
         "distance": { "type": ["number", "null"], "description": "For Distance-measured exercises." },
         "rpe": { "type": ["number", "null"], "minimum": 1, "maximum": 10 },
-        "is_pr": { "type": "boolean", "default": false }
+        "is_pr": { "type": "boolean", "default": false },
+        "notes": { "type": "string", "description": "Optional trainee-to-trainer note on this set." }
       }
     }
   }

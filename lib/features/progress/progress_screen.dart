@@ -16,6 +16,7 @@ import '../../export/progress_report_pdf.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../logic/body_weight_trend.dart';
 import '../../logic/period_comparison.dart';
+import '../../logic/set_measure.dart';
 import '../../logic/summary_period.dart';
 import '../../logic/units.dart';
 import '../../logic/muscle_group_volume.dart';
@@ -47,6 +48,17 @@ String _periodNoun(_ViewMode mode) => switch (mode) {
 /// where a weight figure would be meaningless.
 String _topSetLabel(ExerciseProgressSummary entry, WeightUnit unit) {
   final weight = entry.topWeight;
+  // A hold or a carry: best time or distance, plus its load if it had one.
+  final measured = entry.topDurationSec != null
+      ? formatSetDuration(entry.topDurationSec!)
+      : entry.topDistance != null
+      ? formatSetDistance(entry.topDistance!)
+      : null;
+  if (measured != null) {
+    return weight == null
+        ? measured
+        : '$measured @ ${formatWeightInUnit(weight, unit)}';
+  }
   if (weight == null) {
     return '${entry.topReps} rep${entry.topReps == 1 ? '' : 's'}';
   }

@@ -128,6 +128,7 @@ Future<void> applyIncomingPlan(
           SessionLogWithSets(
             log: log,
             sets: await db.sessionLogDao.getLoggedSetsForSessionLog(log.id),
+            skipped: await db.sessionLogDao.getSkippedForSessionLog(log.id),
           ),
         );
       }
@@ -160,6 +161,7 @@ Future<void> applyIncomingPlan(
         id: logWithSets.log.id,
         planSessionId: newSession.id,
         loggedAt: logWithSets.log.loggedAt,
+        notes: logWithSets.log.notes,
         entries: [
           for (final set in logWithSets.sets)
             LoggedSetInput(
@@ -171,8 +173,10 @@ Future<void> applyIncomingPlan(
               distance: set.distance,
               rpe: set.rpe,
               isPr: set.isPr,
+              notes: set.notes,
             ),
         ],
+        skipped: [for (final s in logWithSets.skipped) s.toInput()],
       );
     }
   }

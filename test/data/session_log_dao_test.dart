@@ -554,7 +554,7 @@ void main() {
       expect(summaries.single.lastLoggedAt, DateTime(2026, 8, 13));
     });
 
-    test('excludes sets with no weight/reps (time/distance exercises)', () async {
+    test('a time-only exercise appears with its longest time, not dropped', () async {
       await db.sessionLogDao.createSessionLog(
         id: 'log-1',
         planSessionId: sessionId,
@@ -563,7 +563,10 @@ void main() {
           LoggedSetInput(exerciseId: 'EX_BP', setNumber: 1, durationSec: 30),
         ],
       );
-      expect(await db.sessionLogDao.getLatestTopSetPerExercise(), isEmpty);
+      final summary = (await db.sessionLogDao.getLatestTopSetPerExercise())
+          .single;
+      expect(summary.topDurationSec, 30);
+      expect(summary.topReps, 0);
     });
 
     test(

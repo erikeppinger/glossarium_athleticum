@@ -249,6 +249,71 @@ void main() {
       },
     );
 
+    test('a re-linked log keeps its notes and skipped exercises', () async {
+      await seedLibrary();
+      await createLocalPlan();
+      final local = await db.planDao.getPlanDetails('plan-1');
+      await db.sessionLogDao.createSessionLog(
+        id: 'log-1',
+        planSessionId: local!.sessions.single.session.id,
+        loggedAt: DateTime(2026, 1, 1),
+        notes: 'Gym was packed',
+        entries: const [
+          LoggedSetInput(
+            exerciseId: 'EX_BP',
+            setNumber: 1,
+            reps: 8,
+            notes: 'Shoulder felt off',
+          ),
+        ],
+        skipped: const [
+          SkippedExerciseInput(
+            exerciseId: 'EX_SQ',
+            exerciseName: 'Back Squat',
+            prescribedSets: 3,
+            prescribedReps: '5',
+            reason: 'machine_busy',
+          ),
+        ],
+      );
+
+      await applyIncomingPlan({
+        'schema_version': 1,
+        'id': 'plan-1',
+        'name': 'My Plan',
+        'updated_at': DateTime(2026, 1, 5).toIso8601String(),
+        'weeks': [
+          {
+            'week_number': 1,
+            'sessions': [
+              {
+                'day': 'Mon',
+                'session_name': 'Push Day',
+                'exercises': [
+                  {
+                    'order': 1,
+                    'exercise_id': 'EX_BP',
+                    'exercise_name': 'Bench Press',
+                    'sets': 5,
+                    'reps': '5',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }, db);
+
+      final workout = await db.sessionLogDao.getCompletedWorkout('log-1');
+      expect(workout!.log.notes, 'Gym was packed');
+      expect(
+        workout.exercises.single.sets.single.notes,
+        'Shoulder felt off',
+      );
+      expect(workout.skipped.single.exerciseName, 'Back Squat');
+      expect(workout.skipped.single.reason, 'machine_busy');
+    });
+
     test('drops a log whose session no longer exists in the incoming plan', () async {
       await seedLibrary();
       await createLocalPlan();

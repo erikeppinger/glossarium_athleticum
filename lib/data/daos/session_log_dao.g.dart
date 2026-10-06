@@ -9,6 +9,8 @@ mixin _$SessionLogDaoMixin on DatabaseAccessor<AppDatabase> {
   $SessionLogsTable get sessionLogs => attachedDatabase.sessionLogs;
   $ExercisesTable get exercises => attachedDatabase.exercises;
   $LoggedSetsTable get loggedSets => attachedDatabase.loggedSets;
+  $SkippedExercisesTable get skippedExercises =>
+      attachedDatabase.skippedExercises;
   $PlanSessionDatesTable get planSessionDates =>
       attachedDatabase.planSessionDates;
   $PlanExercisesTable get planExercises => attachedDatabase.planExercises;
@@ -28,6 +30,11 @@ class SessionLogDaoManager {
       $$ExercisesTableTableManager(_db.attachedDatabase, _db.exercises);
   $$LoggedSetsTableTableManager get loggedSets =>
       $$LoggedSetsTableTableManager(_db.attachedDatabase, _db.loggedSets);
+  $$SkippedExercisesTableTableManager get skippedExercises =>
+      $$SkippedExercisesTableTableManager(
+        _db.attachedDatabase,
+        _db.skippedExercises,
+      );
   $$PlanSessionDatesTableTableManager get planSessionDates =>
       $$PlanSessionDatesTableTableManager(
         _db.attachedDatabase,

@@ -555,6 +555,51 @@ void main() {
       // extra (wrongly-triggered) deviation tag on top of it.
       expect(length - noPrescription, lessThan(60));
     });
+
+    test('a skipped exercise adds its own flagged row', () async {
+      final sets = [
+        LoggedSet(id: 1, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 1, reps: 8, weight: 60, isPr: false),
+        LoggedSet(id: 2, sessionLogId: 'log-1', exerciseId: 'EX_BP', setNumber: 2, reps: 8, weight: 60, isPr: false),
+      ];
+      Future<int> lengthWith(List<SkippedExercise> skipped) async {
+        final base = workoutWithSets(sets, prescription: defaultPrescription);
+        final bytes = await buildProgressReportPdf(
+          rangeLabel: 'Aug 31 - Sep 6',
+          summary: emptySummary,
+          dailyTotals: const [],
+          dashboard: const [],
+          exerciseNames: const {},
+          unit: WeightUnit.kg,
+          generatedAt: DateTime(2026, 9, 6),
+          fullLog: [
+            CompletedWorkout(
+              log: base.log,
+              sessionName: base.sessionName,
+              exercises: base.exercises,
+              skipped: skipped,
+            ),
+          ],
+        );
+        expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+        return bytes.length;
+      }
+
+      final withoutSkip = await lengthWith(const []);
+      final withSkip = await lengthWith(const [
+        SkippedExercise(
+          id: 1,
+          sessionLogId: 'log-1',
+          exerciseId: 'EX_SQ',
+          exerciseName: 'Back Squat',
+          prescribedSets: 4,
+          prescribedReps: '6',
+          prescribedWeightIntensity: '80kg',
+          reason: 'pain_or_injury',
+          queuedForNextSession: false,
+        ),
+      ]);
+      expect(withSkip, greaterThan(withoutSkip + 30));
+    });
   });
 
   test('many exercises (forcing a multi-page table) still produces a valid PDF', () async {

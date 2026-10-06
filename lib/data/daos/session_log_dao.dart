@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../../logic/progression.dart';
+import '../../logic/set_measure.dart';
 import '../app_database.dart';
 import '../tables/exercises_table.dart';
 import '../tables/plans_table.dart';
@@ -35,10 +36,68 @@ class LoggedSetInput {
   });
 }
 
+/// One prescribed exercise skipped in a session being saved - see the
+/// `SkippedExercises` table's own doc comment.
+class SkippedExerciseInput {
+  final String exerciseId;
+  final String exerciseName;
+  final int prescribedSets;
+  final String prescribedReps;
+  final String prescribedWeightIntensity;
+  final int? prescribedRestSec;
+
+  /// A `SkipReason.key`, or null.
+  final String? reason;
+  final String? replacedByExerciseId;
+  final String? replacedByExerciseName;
+  final bool queuedForNextSession;
+  final DateTime? dismissedAt;
+
+  const SkippedExerciseInput({
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.prescribedSets,
+    required this.prescribedReps,
+    this.prescribedWeightIntensity = '',
+    this.prescribedRestSec,
+    this.reason,
+    this.replacedByExerciseId,
+    this.replacedByExerciseName,
+    this.queuedForNextSession = false,
+    this.dismissedAt,
+  });
+}
+
+extension SkippedExerciseToInput on SkippedExercise {
+  /// For re-creating a saved row under a new or relinked session log.
+  SkippedExerciseInput toInput() => SkippedExerciseInput(
+    exerciseId: exerciseId,
+    exerciseName: exerciseName,
+    prescribedSets: prescribedSets,
+    prescribedReps: prescribedReps,
+    prescribedWeightIntensity: prescribedWeightIntensity,
+    prescribedRestSec: prescribedRestSec,
+    reason: reason,
+    replacedByExerciseId: replacedByExerciseId,
+    replacedByExerciseName: replacedByExerciseName,
+    queuedForNextSession: queuedForNextSession,
+    dismissedAt: dismissedAt,
+  );
+}
+
+/// A skipped exercise still waiting to be made up, with when it was missed.
+class PendingMakeUp {
+  final SkippedExercise skip;
+  final DateTime skippedAt;
+
+  const PendingMakeUp({required this.skip, required this.skippedAt});
+}
+
 @DriftAccessor(
   tables: [
     SessionLogs,
     LoggedSets,
+    SkippedExercises,
     PlanSessions,
     PlanSessionDates,
     PlanExercises,
@@ -56,6 +115,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     required DateTime loggedAt,
     required List<LoggedSetInput> entries,
     String? notes,
+    List<SkippedExerciseInput> skipped = const [],
   }) {
     return transaction(() async {
       // Also clears any autosaved draft for this plan session (see
@@ -90,8 +150,113 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
           ),
         );
       }
+      for (final s in skipped) {
+        await into(skippedExercises).insert(
+          SkippedExercisesCompanion.insert(
+            sessionLogId: id,
+            exerciseId: s.exerciseId,
+            exerciseName: s.exerciseName,
+            prescribedSets: s.prescribedSets,
+            prescribedReps: s.prescribedReps,
+            prescribedWeightIntensity: Value(s.prescribedWeightIntensity),
+            prescribedRestSec: Value(s.prescribedRestSec),
+            reason: Value(s.reason),
+            replacedByExerciseId: Value(s.replacedByExerciseId),
+            replacedByExerciseName: Value(s.replacedByExerciseName),
+            queuedForNextSession: Value(s.queuedForNextSession),
+            dismissedAt: Value(s.dismissedAt),
+          ),
+        );
+      }
       return id;
     });
+  }
+
+  Future<List<SkippedExercise>> getSkippedForSessionLog(String sessionLogId) {
+    return (select(skippedExercises)
+          ..where((s) => s.sessionLogId.equals(sessionLogId))
+          ..orderBy([(s) => OrderingTerm.asc(s.id)]))
+        .get();
+  }
+
+  /// Skipped exercises still worth making up, newest first: not replaced by
+  /// a logged substitute, not dismissed, and not logged in any finished
+  /// session after the one it was skipped in. Doing the exercise again for
+  /// any reason - a make-up, the same session next week, "Start now" -
+  /// clears it, so this never needs its own "done" bookkeeping.
+  Future<List<PendingMakeUp>> getPendingMakeUps() async {
+    final rows =
+        await (select(skippedExercises).join([
+                innerJoin(
+                  sessionLogs,
+                  sessionLogs.id.equalsExp(skippedExercises.sessionLogId),
+                ),
+                // An exercise deleted from the library since can't be made
+                // up; re-importing it (same id) brings the skip back.
+                innerJoin(
+                  exercises,
+                  exercises.id.equalsExp(skippedExercises.exerciseId),
+                ),
+              ])
+              ..where(
+                skippedExercises.dismissedAt.isNull() &
+                    skippedExercises.replacedByExerciseId.isNull() &
+                    sessionLogs.finishedAt.isNotNull(),
+              )
+              ..orderBy([OrderingTerm.desc(sessionLogs.loggedAt)]))
+            .get();
+    if (rows.isEmpty) return [];
+
+    final exerciseIds = {
+      for (final row in rows) row.readTable(skippedExercises).exerciseId,
+    };
+    final lastLoggedAt = sessionLogs.loggedAt.max();
+    final latestQuery =
+        selectOnly(loggedSets).join([
+            innerJoin(
+              sessionLogs,
+              sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+            ),
+          ])
+          ..addColumns([loggedSets.exerciseId, lastLoggedAt])
+          ..where(
+            loggedSets.exerciseId.isIn(exerciseIds) &
+                sessionLogs.finishedAt.isNotNull(),
+          )
+          ..groupBy([loggedSets.exerciseId]);
+    final latestByExercise = {
+      for (final row in await latestQuery.get())
+        row.read(loggedSets.exerciseId)!: row.read(lastLoggedAt),
+    };
+
+    final pending = <PendingMakeUp>[];
+    for (final row in rows) {
+      final skip = row.readTable(skippedExercises);
+      final skippedAt = row.readTable(sessionLogs).loggedAt;
+      final latest = latestByExercise[skip.exerciseId];
+      if (latest != null && latest.isAfter(skippedAt)) continue;
+      pending.add(PendingMakeUp(skip: skip, skippedAt: skippedAt));
+    }
+    return pending;
+  }
+
+  /// Partial update - see `updateLoggedSet` for why not an upsert.
+  Future<void> setMakeUpQueued(int skippedExerciseId, bool queued) {
+    return (update(skippedExercises)
+          ..where((s) => s.id.equals(skippedExerciseId)))
+        .write(SkippedExercisesCompanion(queuedForNextSession: Value(queued)));
+  }
+
+  /// Dropping a make-up is reversible (the Today tab offers Undo), so this
+  /// also clears the dismissal when [dismissed] is false.
+  Future<void> setMakeUpDismissed(int skippedExerciseId, bool dismissed) {
+    return (update(skippedExercises)
+          ..where((s) => s.id.equals(skippedExerciseId)))
+        .write(
+          SkippedExercisesCompanion(
+            dismissedAt: Value(dismissed ? DateTime.now() : null),
+          ),
+        );
   }
 
   /// Logs a walk/run/anything-else that isn't tied to a scheduled plan
@@ -277,6 +442,53 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return sets;
   }
 
+  /// Per-session history for a timed or distance exercise (a plank, a
+  /// carry), or null when it has none. Time wins if an exercise somehow has
+  /// both. [MeasuredHistoryEntry.best] is the longest hold or furthest set
+  /// that session; [MeasuredHistoryEntry.total] adds them up.
+  Future<MeasuredHistory?> getMeasuredHistory(String exerciseId) async {
+    final rows =
+        await (select(loggedSets).join([
+              innerJoin(
+                sessionLogs,
+                sessionLogs.id.equalsExp(loggedSets.sessionLogId),
+              ),
+            ])..where(
+              loggedSets.exerciseId.equals(exerciseId) &
+                  sessionLogs.finishedAt.isNotNull() &
+                  (loggedSets.durationSec.isNotNull() |
+                      loggedSets.distance.isNotNull()),
+            ))
+            .get();
+    if (rows.isEmpty) return null;
+
+    final isTime = rows.any(
+      (r) => r.readTable(loggedSets).durationSec != null,
+    );
+    double? valueOf(TypedResult r) {
+      final set = r.readTable(loggedSets);
+      return isTime ? set.durationSec : set.distance;
+    }
+
+    final bySession = <String, List<TypedResult>>{};
+    for (final row in rows.where((r) => valueOf(r) != null)) {
+      bySession.putIfAbsent(row.readTable(sessionLogs).id, () => []).add(row);
+    }
+    final entries = [
+      for (final sets in bySession.values)
+        MeasuredHistoryEntry(
+          date: sets.first.readTable(sessionLogs).loggedAt,
+          best: sets.map((r) => valueOf(r)!).reduce((a, b) => a > b ? a : b),
+          total: sets.map((r) => valueOf(r)!).fold(0.0, (a, b) => a + b),
+          setCount: sets.length,
+        ),
+    ]..sort((a, b) => a.date.compareTo(b.date));
+    return MeasuredHistory(
+      measure: isTime ? SetMeasure.time : SetMeasure.distance,
+      entries: entries,
+    );
+  }
+
   /// One entry per session that logged this exercise with no weight at all
   /// (bodyweight/band/Time-type exercises - e.g. a resistance-band warm-up),
   /// reduced to that session's total reps across every set. There's no
@@ -412,6 +624,9 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         sessionLogs,
       )..where((l) => l.planSessionId.equals(planSessionId))).map((l) => l.id).get();
       await (delete(loggedSets)..where((s) => s.sessionLogId.isIn(logIds))).go();
+      await (delete(
+        skippedExercises,
+      )..where((s) => s.sessionLogId.isIn(logIds))).go();
       await (delete(
         sessionLogs,
       )..where((l) => l.planSessionId.equals(planSessionId))).go();
@@ -692,6 +907,13 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
       }
     }
 
+    final skipped = await getSkippedForSessionLog(sessionLogId);
+    final substituteFor = <String, String>{
+      for (final s in skipped)
+        if (s.replacedByExerciseId != null)
+          s.replacedByExerciseId!: s.exerciseName,
+    };
+
     return CompletedWorkout(
       log: log,
       sessionName: session?.sessionName ?? log.activityName ?? 'Workout',
@@ -703,8 +925,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
             exerciseName: names[entry.key] ?? entry.key,
             sets: entry.value,
             prescription: prescriptionByExerciseId[entry.key],
+            substituteFor: substituteFor[entry.key],
           ),
       ],
+      skipped: skipped,
     );
   }
 
@@ -814,14 +1038,33 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     int? reps,
     double? weight,
     double? rpe,
+    double? durationSec,
+    double? distance,
   }) {
     return (update(loggedSets)..where((s) => s.id.equals(id))).write(
       LoggedSetsCompanion(
         reps: Value(reps),
         weight: Value(weight),
         rpe: Value(rpe),
+        durationSec: Value(durationSec),
+        distance: Value(distance),
       ),
     );
+  }
+
+  /// Edits the whole-session note after the fact; null or blank clears it.
+  Future<void> updateSessionLogNotes(String sessionLogId, String? notes) {
+    final value = notes == null || notes.trim().isEmpty ? null : notes.trim();
+    return (update(sessionLogs)..where((l) => l.id.equals(sessionLogId)))
+        .write(SessionLogsCompanion(notes: Value(value)));
+  }
+
+  /// Edits a trainee note on one set (an exercise's note lives on one of
+  /// its sets - see `LoggedSets.notes`); null or blank clears it.
+  Future<void> updateLoggedSetNotes(int loggedSetId, String? notes) {
+    final value = notes == null || notes.trim().isEmpty ? null : notes.trim();
+    return (update(loggedSets)..where((s) => s.id.equals(loggedSetId)))
+        .write(LoggedSetsCompanion(notes: Value(value)));
   }
 
   /// Deletes one completed workout and its sets - children before parents,
@@ -830,6 +1073,9 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
     return transaction(() async {
       await (delete(
         loggedSets,
+      )..where((s) => s.sessionLogId.equals(sessionLogId))).go();
+      await (delete(
+        skippedExercises,
       )..where((s) => s.sessionLogId.equals(sessionLogId))).go();
       await (delete(sessionLogs)..where((l) => l.id.equals(sessionLogId))).go();
     });
@@ -912,7 +1158,10 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         sessionLogs.id.equalsExp(loggedSets.sessionLogId),
       ),
     ])..where(
-      loggedSets.reps.isNotNull() & sessionLogs.finishedAt.isNotNull(),
+      (loggedSets.reps.isNotNull() |
+              loggedSets.durationSec.isNotNull() |
+              loggedSets.distance.isNotNull()) &
+          sessionLogs.finishedAt.isNotNull(),
     );
     final rows = await query.get();
 
@@ -932,10 +1181,38 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
           .where((r) => r.readTable(sessionLogs).loggedAt == latestDate)
           .toList();
       final weightedRows = rowsInLatestSession
-          .where((r) => r.readTable(loggedSets).weight != null)
+          .where(
+            (r) =>
+                r.readTable(loggedSets).weight != null &&
+                r.readTable(loggedSets).reps != null,
+          )
+          .toList();
+      final repRows = rowsInLatestSession
+          .where((r) => r.readTable(loggedSets).reps != null)
           .toList();
 
-      if (weightedRows.isNotEmpty) {
+      if (weightedRows.isEmpty && repRows.isEmpty) {
+        // A hold or a carry: summarized by its best time, else distance.
+        final timed = rowsInLatestSession
+            .where((r) => r.readTable(loggedSets).durationSec != null)
+            .toList();
+        final measured = timed.isNotEmpty ? timed : rowsInLatestSession;
+        double valueOf(TypedResult r) => timed.isNotEmpty
+            ? r.readTable(loggedSets).durationSec!
+            : r.readTable(loggedSets).distance!;
+        final best = measured.reduce((a, b) => valueOf(a) >= valueOf(b) ? a : b);
+        result.add(
+          ExerciseProgressSummary(
+            exerciseId: entry.key,
+            lastLoggedAt: latestDate,
+            topWeight: best.readTable(loggedSets).weight,
+            topReps: 0,
+            isPr: false,
+            topDurationSec: timed.isNotEmpty ? valueOf(best) : null,
+            topDistance: timed.isNotEmpty ? null : valueOf(best),
+          ),
+        );
+      } else if (weightedRows.isNotEmpty) {
         final topSet = weightedRows.reduce(
           (a, b) =>
               a.readTable(loggedSets).weight! >=
@@ -953,7 +1230,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
           ),
         );
       } else {
-        final totalReps = rowsInLatestSession
+        final totalReps = repRows
             .map((r) => r.readTable(loggedSets).reps!)
             .fold(0, (a, b) => a + b);
         result.add(
@@ -983,6 +1260,7 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
         SessionLogWithSets(
           log: log,
           sets: await getLoggedSetsForSessionLog(log.id),
+          skipped: await getSkippedForSessionLog(log.id),
         ),
       );
     }
@@ -993,8 +1271,13 @@ class SessionLogDao extends DatabaseAccessor<AppDatabase>
 class SessionLogWithSets {
   final SessionLog log;
   final List<LoggedSet> sets;
+  final List<SkippedExercise> skipped;
 
-  const SessionLogWithSets({required this.log, required this.sets});
+  const SessionLogWithSets({
+    required this.log,
+    required this.sets,
+    this.skipped = const [],
+  });
 }
 
 class PeriodSummary {
@@ -1039,11 +1322,15 @@ class CompletedWorkout {
   /// can be null.
   final String? planCreatedBy;
 
+  /// Prescribed exercises skipped in this session, replaced or not.
+  final List<SkippedExercise> skipped;
+
   const CompletedWorkout({
     required this.log,
     required this.sessionName,
     required this.exercises,
     this.planCreatedBy,
+    this.skipped = const [],
   });
 }
 
@@ -1057,11 +1344,15 @@ class CompletedExercise {
   /// can be null.
   final PlanExercise? prescription;
 
+  /// The name of the skipped exercise this one was done in place of, if any.
+  final String? substituteFor;
+
   const CompletedExercise({
     required this.exerciseId,
     required this.exerciseName,
     required this.sets,
     this.prescription,
+    this.substituteFor,
   });
 }
 
@@ -1123,12 +1414,42 @@ class ExerciseProgressSummary {
   final int topReps;
   final bool isPr;
 
+  /// For a hold or a carry: the latest session's longest time or furthest
+  /// distance, with [topWeight] that set's load (if any) and [topReps] 0.
+  final double? topDurationSec;
+  final double? topDistance;
+
   const ExerciseProgressSummary({
     required this.exerciseId,
     required this.lastLoggedAt,
     required this.topWeight,
     required this.topReps,
     required this.isPr,
+    this.topDurationSec,
+    this.topDistance,
+  });
+}
+
+/// See [SessionLogDao.getMeasuredHistory].
+class MeasuredHistory {
+  /// [SetMeasure.time] (values in seconds) or [SetMeasure.distance] (metres).
+  final SetMeasure measure;
+  final List<MeasuredHistoryEntry> entries;
+
+  const MeasuredHistory({required this.measure, required this.entries});
+}
+
+class MeasuredHistoryEntry {
+  final DateTime date;
+  final double best;
+  final double total;
+  final int setCount;
+
+  const MeasuredHistoryEntry({
+    required this.date,
+    required this.best,
+    required this.total,
+    required this.setCount,
   });
 }
 

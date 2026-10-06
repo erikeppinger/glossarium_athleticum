@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -10,11 +11,15 @@ import '../../data/daos/plan_dao.dart';
 import '../../data/daos/session_log_dao.dart';
 import '../../logic/percentage_prescription.dart';
 import '../../logic/progression.dart';
+import '../../logic/load_input.dart';
 import '../../logic/rest_timer.dart';
+import '../../logic/set_measure.dart';
 import '../../logic/muscle_group_colors.dart';
+import '../../logic/skip_reason.dart';
 import '../../logic/superset_info.dart';
 import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart';
+import '../plans/plan_providers.dart';
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
 import '../shared/info_dialog.dart';
@@ -67,6 +72,20 @@ class _LoggedSetForm {
   final TextEditingController reps;
   final TextEditingController weight;
   final TextEditingController rpe;
+
+  /// Seconds for a [SetMeasure.time] set, metres for a distance set -
+  /// shown instead of [reps] for those.
+  final TextEditingController amount;
+  final SetMeasure measure;
+
+  /// The prescribed seconds or metres, if any - the hold timer buzzes once
+  /// it's reached.
+  final double? target;
+
+  /// Set while the hold timer is running for this set.
+  DateTime? timerStartedAt;
+  bool targetAnnounced = false;
+
   bool logged = false;
   bool isPr = false;
   // Set synchronously the instant "log" is tapped, before the async PR
@@ -77,17 +96,37 @@ class _LoggedSetForm {
   // couldn't be reproduced on demand; hardening this is cheap regardless.
   bool pending = false;
 
-  _LoggedSetForm({String repsHint = '', String weightHint = ''})
-    : reps = TextEditingController(text: repsHint),
-      weight = TextEditingController(text: weightHint),
-      rpe = TextEditingController();
+  _LoggedSetForm({
+    this.measure = SetMeasure.reps,
+    this.target,
+    String repsHint = '',
+    String weightHint = '',
+  }) : reps = TextEditingController(text: repsHint),
+       weight = TextEditingController(text: weightHint),
+       rpe = TextEditingController(),
+       amount = TextEditingController(
+         text: target == null ? '' : _formatAmount(target),
+       );
+
+  /// Another empty row for the same exercise ("+ Add set").
+  _LoggedSetForm sibling() => _LoggedSetForm(measure: measure, target: target);
+
+  /// Whether the counted field holds anything - reps, or the seconds or
+  /// metres for a timed or distance set.
+  bool get hasCountEntered => measure == SetMeasure.reps
+      ? reps.text.trim().isNotEmpty
+      : amount.text.trim().isNotEmpty;
 
   void dispose() {
     reps.dispose();
     weight.dispose();
     rpe.dispose();
+    amount.dispose();
   }
 }
+
+String _formatAmount(double value) =>
+    value == value.roundToDouble() ? value.toInt().toString() : '$value';
 
 /// One plan session's execution-mode progress - every set checked off, every
 /// typed-but-unlogged number, which exercises are skipped or added
@@ -129,6 +168,19 @@ class _InProgressSession {
   /// exercise's first logged set rather than living in its own table.
   final Map<int, String> notesByExerciseRowId = {};
 
+  /// Why each skipped plan exercise was skipped, if a reason was picked.
+  final Map<int, SkipReason> skipReasonByExerciseRowId = {};
+
+  /// Skipped plan-exercise row id -> the ad-hoc row done in its place. The
+  /// substitute renders right after the exercise it replaces.
+  final Map<int, int> substituteRowIdBySkippedRowId = {};
+
+  /// Ad-hoc row id -> the earlier skip it was added to make up.
+  final Map<int, PendingMakeUp> makeUpByAdHocRowId = {};
+
+  /// Queued make-ups waved off with "Not today" for this session only.
+  final Set<int> hiddenMakeUpIds = {};
+
   /// Only ever called on a genuine end - finishing successfully or
   /// discarding - never on a plain navigation-away, which is the entire
   /// point of pulling this out of `State.dispose()`.
@@ -145,10 +197,71 @@ final _inProgressSessionProvider = Provider.family<_InProgressSession, int>(
   (ref, planSessionId) => _InProgressSession(),
 );
 
+/// The weight input for [exercise], from its library entry ([library] is
+/// null for an exercise missing from the library) and its prescription.
+LoadInput _loadInputFor(PlanExercise exercise, Exercise? library) =>
+    loadInputFor(
+      equipment: library?.equipment ?? '',
+      category: library?.category ?? '',
+      measurementType: library?.measurementType ?? '',
+      prescribedWeight: exercise.weightIntensity,
+    );
+
+/// The plan's exercises with any substitute placed directly after the
+/// exercise it replaces, then every other mid-session addition (plain
+/// additions and make-ups) at the end.
 List<PlanExercise> _allExercisesFor(
   _InProgressSession session,
   PlanSessionDetails details,
-) => [...details.exercises, ...session.adHocExercises];
+) {
+  final adHocById = {for (final e in session.adHocExercises) e.id: e};
+  final substituteIds = session.substituteRowIdBySkippedRowId.values.toSet();
+  return [
+    for (final exercise in details.exercises) ...[
+      exercise,
+      ?adHocById[session.substituteRowIdBySkippedRowId[exercise.id]],
+    ],
+    for (final exercise in session.adHocExercises)
+      if (!substituteIds.contains(exercise.id)) exercise,
+  ];
+}
+
+/// The plan exercises skipped so far, in the shape `createSessionLog`
+/// stores. A substitute only counts as a replacement once at least one of
+/// its sets was logged - picking one and never doing it is just a skip.
+List<SkippedExerciseInput> _skippedEntriesFor(
+  _InProgressSession session,
+  PlanSessionDetails details,
+) {
+  final adHocById = {for (final e in session.adHocExercises) e.id: e};
+  final result = <SkippedExerciseInput>[];
+  for (final exercise in details.exercises) {
+    if (exercise.exerciseId == null ||
+        !session.skippedExerciseRowIds.contains(exercise.id)) {
+      continue;
+    }
+    final substitute =
+        adHocById[session.substituteRowIdBySkippedRowId[exercise.id]];
+    final substituteDone =
+        substitute != null &&
+        (session.formsByExerciseRowId[substitute.id] ?? const [])
+            .any((f) => f.logged);
+    result.add(
+      SkippedExerciseInput(
+        exerciseId: exercise.exerciseId!,
+        exerciseName: exercise.exerciseName,
+        prescribedSets: exercise.sets,
+        prescribedReps: exercise.reps,
+        prescribedWeightIntensity: exercise.weightIntensity,
+        prescribedRestSec: exercise.restSec,
+        reason: session.skipReasonByExerciseRowId[exercise.id]?.key,
+        replacedByExerciseId: substituteDone ? substitute.exerciseId : null,
+        replacedByExerciseName: substituteDone ? substitute.exerciseName : null,
+      ),
+    );
+  }
+  return result;
+}
 
 /// One item to render in execution mode's exercise list - either a plain
 /// solo exercise, or a superset/circuit of 2+ exercises sharing a
@@ -225,11 +338,16 @@ List<LoggedSetInput> _loggedEntriesFor(
       final form = forms[i];
       if (!form.logged) continue;
       final typedWeight = double.tryParse(form.weight.text);
+      final amount = double.tryParse(form.amount.text);
       entries.add(
         LoggedSetInput(
           exerciseId: exercise.exerciseId!,
           setNumber: i + 1,
-          reps: int.tryParse(form.reps.text),
+          reps: form.measure == SetMeasure.reps
+              ? int.tryParse(form.reps.text)
+              : null,
+          durationSec: form.measure == SetMeasure.time ? amount : null,
+          distance: form.measure == SetMeasure.distance ? amount : null,
           weight: typedWeight == null
               ? null
               : displayToKg(typedWeight, unit),
@@ -300,6 +418,9 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       ref.read(executionScreenVisibleProvider.notifier).state = true;
       ref.read(executionScreenCloseGuardProvider.notifier).state =
           _handleCloseRequest;
+      // A hold started before leaving the screen keeps counting from its
+      // own start time - just resume the ticker that redraws it.
+      _syncHoldTicker();
     });
   }
 
@@ -392,13 +513,15 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
             .where((s) => s.exerciseId == exercise.exerciseId)
             .fold(0, (max, s) => s.setNumber > max ? s.setNumber : max);
         while (forms.length < maxDraftedSetNumber) {
-          forms.add(_LoggedSetForm());
+          forms.add(forms.last.sibling());
         }
         for (var i = 0; i < forms.length; i++) {
           final match = bySetKey['${exercise.exerciseId}#${i + 1}'];
           if (match == null) continue;
           final form = forms[i];
           if (match.reps != null) form.reps.text = match.reps.toString();
+          final amount = match.durationSec ?? match.distance;
+          if (amount != null) form.amount.text = _formatAmount(amount);
           if (match.weight != null) {
             form.weight.text = formatWeightNumber(
               kgToDisplay(match.weight!, unit),
@@ -454,20 +577,87 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
           .watch(exerciseLookupProvider)
           .valueOrNull?[exercise.exerciseId],
       skipped: _session.skippedExerciseRowIds.contains(exercise.id),
+      skipLabel: _skipLabel(exercise),
       onSetLogged: (form, {required startTimer}) =>
           _logSet(exercise, form, unit, startTimer: startTimer),
       onSetUnlogged: (form) => _unlogSet(exercise, form, unit),
       onAddSet: () => _addSet(exercise, unit),
       onRemoveSet: (index) => _removeSet(exercise, unit, index),
-      onToggleSkip: () => _toggleSkip(exercise.id),
+      onToggleSkip: () => _toggleSkip(exercise),
+      onToggleTimer: _toggleHoldTimer,
     );
   }
 
-  // No dispose() override here anymore - the forms' TextEditingControllers
-  // are now owned by _InProgressSession, which outlives this State on
-  // purpose (see its own doc comment). _InProgressSession.disposeAll() is
-  // the only thing that ever disposes them, called from _finishSession and
-  // from choosing "Discard" in _confirmDiscard.
+  /// Redraws running hold timers. Like the rest timer, the elapsed time is
+  /// always recomputed from each set's own start time, so a missed or late
+  /// tick costs nothing.
+  Timer? _holdTicker;
+
+  Iterable<_LoggedSetForm> get _runningHoldTimers => _session
+      .formsByExerciseRowId
+      .values
+      .expand((forms) => forms)
+      .where((f) => f.timerStartedAt != null);
+
+  void _syncHoldTicker() {
+    if (_runningHoldTimers.isEmpty) {
+      _holdTicker?.cancel();
+      _holdTicker = null;
+    } else {
+      _holdTicker ??= Timer.periodic(
+        const Duration(milliseconds: 250),
+        (_) => _onHoldTick(),
+      );
+    }
+  }
+
+  void _onHoldTick() {
+    if (!mounted) return;
+    setState(() {
+      for (final form in _runningHoldTimers) {
+        final seconds = DateTime.now()
+            .difference(form.timerStartedAt!)
+            .inSeconds;
+        form.amount.text = '$seconds';
+        final target = form.target;
+        if (target != null && !form.targetAnnounced && seconds >= target) {
+          form.targetAnnounced = true;
+          HapticFeedback.vibrate();
+        }
+      }
+    });
+  }
+
+  void _toggleHoldTimer(_LoggedSetForm form) {
+    setState(() {
+      if (form.timerStartedAt != null) {
+        _stopHoldTimer(form);
+      } else {
+        form.timerStartedAt = DateTime.now();
+        form.targetAnnounced = false;
+        form.amount.text = '0';
+      }
+    });
+    _syncHoldTicker();
+  }
+
+  /// Freezes the elapsed seconds into the field.
+  void _stopHoldTimer(_LoggedSetForm form) {
+    final started = form.timerStartedAt;
+    if (started == null) return;
+    form.amount.text = '${DateTime.now().difference(started).inSeconds}';
+    form.timerStartedAt = null;
+  }
+
+  // Only the hold ticker is cleaned up here. No `ref` in dispose() (see
+  // CLAUDE.md), and the forms' controllers belong to _InProgressSession,
+  // which outlives this State on purpose - disposeAll() frees them on
+  // Finish or Discard.
+  @override
+  void dispose() {
+    _holdTicker?.cancel();
+    super.dispose();
+  }
 
   List<_LoggedSetForm> _formsFor(
     PlanExercise exercise,
@@ -478,18 +668,35 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       // A percentage prescription (e.g. "70%") would otherwise be
       // misparsed by the regex below as a flat "70kg" hint - resolve it
       // against the exercise's estimated 1RM instead when available.
+      // Only a plain weight ("60", "60kg") pre-fills the field - "45 sec"
+      // on a plank must not turn into a 45kg set, least of all now that
+      // such exercises hide the weight field entirely.
+      final plainWeight = RegExp(
+        r'^\s*(\d+(\.\d+)?)\s*(kg)?\s*$',
+        caseSensitive: false,
+      ).firstMatch(exercise.weightIntensity);
       final weightHintKg = isPercentagePrescription(exercise.weightIntensity)
           ? percentageResolvedWeightKg
-          : double.tryParse(
-              RegExp(r'[\d.]+').stringMatch(exercise.weightIntensity) ?? '',
-            );
+          : double.tryParse(plainWeight?.group(1) ?? '');
       final weightHint = weightHintKg == null
           ? ''
           : formatWeightNumber(kgToDisplay(weightHintKg, unit));
-      final repsHint = RegExp(r'^\d+').stringMatch(exercise.reps) ?? '';
+      final measure = _measureFor(exercise);
+      // A timed or distance set counts seconds or metres, so the "1" in a
+      // "3 x 1 @ 45 sec" prescription isn't a rep count to pre-fill.
+      final repsHint = measure == SetMeasure.reps
+          ? RegExp(r'^\d+').stringMatch(exercise.reps) ?? ''
+          : '';
+      final target = prescribedAmount(
+        measure,
+        prescribedReps: exercise.reps,
+        prescribedWeight: exercise.weightIntensity,
+      );
       return List.generate(
         exercise.sets,
         (_) => _LoggedSetForm(
+          measure: measure,
+          target: target,
           repsHint: repsHint,
           weightHint: weightHint,
         ),
@@ -497,9 +704,22 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     });
   }
 
+  /// Reads the library entry, which the body only builds once it's loaded
+  /// (see `build`), so a form never gets created with a guessed measure.
+  SetMeasure _measureFor(PlanExercise exercise) {
+    final library = ref
+        .read(exerciseLookupProvider)
+        .valueOrNull?[exercise.exerciseId];
+    return setMeasureFor(
+      measurementType: library?.measurementType ?? '',
+      prescribedReps: exercise.reps,
+      prescribedWeight: exercise.weightIntensity,
+    );
+  }
+
   void _addSet(PlanExercise exercise, WeightUnit unit) {
     final forms = _formsFor(exercise, unit);
-    setState(() => forms.add(_LoggedSetForm()));
+    setState(() => forms.add(forms.last.sibling()));
   }
 
   /// Removes one not-yet-logged set. A logged set must be undone first (via
@@ -510,14 +730,227 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     final forms = _formsFor(exercise, unit);
     if (forms.length <= 1 || forms[index].logged) return;
     setState(() => forms.removeAt(index).dispose());
+    // The removed row may have been the only running hold timer.
+    _syncHoldTicker();
   }
 
-  void _toggleSkip(int exerciseRowId) {
+  /// Un-skips straight away; skipping a prescribed exercise asks why (all
+  /// optional) and whether to do something else in its place. The skip
+  /// itself is only written when the session is finished - see
+  /// [_skippedEntriesFor].
+  Future<void> _toggleSkip(PlanExercise exercise) async {
+    if (_session.skippedExerciseRowIds.contains(exercise.id)) {
+      setState(() {
+        _session.skippedExerciseRowIds.remove(exercise.id);
+        _session.skipReasonByExerciseRowId.remove(exercise.id);
+        // Back to doing the original: a substitute nothing was logged on
+        // goes away; one already done stays, as a plain addition.
+        final substituteId = _session.substituteRowIdBySkippedRowId.remove(
+          exercise.id,
+        );
+        if (substituteId != null) _dropIfUnlogged(substituteId);
+      });
+      return;
+    }
+    // A mid-session addition was never prescribed - nothing to record or
+    // replace, so no questions.
+    if (exercise.id < 0) {
+      setState(() {
+        _session.skippedExerciseRowIds.add(exercise.id);
+        _stopHoldTimersFor(exercise.id);
+      });
+      return;
+    }
+
+    final choice = await showModalBottomSheet<_SkipChoice>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) =>
+          _SkipExerciseSheet(exerciseName: exercise.exerciseName),
+    );
+    if (choice == null || !mounted) return;
+
+    Exercise? substitute;
+    if (choice.replace) {
+      substitute = await _pickSubstitute(exercise);
+      if (substitute == null || !mounted) return;
+    }
+
     setState(() {
-      if (!_session.skippedExerciseRowIds.remove(exerciseRowId)) {
-        _session.skippedExerciseRowIds.add(exerciseRowId);
+      _session.skippedExerciseRowIds.add(exercise.id);
+      _stopHoldTimersFor(exercise.id);
+      final reason = choice.reason;
+      if (reason == null) {
+        _session.skipReasonByExerciseRowId.remove(exercise.id);
+      } else {
+        _session.skipReasonByExerciseRowId[exercise.id] = reason;
       }
+      if (substitute != null) _setSubstitute(exercise, substitute);
     });
+  }
+
+  /// Puts [substitute] in [skipped]'s place, carrying over its sets, reps
+  /// and rest - but not its load, which belongs to a different exercise. A
+  /// previous substitute for the same exercise is dropped if nothing was
+  /// logged on it yet, otherwise kept as a plain addition.
+  void _setSubstitute(PlanExercise skipped, Exercise substitute) {
+    final previousId = _session.substituteRowIdBySkippedRowId[skipped.id];
+    if (previousId != null) _dropIfUnlogged(previousId);
+    final row = PlanExercise(
+      id: _session.nextAdHocExerciseId--,
+      sessionId: skipped.sessionId,
+      order: 0,
+      exerciseId: substitute.id,
+      exerciseName: substitute.name,
+      sets: skipped.sets,
+      reps: skipped.reps,
+      weightIntensity: '',
+      restSec: skipped.restSec,
+      notes: '',
+      videoUrl: '',
+      embeddingAllowed: false,
+    );
+    _session.adHocExercises.add(row);
+    _session.substituteRowIdBySkippedRowId[skipped.id] = row.id;
+  }
+
+  /// Removes a mid-session addition nothing was logged on yet.
+  void _dropIfUnlogged(int adHocRowId) {
+    final forms = _session.formsByExerciseRowId[adHocRowId];
+    if (forms != null && forms.any((f) => f.logged)) return;
+    _session.adHocExercises.removeWhere((e) => e.id == adHocRowId);
+    _session.formsByExerciseRowId.remove(adHocRowId)?.forEach(
+      (f) => f.dispose(),
+    );
+    _syncHoldTicker();
+  }
+
+  /// A skipped exercise's timer would otherwise keep counting unseen.
+  void _stopHoldTimersFor(int exerciseRowId) {
+    for (final form in _session.formsByExerciseRowId[exerciseRowId] ?? []) {
+      _stopHoldTimer(form);
+    }
+    _syncHoldTicker();
+  }
+
+  /// The library picker, with this plan's other exercises offered first -
+  /// alternatives the trainer already chose are usually the best swap.
+  Future<Exercise?> _pickSubstitute(PlanExercise skipped) async {
+    final library = ref.read(exerciseLookupProvider).valueOrNull;
+    final details = ref
+        .read(_sessionDetailsProvider(widget.planSessionId))
+        .valueOrNull;
+    if (library == null || details == null) return null;
+    final plan = await ref.read(
+      planDetailsProvider(details.session.planId).future,
+    );
+    if (!mounted) return null;
+
+    final seen = <String>{?skipped.exerciseId};
+    final fromPlan = <Exercise>[];
+    for (final session in plan?.sessions ?? const <PlanSessionDetails>[]) {
+      for (final exercise in session.exercises) {
+        final id = exercise.exerciseId;
+        final libraryExercise = id == null ? null : library[id];
+        if (libraryExercise != null && seen.add(id!)) {
+          fromPlan.add(libraryExercise);
+        }
+      }
+    }
+
+    return showDialog<Exercise>(
+      context: context,
+      builder: (context) => _ExercisePickerDialog(
+        title: 'Replace ${skipped.exerciseName} with',
+        suggestionsLabel: 'From this plan',
+        suggestions: fromPlan,
+        library: library.values.toList()
+          ..sort((a, b) => a.name.compareTo(b.name)),
+      ),
+    );
+  }
+
+  /// Adds a queued make-up from an earlier session as a one-off exercise
+  /// here, with that session's prescription. Logging it and finishing is
+  /// what clears it from the make-up list.
+  void _addMakeUp(PendingMakeUp makeUp) {
+    final skip = makeUp.skip;
+    setState(() {
+      final row = PlanExercise(
+        id: _session.nextAdHocExerciseId--,
+        sessionId: widget.planSessionId,
+        order: 0,
+        exerciseId: skip.exerciseId,
+        exerciseName: skip.exerciseName,
+        sets: skip.prescribedSets,
+        reps: skip.prescribedReps,
+        weightIntensity: skip.prescribedWeightIntensity,
+        restSec: skip.prescribedRestSec,
+        notes: '',
+        videoUrl: '',
+        embeddingAllowed: false,
+      );
+      _session.adHocExercises.add(row);
+      _session.makeUpByAdHocRowId[row.id] = makeUp;
+    });
+  }
+
+  /// Queued make-ups worth offering in this session: not already added,
+  /// not waved off, and not an exercise this session prescribes anyway
+  /// (doing it here clears it regardless).
+  List<PendingMakeUp> _offeredMakeUps(PlanSessionDetails details) {
+    final pending = ref.watch(pendingMakeUpsProvider).valueOrNull ?? const [];
+    final addedIds = {
+      for (final m in _session.makeUpByAdHocRowId.values) m.skip.id,
+    };
+    final prescribedIds = {
+      for (final e in details.exercises) ?e.exerciseId,
+    };
+    return [
+      for (final makeUp in pending)
+        if (makeUp.skip.queuedForNextSession &&
+            !addedIds.contains(makeUp.skip.id) &&
+            !_session.hiddenMakeUpIds.contains(makeUp.skip.id) &&
+            !prescribedIds.contains(makeUp.skip.exerciseId))
+          makeUp,
+    ];
+  }
+
+  /// The italic line under a skipped exercise's name.
+  String _skipLabel(PlanExercise exercise) {
+    final reason = _session.skipReasonByExerciseRowId[exercise.id];
+    final substituteId = _session.substituteRowIdBySkippedRowId[exercise.id];
+    final substitute = substituteId == null
+        ? null
+        : _session.adHocExercises
+              .where((e) => e.id == substituteId)
+              .firstOrNull;
+    return [
+      'Skipped for this session${reason == null ? '' : ' (${reason.label})'}.',
+      if (substitute != null) 'Replaced by ${substitute.exerciseName} below.',
+    ].join(' ');
+  }
+
+  /// What a mid-session addition is for - null for a prescribed exercise.
+  String? _adHocLabel(PlanExercise exercise, PlanSessionDetails details) {
+    if (exercise.id >= 0) return null;
+    final makeUp = _session.makeUpByAdHocRowId[exercise.id];
+    if (makeUp != null) {
+      return 'Make-up for '
+          '${MaterialLocalizations.of(context).formatMediumDate(makeUp.skippedAt)}'
+          ' - not saved to the plan.';
+    }
+    for (final entry in _session.substituteRowIdBySkippedRowId.entries) {
+      if (entry.value != exercise.id) continue;
+      final replaced = details.exercises
+          .where((e) => e.id == entry.key)
+          .firstOrNull;
+      if (replaced != null) {
+        return 'Replacing ${replaced.exerciseName} for this session only - '
+            'not saved to the plan.';
+      }
+    }
+    return 'Added for this session only - not saved to the plan.';
   }
 
   /// Lets the trainee attach a short note to one exercise for this session
@@ -615,6 +1048,11 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
           if (details == null) {
             return const Center(child: Text('Session not found.'));
           }
+          // Each set row's field (reps, seconds or metres) comes from the
+          // library entry, and forms are created once - so wait for it.
+          if (!ref.watch(exerciseLookupProvider).hasValue) {
+            return const Center(child: CircularProgressIndicator());
+          }
           if (!_draftRestoreAttempted) {
             _draftRestoreAttempted = true;
             WidgetsBinding.instance.addPostFrameCallback(
@@ -633,6 +1071,15 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
+                    if (_offeredMakeUps(details) case final offered
+                        when offered.isNotEmpty)
+                      _MakeUpOfferCard(
+                        makeUps: offered,
+                        onAdd: _addMakeUp,
+                        onHide: (makeUp) => setState(
+                          () => _session.hiddenMakeUpIds.add(makeUp.skip.id),
+                        ),
+                      ),
                     for (final renderUnit
                         in _groupedExercisesFor(_allExercises(details)))
                       if (renderUnit is _SoloUnit)
@@ -655,6 +1102,8 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                           skipped: _session.skippedExerciseRowIds.contains(
                             renderUnit.exercise.id,
                           ),
+                          skipLabel: _skipLabel(renderUnit.exercise),
+                          adHocLabel: _adHocLabel(renderUnit.exercise, details),
                           onSetLogged: (form) =>
                               _logSet(renderUnit.exercise, form, unit),
                           onSetUnlogged: (form) =>
@@ -663,7 +1112,8 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                           onRemoveSet: (index) =>
                               _removeSet(renderUnit.exercise, unit, index),
                           onToggleSkip: () =>
-                              _toggleSkip(renderUnit.exercise.id),
+                              _toggleSkip(renderUnit.exercise),
+                          onToggleTimer: _toggleHoldTimer,
                           traineeNote: _session.notesByExerciseRowId[renderUnit.exercise.id],
                           onEditNote: () =>
                               _editExerciseNote(renderUnit.exercise),
@@ -736,14 +1186,17 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
   /// per-set "Log set" check - easy to do, since typing the numbers looks
   /// and feels like the whole job. Without this check, "Finish session"
   /// would silently drop that data with no warning at all.
+  /// A skipped exercise's rows still hold their prefilled hints, so they're
+  /// left out - otherwise skipping would trigger an "unlogged sets" prompt
+  /// whose "Log & finish" logs the very exercise that was skipped.
   List<_LoggedSetForm> get _unloggedFilledForms =>
-      _session.formsByExerciseRowId.values
-          .expand((forms) => forms)
+      _session.formsByExerciseRowId.entries
+          .where((e) => !_session.skippedExerciseRowIds.contains(e.key))
+          .expand((e) => e.value)
           .where(
             (f) =>
                 !f.logged &&
-                (f.reps.text.trim().isNotEmpty ||
-                    f.weight.text.trim().isNotEmpty),
+                (f.hasCountEntered || f.weight.text.trim().isNotEmpty),
           )
           .toList();
 
@@ -850,6 +1303,11 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     bool startTimer = true,
   }) async {
     if (form.logged || form.pending) return;
+    // Logging mid-hold takes the time so far.
+    if (form.timerStartedAt != null) {
+      _stopHoldTimer(form);
+      _syncHoldTicker();
+    }
     // Flips synchronously, before the DB round-trip below - closes the
     // window where a fast double-tap on the same row (still showing an
     // enabled check button mid-await) could fire two overlapping _logSet
@@ -940,11 +1398,11 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     // otherwise have all of it silently dropped with no warning at all.
     final unloggedPairs = <(PlanExercise, _LoggedSetForm)>[
       for (final exercise in _allExercises(details))
-        if (exercise.exerciseId != null)
+        if (exercise.exerciseId != null &&
+            !_session.skippedExerciseRowIds.contains(exercise.id))
           for (final form in _formsFor(exercise, unit))
             if (!form.logged &&
-                (form.reps.text.trim().isNotEmpty ||
-                    form.weight.text.trim().isNotEmpty))
+                (form.hasCountEntered || form.weight.text.trim().isNotEmpty))
               (exercise, form),
     ];
 
@@ -997,6 +1455,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
             details: details,
             session: _session,
             unit: unit,
+            library: ref.read(exerciseLookupProvider).valueOrNull ?? const {},
           ),
         ),
       );
@@ -1017,6 +1476,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
         loggedAt: DateTime.now(),
         entries: entries,
         notes: note,
+        skipped: _skippedEntriesFor(_session, details),
       );
       // One-shot FutureProviders - won't notice this write on their own.
       ref.invalidate(loggedPlanSessionIdsProvider);
@@ -1085,10 +1545,14 @@ class _SessionReviewScreen extends StatefulWidget {
   final _InProgressSession session;
   final WeightUnit unit;
 
+  /// Library entries by id, for each exercise's weight input.
+  final Map<String, Exercise> library;
+
   const _SessionReviewScreen({
     required this.details,
     required this.session,
     required this.unit,
+    required this.library,
   });
 
   @override
@@ -1151,6 +1615,10 @@ class _SessionReviewScreenState extends State<_SessionReviewScreen> {
         if (forms[i].logged) (setNumber: i + 1, form: forms[i]),
     ];
     if (loggedForms.isEmpty) return const SizedBox.shrink();
+    final loadInput = _loadInputFor(
+      exercise,
+      widget.library[exercise.exerciseId],
+    );
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1178,30 +1646,38 @@ class _SessionReviewScreenState extends State<_SessionReviewScreen> {
                       ),
                     ),
                     Expanded(
-                      child: TextField(
-                        controller: entry.form.reps,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: integerInputFormatters,
-                        decoration: const InputDecoration(
-                          labelText: 'Reps',
-                          isDense: true,
-                        ),
+                      child: _countField(
+                        entry.form,
+                        enabled: true,
+                        dense: true,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: entry.form.weight,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: decimalInputFormatters,
-                        decoration: InputDecoration(
-                          labelText: 'Weight ($unitLabel)',
-                          isDense: true,
+                    if (loadInput != LoadInput.none) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: entry.form.weight,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: decimalInputFormatters,
+                          decoration: InputDecoration(
+                            labelText: weightFieldLabel(
+                              loadInput,
+                              lbs: unitLabel == 'lbs',
+                            ),
+                            hintText: loadInput == LoadInput.addedWeight
+                                ? 'BW'
+                                : null,
+                            floatingLabelBehavior:
+                                loadInput == LoadInput.addedWeight
+                                ? FloatingLabelBehavior.always
+                                : null,
+                            isDense: true,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
@@ -1332,8 +1808,18 @@ class _NotePromptDialogState extends State<_NotePromptDialog> {
 
 class _ExercisePickerDialog extends StatefulWidget {
   final List<Exercise> library;
+  final String title;
 
-  const _ExercisePickerDialog({required this.library});
+  /// Shown above the full library while the search box is empty.
+  final List<Exercise> suggestions;
+  final String suggestionsLabel;
+
+  const _ExercisePickerDialog({
+    required this.library,
+    this.title = 'Add exercise',
+    this.suggestions = const [],
+    this.suggestionsLabel = '',
+  });
 
   @override
   State<_ExercisePickerDialog> createState() => _ExercisePickerDialogState();
@@ -1356,9 +1842,20 @@ class _ExercisePickerDialogState extends State<_ExercisePickerDialog> {
         : widget.library
               .where((e) => e.name.toLowerCase().contains(_query))
               .toList();
+    final suggestions = _query.isEmpty ? widget.suggestions : const <Exercise>[];
+
+    Widget sectionLabel(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(text, style: Theme.of(context).textTheme.labelLarge),
+    );
+    Widget tile(Exercise e) => ListTile(
+      title: Text(e.name),
+      subtitle: Text(e.category),
+      onTap: () => Navigator.of(context).pop(e),
+    );
 
     return AlertDialog(
-      title: const Text('Add exercise'),
+      title: Text(widget.title),
       content: SizedBox(
         width: double.maxFinite,
         height: 400,
@@ -1378,16 +1875,19 @@ class _ExercisePickerDialogState extends State<_ExercisePickerDialog> {
             Expanded(
               child: matches.isEmpty
                   ? const Center(child: Text('No matches.'))
-                  : ListView.builder(
+                  : suggestions.isEmpty
+                  ? ListView.builder(
                       itemCount: matches.length,
-                      itemBuilder: (context, index) {
-                        final e = matches[index];
-                        return ListTile(
-                          title: Text(e.name),
-                          subtitle: Text(e.category),
-                          onTap: () => Navigator.of(context).pop(e),
-                        );
-                      },
+                      itemBuilder: (context, index) => tile(matches[index]),
+                    )
+                  : ListView(
+                      children: [
+                        sectionLabel(widget.suggestionsLabel),
+                        for (final e in suggestions) tile(e),
+                        const Divider(),
+                        sectionLabel('All exercises'),
+                        for (final e in matches) tile(e),
+                      ],
                     ),
             ),
           ],
@@ -1399,6 +1899,162 @@ class _ExercisePickerDialogState extends State<_ExercisePickerDialog> {
           child: const Text('Cancel'),
         ),
       ],
+    );
+  }
+}
+
+/// What the skip sheet returns: an optional reason, and whether to pick
+/// something to do in the exercise's place.
+class _SkipChoice {
+  final SkipReason? reason;
+  final bool replace;
+
+  const _SkipChoice({required this.reason, required this.replace});
+}
+
+/// Asks why an exercise is being skipped - optional, since a busy gym is
+/// no time for forms - and offers to replace it. The reason shows up in the
+/// trainer PDF and the Today tab's make-up list.
+class _SkipExerciseSheet extends StatefulWidget {
+  final String exerciseName;
+
+  const _SkipExerciseSheet({required this.exerciseName});
+
+  @override
+  State<_SkipExerciseSheet> createState() => _SkipExerciseSheetState();
+}
+
+class _SkipExerciseSheetState extends State<_SkipExerciseSheet> {
+  SkipReason? _reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Skip ${widget.exerciseName}?',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Why? (optional)',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final reason in SkipReason.values)
+                  ChoiceChip(
+                    label: Text(reason.label),
+                    selected: _reason == reason,
+                    onSelected: (selected) =>
+                        setState(() => _reason = selected ? reason : null),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pop(_SkipChoice(reason: _reason, replace: false)),
+                    child: const Text('Skip'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pop(_SkipChoice(reason: _reason, replace: true)),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: const Text('Skip & replace'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Make-ups the trainee queued from the Today tab, offered at the top of
+/// the next session. Adding one is optional - "Not today" hides it for
+/// this session only and it stays queued.
+class _MakeUpOfferCard extends StatelessWidget {
+  final List<PendingMakeUp> makeUps;
+  final void Function(PendingMakeUp makeUp) onAdd;
+  final void Function(PendingMakeUp makeUp) onHide;
+
+  const _MakeUpOfferCard({
+    required this.makeUps,
+    required this.onAdd,
+    required this.onHide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Make up from earlier',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            for (final makeUp in makeUps)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      makeUp.skip.exerciseName,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    Text(
+                      [
+                        'Skipped ${localizations.formatMediumDate(makeUp.skippedAt)}',
+                        ?SkipReason.fromKey(makeUp.skip.reason)?.label,
+                        '${makeUp.skip.prescribedSets}×${makeUp.skip.prescribedReps}',
+                      ].join(' • '),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    OverflowBar(
+                      spacing: 4,
+                      children: [
+                        TextButton(
+                          onPressed: () => onAdd(makeUp),
+                          child: const Text('Add to this session'),
+                        ),
+                        TextButton(
+                          onPressed: () => onHide(makeUp),
+                          child: const Text('Not today'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1449,6 +2105,39 @@ class _RestTimerBanner extends ConsumerWidget {
   }
 }
 
+/// The counted field of a set row - reps, seconds or metres depending on
+/// [form]'s measure. Shared by the set rows and the review screen.
+Widget _countField(
+  _LoggedSetForm form, {
+  required bool enabled,
+  bool dense = false,
+}) {
+  return switch (form.measure) {
+    SetMeasure.reps => TextField(
+      controller: form.reps,
+      enabled: enabled,
+      keyboardType: TextInputType.number,
+      inputFormatters: integerInputFormatters,
+      decoration: InputDecoration(labelText: 'Reps', isDense: dense),
+    ),
+    SetMeasure.time => TextField(
+      controller: form.amount,
+      // Read-only while the hold timer is counting into it.
+      enabled: enabled && form.timerStartedAt == null,
+      keyboardType: TextInputType.number,
+      inputFormatters: integerInputFormatters,
+      decoration: InputDecoration(labelText: 'Time (s)', isDense: dense),
+    ),
+    SetMeasure.distance => TextField(
+      controller: form.amount,
+      enabled: enabled,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: decimalInputFormatters,
+      decoration: InputDecoration(labelText: 'Distance (m)', isDense: dense),
+    ),
+  };
+}
+
 class _ExerciseCard extends ConsumerWidget {
   final PlanExercise exercise;
   final List<_LoggedSetForm> forms;
@@ -1456,11 +2145,20 @@ class _ExerciseCard extends ConsumerWidget {
   final AppColorPalette palette;
   final Exercise? libraryExercise;
   final bool skipped;
+
+  /// Shown in place of the sets while [skipped] - includes the reason and
+  /// substitute, if any.
+  final String skipLabel;
+
+  /// What a mid-session addition is for (a plain addition, a substitute,
+  /// or a make-up); null for a prescribed exercise.
+  final String? adHocLabel;
   final void Function(_LoggedSetForm form) onSetLogged;
   final void Function(_LoggedSetForm form) onSetUnlogged;
   final VoidCallback onAddSet;
   final void Function(int index) onRemoveSet;
   final VoidCallback onToggleSkip;
+  final void Function(_LoggedSetForm form) onToggleTimer;
 
   /// The trainee's own note on this exercise for this session, if any (see
   /// `_ExecutionScreenState._editExerciseNote`) - distinct from
@@ -1483,12 +2181,15 @@ class _ExerciseCard extends ConsumerWidget {
     required this.palette,
     required this.libraryExercise,
     required this.skipped,
+    required this.skipLabel,
     required this.onSetLogged,
     required this.onSetUnlogged,
     required this.onAddSet,
     required this.onRemoveSet,
     required this.onToggleSkip,
+    required this.onToggleTimer,
     required this.onEditNote,
+    this.adHocLabel,
     this.traineeNote,
     this.resolvedWeightKg,
   });
@@ -1551,13 +2252,12 @@ class _ExerciseCard extends ConsumerWidget {
               '${_weightIntensitySuffix()}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-            // A negative id marks an exercise added via "Add exercise"
-            // mid-session (see _InProgressSession.adHocExercises) - never
-            // written to the plan, so this makes that explicit rather than
-            // letting it look identical to a normally-prescribed row.
-            if (exercise.id < 0)
+            // Mid-session additions are never written to the plan, so this
+            // says so rather than letting them look identical to a
+            // normally-prescribed row.
+            if (adHocLabel != null)
               Text(
-                'Added for this session only - not saved to the plan.',
+                adHocLabel!,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   fontStyle: FontStyle.italic,
                 ),
@@ -1586,7 +2286,7 @@ class _ExerciseCard extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Skipped for this session.',
+                  skipLabel,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontStyle: FontStyle.italic,
                   ),
@@ -1604,6 +2304,8 @@ class _ExerciseCard extends ConsumerWidget {
                   onUnlog: () => onSetUnlogged(forms[i]),
                   onRemove: () => onRemoveSet(i),
                   showPrCelebration: showPrCelebration,
+                  loadInput: _loadInputFor(exercise, libraryExercise),
+                  onToggleTimer: () => onToggleTimer(forms[i]),
                 ),
               Align(
                 alignment: Alignment.centerLeft,
@@ -1646,12 +2348,14 @@ class _SupersetMember {
   final double? resolvedWeightKg;
   final Exercise? libraryExercise;
   final bool skipped;
+  final String skipLabel;
   final void Function(_LoggedSetForm form, {required bool startTimer})
   onSetLogged;
   final void Function(_LoggedSetForm form) onSetUnlogged;
   final VoidCallback onAddSet;
   final void Function(int index) onRemoveSet;
   final VoidCallback onToggleSkip;
+  final void Function(_LoggedSetForm form) onToggleTimer;
 
   _SupersetMember({
     required this.exercise,
@@ -1659,11 +2363,13 @@ class _SupersetMember {
     required this.resolvedWeightKg,
     required this.libraryExercise,
     required this.skipped,
+    required this.skipLabel,
     required this.onSetLogged,
     required this.onSetUnlogged,
     required this.onAddSet,
     required this.onRemoveSet,
     required this.onToggleSkip,
+    required this.onToggleTimer,
   });
 }
 
@@ -1830,7 +2536,7 @@ class _SupersetMemberHeader extends StatelessWidget {
           ),
           if (member.skipped)
             Text(
-              'Skipped for this session.',
+              member.skipLabel,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontStyle: FontStyle.italic,
               ),
@@ -1901,6 +2607,8 @@ class _SupersetSetRow extends StatelessWidget {
             onUnlog: () => member.onSetUnlogged(form),
             onRemove: () => member.onRemoveSet(round),
             showPrCelebration: showPrCelebration,
+            loadInput: _loadInputFor(member.exercise, member.libraryExercise),
+            onToggleTimer: () => member.onToggleTimer(form),
           ),
         ],
       ),
@@ -1931,13 +2639,32 @@ class _LastAndBestLine extends ConsumerWidget {
     final weightedLastSets =
         lastSets?.where((s) => s.weight != null && s.reps != null).toList() ??
         const [];
-    if (weightedLastSets.isEmpty && (history == null || history.isEmpty)) {
+    // A hold or a carry: what was done last time is the time or distance.
+    final measuredLastSets =
+        lastSets
+            ?.where((s) => s.durationSec != null || s.distance != null)
+            .toList() ??
+        const [];
+    if (weightedLastSets.isEmpty &&
+        measuredLastSets.isEmpty &&
+        (history == null || history.isEmpty)) {
       return const SizedBox.shrink();
     }
 
-    final lastText = weightedLastSets.isEmpty
-        ? null
-        : 'Last: ${weightedLastSets.map((s) => '${s.reps}×${formatWeightInUnit(s.weight!, unit)}').join(', ')}';
+    String measured(LoggedSet s) {
+      final amount = s.durationSec != null
+          ? formatSetDuration(s.durationSec!)
+          : formatSetDistance(s.distance!);
+      return s.weight == null
+          ? amount
+          : '$amount @ ${formatWeightInUnit(s.weight!, unit)}';
+    }
+
+    final lastText = weightedLastSets.isNotEmpty
+        ? 'Last: ${weightedLastSets.map((s) => '${s.reps}×${formatWeightInUnit(s.weight!, unit)}').join(', ')}'
+        : measuredLastSets.isNotEmpty
+        ? 'Last: ${measuredLastSets.map(measured).join(', ')}'
+        : null;
 
     final best = (history == null || history.isEmpty)
         ? null
@@ -1979,6 +2706,12 @@ class _SetRow extends StatelessWidget {
   /// celebrates it.
   final bool showPrCelebration;
 
+  /// Whether this exercise gets a weight field at all - see [loadInputFor].
+  final LoadInput loadInput;
+
+  /// Starts or stops the hold timer on a timed set.
+  final VoidCallback? onToggleTimer;
+
   const _SetRow({
     required this.setNumber,
     required this.form,
@@ -1988,6 +2721,8 @@ class _SetRow extends StatelessWidget {
     required this.onUnlog,
     required this.onRemove,
     this.showPrCelebration = true,
+    this.loadInput = LoadInput.weight,
+    this.onToggleTimer,
   });
 
   @override
@@ -1997,29 +2732,45 @@ class _SetRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(width: 28, child: Text('$setNumber')),
-          Expanded(
-            child: TextField(
-              controller: form.reps,
-              enabled: !form.logged,
-              keyboardType: TextInputType.number,
-              inputFormatters: integerInputFormatters,
-              decoration: const InputDecoration(labelText: 'Reps'),
+          Expanded(child: _countField(form, enabled: !form.logged)),
+          if (form.measure == SetMeasure.time &&
+              !form.logged &&
+              onToggleTimer != null)
+            IconButton(
+              onPressed: onToggleTimer,
+              tooltip: form.timerStartedAt == null
+                  ? 'Time this set'
+                  : 'Stop the timer',
+              visualDensity: VisualDensity.compact,
+              icon: form.timerStartedAt == null
+                  ? const Icon(Icons.timer_outlined)
+                  : const Icon(Icons.stop_circle_outlined),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: form.weight,
-              enabled: !form.logged,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: decimalInputFormatters,
-              decoration: InputDecoration(
-                labelText: unit == WeightUnit.lbs ? 'Weight (lbs)' : 'Weight (kg)',
+          if (loadInput != LoadInput.none) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: form.weight,
+                enabled: !form.logged,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: decimalInputFormatters,
+                decoration: InputDecoration(
+                  labelText: weightFieldLabel(
+                    loadInput,
+                    lbs: unit == WeightUnit.lbs,
+                  ),
+                  // Shown inside the empty field, so a bodyweight set reads
+                  // as "BW" rather than as a missing number.
+                  hintText: loadInput == LoadInput.addedWeight ? 'BW' : null,
+                  floatingLabelBehavior: loadInput == LoadInput.addedWeight
+                      ? FloatingLabelBehavior.always
+                      : null,
+                ),
               ),
             ),
-          ),
+          ],
           const SizedBox(width: 8),
           Expanded(
             child: TextField(

@@ -19,6 +19,7 @@ import '../../logic/muscle_group_colors.dart';
 import '../notifications/reminder_coordinator.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../onboarding/whats_new_screen.dart';
+import '../progress/progress_providers.dart';
 import '../../l10n/app_localizations.dart';
 import 'app_preferences.dart';
 import 'color_palette_screen.dart';
@@ -865,6 +866,7 @@ class SettingsScreen extends ConsumerWidget {
       ref.invalidate(filteredExercisesProvider);
       ref.invalidate(exerciseCategoriesProvider);
       ref.invalidate(creatorFilterOptionsProvider);
+      invalidateProgressProviders(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -902,6 +904,7 @@ class SettingsScreen extends ConsumerWidget {
     ref.invalidate(filteredExercisesProvider);
     ref.invalidate(exerciseCategoriesProvider);
     ref.invalidate(creatorFilterOptionsProvider);
+    invalidateProgressProviders(ref);
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(

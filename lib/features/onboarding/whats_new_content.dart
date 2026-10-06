@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 /// not app-store releases with a disciplined version bump per release), so
 /// a separate, hand-maintained counter is the honest thing to gate on
 /// rather than pretending a version number means something it doesn't here.
-const currentWhatsNewRevision = 2;
+const currentWhatsNewRevision = 3;
 
 class WhatsNewItem {
   final IconData icon;
@@ -119,5 +119,22 @@ const whatsNewItems = [
         'Export a detailed PDF of every session and activity - full '
         'set-by-set detail, not just a summary - for whatever period '
         "you're looking at, alongside the existing summary report.",
+  ),
+  WhatsNewItem(
+    icon: Icons.repeat,
+    title: 'Skip, replace, and make it up later',
+    body:
+        "Machine taken or something hurts? Skipping an exercise now asks "
+        'why and lets you swap in another one for that session. Anything '
+        'you skip shows up under "Missed recently" on Today, where you can '
+        'do it now or add it to your next session.',
+  ),
+  WhatsNewItem(
+    icon: Icons.timer_outlined,
+    title: 'Holds and distances, logged properly',
+    body:
+        'Planks, hangs and other holds now log seconds - with a built-in '
+        'timer that buzzes at your target - and carries or sprints log '
+        'metres. Bodyweight warm-ups no longer ask for a weight at all.',
   ),
 ];

@@ -9,6 +9,7 @@ import '../data/daos/session_log_dao.dart';
 import '../logic/body_weight_trend.dart';
 import '../logic/chart_axis.dart';
 import '../logic/rx_deviation.dart';
+import '../logic/set_measure.dart';
 import '../logic/units.dart';
 
 /// Builds the "hand this to a coach" PDF version of the Progress tab's
@@ -95,8 +96,9 @@ Future<Uint8List> buildProgressReportPdf({
           pw.SizedBox(height: 4),
           pw.Text(
             'Flagged rows (colored) differ from what was prescribed - '
-            'fewer sets, under target, a near-failure effort, or a note '
-            'from the trainee. Everything else went as planned.',
+            'fewer sets, under target, a near-failure effort, a skipped '
+            'exercise, or a note from the trainee. Everything else went as '
+            'planned.',
             style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
           ),
           pw.SizedBox(height: 8),
@@ -455,6 +457,11 @@ pw.Widget _fullLogTable(List<CompletedWorkout> fullLog, WeightUnit unit) {
               'Prescribed: ${_formatPrescription(exercise.prescription!)}',
               style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
             ),
+          if (exercise.substituteFor != null)
+            pw.Text(
+              'In place of ${exercise.substituteFor}',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
           pw.Text(
             [for (final set in exercise.sets) _formatLoggedSet(set, unit)].join(',   '),
             style: const pw.TextStyle(fontSize: 9),
@@ -464,6 +471,37 @@ pw.Widget _fullLogTable(List<CompletedWorkout> fullLog, WeightUnit unit) {
               padding: const pw.EdgeInsets.only(top: 3),
               child: _deviationTag(deviation),
             ),
+        ]),
+      );
+    }
+
+    // Prescribed exercises that weren't done at all - after the logged
+    // ones, so the session reads in the order it was actually trained.
+    for (final skip in workout.skipped) {
+      rows.add(
+        _logRow(background, [
+          pw.Text(
+            skip.exerciseName,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.Text(
+            'Prescribed: ${skip.prescribedSets}×${skip.prescribedReps}'
+            '${skip.prescribedWeightIntensity.isEmpty ? '' : ' @ ${skip.prescribedWeightIntensity}'}',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+          pw.Text(
+            'Not done',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 3),
+            child: _deviationTag(
+              skippedDeviation(
+                reasonKey: skip.reason,
+                replacedByName: skip.replacedByExerciseName,
+              ),
+            ),
+          ),
         ]),
       );
     }
@@ -512,9 +550,11 @@ pw.Widget _workoutHeader(String sessionName, DateTime loggedAt) {
 pw.Widget _deviationTag(RxDeviation deviation) {
   final (background, foreground) = switch (deviation.kind) {
     RxDeviationKind.hasNote => (PdfColors.blue50, PdfColors.blue900),
-    RxDeviationKind.nearFailure => (PdfColors.red50, PdfColors.red900),
+    RxDeviationKind.nearFailure ||
+    RxDeviationKind.skippedForPain => (PdfColors.red50, PdfColors.red900),
     RxDeviationKind.fewerSets ||
-    RxDeviationKind.belowTarget => (PdfColors.orange50, PdfColors.orange900),
+    RxDeviationKind.belowTarget ||
+    RxDeviationKind.skipped => (PdfColors.orange50, PdfColors.orange900),
   };
   final label = deviation.kind == RxDeviationKind.hasNote
       ? 'Note: ${deviation.label}'
@@ -540,6 +580,17 @@ pw.Widget _deviationTag(RxDeviation deviation) {
 /// two files don't share UI code.
 String _topSetLabel(ExerciseProgressSummary entry, WeightUnit unit) {
   final weight = entry.topWeight;
+  // A hold or a carry: best time or distance, plus its load if it had one.
+  final measured = entry.topDurationSec != null
+      ? formatSetDuration(entry.topDurationSec!)
+      : entry.topDistance != null
+      ? formatSetDistance(entry.topDistance!)
+      : null;
+  if (measured != null) {
+    return weight == null
+        ? measured
+        : '$measured @ ${formatWeightInUnit(weight, unit)}';
+  }
   if (weight == null) {
     return '${entry.topReps} rep${entry.topReps == 1 ? '' : 's'}';
   }
@@ -558,13 +609,23 @@ String _formatPrescription(PlanExercise prescription) {
 }
 
 String _formatLoggedSet(LoggedSet set, WeightUnit unit) {
-  final parts = <String>[
-    if (set.weight != null) formatWeightInUnit(set.weight!, unit),
-    if (set.reps != null) '${set.reps} reps',
-    if (set.durationSec != null) '${set.durationSec!.toInt()}s',
-    if (set.distance != null) '${set.distance}m',
-  ];
-  final text = parts.isEmpty ? 'Logged' : parts.join(' × ');
+  final measured = set.durationSec != null
+      ? formatSetDuration(set.durationSec!)
+      : set.distance != null
+      ? formatSetDistance(set.distance!)
+      : null;
+  final String text;
+  if (measured != null) {
+    text = set.weight == null
+        ? measured
+        : '$measured @ ${formatWeightInUnit(set.weight!, unit)}';
+  } else {
+    final parts = <String>[
+      if (set.weight != null) formatWeightInUnit(set.weight!, unit),
+      if (set.reps != null) '${set.reps} reps',
+    ];
+    text = parts.isEmpty ? 'Logged' : parts.join(' × ');
+  }
   return set.isPr ? '$text (PR)' : text;
 }
 

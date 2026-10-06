@@ -4359,6 +4359,850 @@ class LoggedSetsCompanion extends UpdateCompanion<LoggedSet> {
   }
 }
 
+class $SkippedExercisesTable extends SkippedExercises
+    with TableInfo<$SkippedExercisesTable, SkippedExercise> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SkippedExercisesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _sessionLogIdMeta = const VerificationMeta(
+    'sessionLogId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionLogId = GeneratedColumn<String>(
+    'session_log_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES session_logs (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _exerciseIdMeta = const VerificationMeta(
+    'exerciseId',
+  );
+  @override
+  late final GeneratedColumn<String> exerciseId = GeneratedColumn<String>(
+    'exercise_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _exerciseNameMeta = const VerificationMeta(
+    'exerciseName',
+  );
+  @override
+  late final GeneratedColumn<String> exerciseName = GeneratedColumn<String>(
+    'exercise_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _prescribedSetsMeta = const VerificationMeta(
+    'prescribedSets',
+  );
+  @override
+  late final GeneratedColumn<int> prescribedSets = GeneratedColumn<int>(
+    'prescribed_sets',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _prescribedRepsMeta = const VerificationMeta(
+    'prescribedReps',
+  );
+  @override
+  late final GeneratedColumn<String> prescribedReps = GeneratedColumn<String>(
+    'prescribed_reps',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _prescribedWeightIntensityMeta =
+      const VerificationMeta('prescribedWeightIntensity');
+  @override
+  late final GeneratedColumn<String> prescribedWeightIntensity =
+      GeneratedColumn<String>(
+        'prescribed_weight_intensity',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(''),
+      );
+  static const VerificationMeta _prescribedRestSecMeta = const VerificationMeta(
+    'prescribedRestSec',
+  );
+  @override
+  late final GeneratedColumn<int> prescribedRestSec = GeneratedColumn<int>(
+    'prescribed_rest_sec',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _replacedByExerciseIdMeta =
+      const VerificationMeta('replacedByExerciseId');
+  @override
+  late final GeneratedColumn<String> replacedByExerciseId =
+      GeneratedColumn<String>(
+        'replaced_by_exercise_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _replacedByExerciseNameMeta =
+      const VerificationMeta('replacedByExerciseName');
+  @override
+  late final GeneratedColumn<String> replacedByExerciseName =
+      GeneratedColumn<String>(
+        'replaced_by_exercise_name',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _queuedForNextSessionMeta =
+      const VerificationMeta('queuedForNextSession');
+  @override
+  late final GeneratedColumn<bool> queuedForNextSession = GeneratedColumn<bool>(
+    'queued_for_next_session',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("queued_for_next_session" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _dismissedAtMeta = const VerificationMeta(
+    'dismissedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dismissedAt = GeneratedColumn<DateTime>(
+    'dismissed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sessionLogId,
+    exerciseId,
+    exerciseName,
+    prescribedSets,
+    prescribedReps,
+    prescribedWeightIntensity,
+    prescribedRestSec,
+    reason,
+    replacedByExerciseId,
+    replacedByExerciseName,
+    queuedForNextSession,
+    dismissedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'skipped_exercises';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SkippedExercise> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('session_log_id')) {
+      context.handle(
+        _sessionLogIdMeta,
+        sessionLogId.isAcceptableOrUnknown(
+          data['session_log_id']!,
+          _sessionLogIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionLogIdMeta);
+    }
+    if (data.containsKey('exercise_id')) {
+      context.handle(
+        _exerciseIdMeta,
+        exerciseId.isAcceptableOrUnknown(data['exercise_id']!, _exerciseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_exerciseIdMeta);
+    }
+    if (data.containsKey('exercise_name')) {
+      context.handle(
+        _exerciseNameMeta,
+        exerciseName.isAcceptableOrUnknown(
+          data['exercise_name']!,
+          _exerciseNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_exerciseNameMeta);
+    }
+    if (data.containsKey('prescribed_sets')) {
+      context.handle(
+        _prescribedSetsMeta,
+        prescribedSets.isAcceptableOrUnknown(
+          data['prescribed_sets']!,
+          _prescribedSetsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_prescribedSetsMeta);
+    }
+    if (data.containsKey('prescribed_reps')) {
+      context.handle(
+        _prescribedRepsMeta,
+        prescribedReps.isAcceptableOrUnknown(
+          data['prescribed_reps']!,
+          _prescribedRepsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_prescribedRepsMeta);
+    }
+    if (data.containsKey('prescribed_weight_intensity')) {
+      context.handle(
+        _prescribedWeightIntensityMeta,
+        prescribedWeightIntensity.isAcceptableOrUnknown(
+          data['prescribed_weight_intensity']!,
+          _prescribedWeightIntensityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('prescribed_rest_sec')) {
+      context.handle(
+        _prescribedRestSecMeta,
+        prescribedRestSec.isAcceptableOrUnknown(
+          data['prescribed_rest_sec']!,
+          _prescribedRestSecMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('replaced_by_exercise_id')) {
+      context.handle(
+        _replacedByExerciseIdMeta,
+        replacedByExerciseId.isAcceptableOrUnknown(
+          data['replaced_by_exercise_id']!,
+          _replacedByExerciseIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('replaced_by_exercise_name')) {
+      context.handle(
+        _replacedByExerciseNameMeta,
+        replacedByExerciseName.isAcceptableOrUnknown(
+          data['replaced_by_exercise_name']!,
+          _replacedByExerciseNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('queued_for_next_session')) {
+      context.handle(
+        _queuedForNextSessionMeta,
+        queuedForNextSession.isAcceptableOrUnknown(
+          data['queued_for_next_session']!,
+          _queuedForNextSessionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dismissed_at')) {
+      context.handle(
+        _dismissedAtMeta,
+        dismissedAt.isAcceptableOrUnknown(
+          data['dismissed_at']!,
+          _dismissedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SkippedExercise map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SkippedExercise(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionLogId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_log_id'],
+      )!,
+      exerciseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}exercise_id'],
+      )!,
+      exerciseName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}exercise_name'],
+      )!,
+      prescribedSets: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}prescribed_sets'],
+      )!,
+      prescribedReps: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}prescribed_reps'],
+      )!,
+      prescribedWeightIntensity: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}prescribed_weight_intensity'],
+      )!,
+      prescribedRestSec: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}prescribed_rest_sec'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      replacedByExerciseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}replaced_by_exercise_id'],
+      ),
+      replacedByExerciseName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}replaced_by_exercise_name'],
+      ),
+      queuedForNextSession: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}queued_for_next_session'],
+      )!,
+      dismissedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}dismissed_at'],
+      ),
+    );
+  }
+
+  @override
+  $SkippedExercisesTable createAlias(String alias) {
+    return $SkippedExercisesTable(attachedDatabase, alias);
+  }
+}
+
+class SkippedExercise extends DataClass implements Insertable<SkippedExercise> {
+  final int id;
+  final String sessionLogId;
+  final String exerciseId;
+  final String exerciseName;
+  final int prescribedSets;
+  final String prescribedReps;
+  final String prescribedWeightIntensity;
+  final int? prescribedRestSec;
+
+  /// A `SkipReason.key`, or null when no reason was picked.
+  final String? reason;
+
+  /// Set only when a substitute was actually logged in its place.
+  final String? replacedByExerciseId;
+  final String? replacedByExerciseName;
+
+  /// "Add to next session" from the Today tab - the next execution-mode
+  /// session offers it as an optional extra.
+  final bool queuedForNextSession;
+
+  /// The trainee explicitly dropped it from the make-up list.
+  final DateTime? dismissedAt;
+  const SkippedExercise({
+    required this.id,
+    required this.sessionLogId,
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.prescribedSets,
+    required this.prescribedReps,
+    required this.prescribedWeightIntensity,
+    this.prescribedRestSec,
+    this.reason,
+    this.replacedByExerciseId,
+    this.replacedByExerciseName,
+    required this.queuedForNextSession,
+    this.dismissedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['session_log_id'] = Variable<String>(sessionLogId);
+    map['exercise_id'] = Variable<String>(exerciseId);
+    map['exercise_name'] = Variable<String>(exerciseName);
+    map['prescribed_sets'] = Variable<int>(prescribedSets);
+    map['prescribed_reps'] = Variable<String>(prescribedReps);
+    map['prescribed_weight_intensity'] = Variable<String>(
+      prescribedWeightIntensity,
+    );
+    if (!nullToAbsent || prescribedRestSec != null) {
+      map['prescribed_rest_sec'] = Variable<int>(prescribedRestSec);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || replacedByExerciseId != null) {
+      map['replaced_by_exercise_id'] = Variable<String>(replacedByExerciseId);
+    }
+    if (!nullToAbsent || replacedByExerciseName != null) {
+      map['replaced_by_exercise_name'] = Variable<String>(
+        replacedByExerciseName,
+      );
+    }
+    map['queued_for_next_session'] = Variable<bool>(queuedForNextSession);
+    if (!nullToAbsent || dismissedAt != null) {
+      map['dismissed_at'] = Variable<DateTime>(dismissedAt);
+    }
+    return map;
+  }
+
+  SkippedExercisesCompanion toCompanion(bool nullToAbsent) {
+    return SkippedExercisesCompanion(
+      id: Value(id),
+      sessionLogId: Value(sessionLogId),
+      exerciseId: Value(exerciseId),
+      exerciseName: Value(exerciseName),
+      prescribedSets: Value(prescribedSets),
+      prescribedReps: Value(prescribedReps),
+      prescribedWeightIntensity: Value(prescribedWeightIntensity),
+      prescribedRestSec: prescribedRestSec == null && nullToAbsent
+          ? const Value.absent()
+          : Value(prescribedRestSec),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      replacedByExerciseId: replacedByExerciseId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replacedByExerciseId),
+      replacedByExerciseName: replacedByExerciseName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replacedByExerciseName),
+      queuedForNextSession: Value(queuedForNextSession),
+      dismissedAt: dismissedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dismissedAt),
+    );
+  }
+
+  factory SkippedExercise.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SkippedExercise(
+      id: serializer.fromJson<int>(json['id']),
+      sessionLogId: serializer.fromJson<String>(json['sessionLogId']),
+      exerciseId: serializer.fromJson<String>(json['exerciseId']),
+      exerciseName: serializer.fromJson<String>(json['exerciseName']),
+      prescribedSets: serializer.fromJson<int>(json['prescribedSets']),
+      prescribedReps: serializer.fromJson<String>(json['prescribedReps']),
+      prescribedWeightIntensity: serializer.fromJson<String>(
+        json['prescribedWeightIntensity'],
+      ),
+      prescribedRestSec: serializer.fromJson<int?>(json['prescribedRestSec']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      replacedByExerciseId: serializer.fromJson<String?>(
+        json['replacedByExerciseId'],
+      ),
+      replacedByExerciseName: serializer.fromJson<String?>(
+        json['replacedByExerciseName'],
+      ),
+      queuedForNextSession: serializer.fromJson<bool>(
+        json['queuedForNextSession'],
+      ),
+      dismissedAt: serializer.fromJson<DateTime?>(json['dismissedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'sessionLogId': serializer.toJson<String>(sessionLogId),
+      'exerciseId': serializer.toJson<String>(exerciseId),
+      'exerciseName': serializer.toJson<String>(exerciseName),
+      'prescribedSets': serializer.toJson<int>(prescribedSets),
+      'prescribedReps': serializer.toJson<String>(prescribedReps),
+      'prescribedWeightIntensity': serializer.toJson<String>(
+        prescribedWeightIntensity,
+      ),
+      'prescribedRestSec': serializer.toJson<int?>(prescribedRestSec),
+      'reason': serializer.toJson<String?>(reason),
+      'replacedByExerciseId': serializer.toJson<String?>(replacedByExerciseId),
+      'replacedByExerciseName': serializer.toJson<String?>(
+        replacedByExerciseName,
+      ),
+      'queuedForNextSession': serializer.toJson<bool>(queuedForNextSession),
+      'dismissedAt': serializer.toJson<DateTime?>(dismissedAt),
+    };
+  }
+
+  SkippedExercise copyWith({
+    int? id,
+    String? sessionLogId,
+    String? exerciseId,
+    String? exerciseName,
+    int? prescribedSets,
+    String? prescribedReps,
+    String? prescribedWeightIntensity,
+    Value<int?> prescribedRestSec = const Value.absent(),
+    Value<String?> reason = const Value.absent(),
+    Value<String?> replacedByExerciseId = const Value.absent(),
+    Value<String?> replacedByExerciseName = const Value.absent(),
+    bool? queuedForNextSession,
+    Value<DateTime?> dismissedAt = const Value.absent(),
+  }) => SkippedExercise(
+    id: id ?? this.id,
+    sessionLogId: sessionLogId ?? this.sessionLogId,
+    exerciseId: exerciseId ?? this.exerciseId,
+    exerciseName: exerciseName ?? this.exerciseName,
+    prescribedSets: prescribedSets ?? this.prescribedSets,
+    prescribedReps: prescribedReps ?? this.prescribedReps,
+    prescribedWeightIntensity:
+        prescribedWeightIntensity ?? this.prescribedWeightIntensity,
+    prescribedRestSec: prescribedRestSec.present
+        ? prescribedRestSec.value
+        : this.prescribedRestSec,
+    reason: reason.present ? reason.value : this.reason,
+    replacedByExerciseId: replacedByExerciseId.present
+        ? replacedByExerciseId.value
+        : this.replacedByExerciseId,
+    replacedByExerciseName: replacedByExerciseName.present
+        ? replacedByExerciseName.value
+        : this.replacedByExerciseName,
+    queuedForNextSession: queuedForNextSession ?? this.queuedForNextSession,
+    dismissedAt: dismissedAt.present ? dismissedAt.value : this.dismissedAt,
+  );
+  SkippedExercise copyWithCompanion(SkippedExercisesCompanion data) {
+    return SkippedExercise(
+      id: data.id.present ? data.id.value : this.id,
+      sessionLogId: data.sessionLogId.present
+          ? data.sessionLogId.value
+          : this.sessionLogId,
+      exerciseId: data.exerciseId.present
+          ? data.exerciseId.value
+          : this.exerciseId,
+      exerciseName: data.exerciseName.present
+          ? data.exerciseName.value
+          : this.exerciseName,
+      prescribedSets: data.prescribedSets.present
+          ? data.prescribedSets.value
+          : this.prescribedSets,
+      prescribedReps: data.prescribedReps.present
+          ? data.prescribedReps.value
+          : this.prescribedReps,
+      prescribedWeightIntensity: data.prescribedWeightIntensity.present
+          ? data.prescribedWeightIntensity.value
+          : this.prescribedWeightIntensity,
+      prescribedRestSec: data.prescribedRestSec.present
+          ? data.prescribedRestSec.value
+          : this.prescribedRestSec,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      replacedByExerciseId: data.replacedByExerciseId.present
+          ? data.replacedByExerciseId.value
+          : this.replacedByExerciseId,
+      replacedByExerciseName: data.replacedByExerciseName.present
+          ? data.replacedByExerciseName.value
+          : this.replacedByExerciseName,
+      queuedForNextSession: data.queuedForNextSession.present
+          ? data.queuedForNextSession.value
+          : this.queuedForNextSession,
+      dismissedAt: data.dismissedAt.present
+          ? data.dismissedAt.value
+          : this.dismissedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SkippedExercise(')
+          ..write('id: $id, ')
+          ..write('sessionLogId: $sessionLogId, ')
+          ..write('exerciseId: $exerciseId, ')
+          ..write('exerciseName: $exerciseName, ')
+          ..write('prescribedSets: $prescribedSets, ')
+          ..write('prescribedReps: $prescribedReps, ')
+          ..write('prescribedWeightIntensity: $prescribedWeightIntensity, ')
+          ..write('prescribedRestSec: $prescribedRestSec, ')
+          ..write('reason: $reason, ')
+          ..write('replacedByExerciseId: $replacedByExerciseId, ')
+          ..write('replacedByExerciseName: $replacedByExerciseName, ')
+          ..write('queuedForNextSession: $queuedForNextSession, ')
+          ..write('dismissedAt: $dismissedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sessionLogId,
+    exerciseId,
+    exerciseName,
+    prescribedSets,
+    prescribedReps,
+    prescribedWeightIntensity,
+    prescribedRestSec,
+    reason,
+    replacedByExerciseId,
+    replacedByExerciseName,
+    queuedForNextSession,
+    dismissedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SkippedExercise &&
+          other.id == this.id &&
+          other.sessionLogId == this.sessionLogId &&
+          other.exerciseId == this.exerciseId &&
+          other.exerciseName == this.exerciseName &&
+          other.prescribedSets == this.prescribedSets &&
+          other.prescribedReps == this.prescribedReps &&
+          other.prescribedWeightIntensity == this.prescribedWeightIntensity &&
+          other.prescribedRestSec == this.prescribedRestSec &&
+          other.reason == this.reason &&
+          other.replacedByExerciseId == this.replacedByExerciseId &&
+          other.replacedByExerciseName == this.replacedByExerciseName &&
+          other.queuedForNextSession == this.queuedForNextSession &&
+          other.dismissedAt == this.dismissedAt);
+}
+
+class SkippedExercisesCompanion extends UpdateCompanion<SkippedExercise> {
+  final Value<int> id;
+  final Value<String> sessionLogId;
+  final Value<String> exerciseId;
+  final Value<String> exerciseName;
+  final Value<int> prescribedSets;
+  final Value<String> prescribedReps;
+  final Value<String> prescribedWeightIntensity;
+  final Value<int?> prescribedRestSec;
+  final Value<String?> reason;
+  final Value<String?> replacedByExerciseId;
+  final Value<String?> replacedByExerciseName;
+  final Value<bool> queuedForNextSession;
+  final Value<DateTime?> dismissedAt;
+  const SkippedExercisesCompanion({
+    this.id = const Value.absent(),
+    this.sessionLogId = const Value.absent(),
+    this.exerciseId = const Value.absent(),
+    this.exerciseName = const Value.absent(),
+    this.prescribedSets = const Value.absent(),
+    this.prescribedReps = const Value.absent(),
+    this.prescribedWeightIntensity = const Value.absent(),
+    this.prescribedRestSec = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.replacedByExerciseId = const Value.absent(),
+    this.replacedByExerciseName = const Value.absent(),
+    this.queuedForNextSession = const Value.absent(),
+    this.dismissedAt = const Value.absent(),
+  });
+  SkippedExercisesCompanion.insert({
+    this.id = const Value.absent(),
+    required String sessionLogId,
+    required String exerciseId,
+    required String exerciseName,
+    required int prescribedSets,
+    required String prescribedReps,
+    this.prescribedWeightIntensity = const Value.absent(),
+    this.prescribedRestSec = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.replacedByExerciseId = const Value.absent(),
+    this.replacedByExerciseName = const Value.absent(),
+    this.queuedForNextSession = const Value.absent(),
+    this.dismissedAt = const Value.absent(),
+  }) : sessionLogId = Value(sessionLogId),
+       exerciseId = Value(exerciseId),
+       exerciseName = Value(exerciseName),
+       prescribedSets = Value(prescribedSets),
+       prescribedReps = Value(prescribedReps);
+  static Insertable<SkippedExercise> custom({
+    Expression<int>? id,
+    Expression<String>? sessionLogId,
+    Expression<String>? exerciseId,
+    Expression<String>? exerciseName,
+    Expression<int>? prescribedSets,
+    Expression<String>? prescribedReps,
+    Expression<String>? prescribedWeightIntensity,
+    Expression<int>? prescribedRestSec,
+    Expression<String>? reason,
+    Expression<String>? replacedByExerciseId,
+    Expression<String>? replacedByExerciseName,
+    Expression<bool>? queuedForNextSession,
+    Expression<DateTime>? dismissedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionLogId != null) 'session_log_id': sessionLogId,
+      if (exerciseId != null) 'exercise_id': exerciseId,
+      if (exerciseName != null) 'exercise_name': exerciseName,
+      if (prescribedSets != null) 'prescribed_sets': prescribedSets,
+      if (prescribedReps != null) 'prescribed_reps': prescribedReps,
+      if (prescribedWeightIntensity != null)
+        'prescribed_weight_intensity': prescribedWeightIntensity,
+      if (prescribedRestSec != null) 'prescribed_rest_sec': prescribedRestSec,
+      if (reason != null) 'reason': reason,
+      if (replacedByExerciseId != null)
+        'replaced_by_exercise_id': replacedByExerciseId,
+      if (replacedByExerciseName != null)
+        'replaced_by_exercise_name': replacedByExerciseName,
+      if (queuedForNextSession != null)
+        'queued_for_next_session': queuedForNextSession,
+      if (dismissedAt != null) 'dismissed_at': dismissedAt,
+    });
+  }
+
+  SkippedExercisesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? sessionLogId,
+    Value<String>? exerciseId,
+    Value<String>? exerciseName,
+    Value<int>? prescribedSets,
+    Value<String>? prescribedReps,
+    Value<String>? prescribedWeightIntensity,
+    Value<int?>? prescribedRestSec,
+    Value<String?>? reason,
+    Value<String?>? replacedByExerciseId,
+    Value<String?>? replacedByExerciseName,
+    Value<bool>? queuedForNextSession,
+    Value<DateTime?>? dismissedAt,
+  }) {
+    return SkippedExercisesCompanion(
+      id: id ?? this.id,
+      sessionLogId: sessionLogId ?? this.sessionLogId,
+      exerciseId: exerciseId ?? this.exerciseId,
+      exerciseName: exerciseName ?? this.exerciseName,
+      prescribedSets: prescribedSets ?? this.prescribedSets,
+      prescribedReps: prescribedReps ?? this.prescribedReps,
+      prescribedWeightIntensity:
+          prescribedWeightIntensity ?? this.prescribedWeightIntensity,
+      prescribedRestSec: prescribedRestSec ?? this.prescribedRestSec,
+      reason: reason ?? this.reason,
+      replacedByExerciseId: replacedByExerciseId ?? this.replacedByExerciseId,
+      replacedByExerciseName:
+          replacedByExerciseName ?? this.replacedByExerciseName,
+      queuedForNextSession: queuedForNextSession ?? this.queuedForNextSession,
+      dismissedAt: dismissedAt ?? this.dismissedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (sessionLogId.present) {
+      map['session_log_id'] = Variable<String>(sessionLogId.value);
+    }
+    if (exerciseId.present) {
+      map['exercise_id'] = Variable<String>(exerciseId.value);
+    }
+    if (exerciseName.present) {
+      map['exercise_name'] = Variable<String>(exerciseName.value);
+    }
+    if (prescribedSets.present) {
+      map['prescribed_sets'] = Variable<int>(prescribedSets.value);
+    }
+    if (prescribedReps.present) {
+      map['prescribed_reps'] = Variable<String>(prescribedReps.value);
+    }
+    if (prescribedWeightIntensity.present) {
+      map['prescribed_weight_intensity'] = Variable<String>(
+        prescribedWeightIntensity.value,
+      );
+    }
+    if (prescribedRestSec.present) {
+      map['prescribed_rest_sec'] = Variable<int>(prescribedRestSec.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (replacedByExerciseId.present) {
+      map['replaced_by_exercise_id'] = Variable<String>(
+        replacedByExerciseId.value,
+      );
+    }
+    if (replacedByExerciseName.present) {
+      map['replaced_by_exercise_name'] = Variable<String>(
+        replacedByExerciseName.value,
+      );
+    }
+    if (queuedForNextSession.present) {
+      map['queued_for_next_session'] = Variable<bool>(
+        queuedForNextSession.value,
+      );
+    }
+    if (dismissedAt.present) {
+      map['dismissed_at'] = Variable<DateTime>(dismissedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SkippedExercisesCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionLogId: $sessionLogId, ')
+          ..write('exerciseId: $exerciseId, ')
+          ..write('exerciseName: $exerciseName, ')
+          ..write('prescribedSets: $prescribedSets, ')
+          ..write('prescribedReps: $prescribedReps, ')
+          ..write('prescribedWeightIntensity: $prescribedWeightIntensity, ')
+          ..write('prescribedRestSec: $prescribedRestSec, ')
+          ..write('reason: $reason, ')
+          ..write('replacedByExerciseId: $replacedByExerciseId, ')
+          ..write('replacedByExerciseName: $replacedByExerciseName, ')
+          ..write('queuedForNextSession: $queuedForNextSession, ')
+          ..write('dismissedAt: $dismissedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $BodyMeasurementsTable extends BodyMeasurements
     with TableInfo<$BodyMeasurementsTable, BodyMeasurement> {
   @override
@@ -6051,6 +6895,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlanExercisesTable planExercises = $PlanExercisesTable(this);
   late final $SessionLogsTable sessionLogs = $SessionLogsTable(this);
   late final $LoggedSetsTable loggedSets = $LoggedSetsTable(this);
+  late final $SkippedExercisesTable skippedExercises = $SkippedExercisesTable(
+    this,
+  );
   late final $BodyMeasurementsTable bodyMeasurements = $BodyMeasurementsTable(
     this,
   );
@@ -6078,6 +6925,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     planExercises,
     sessionLogs,
     loggedSets,
+    skippedExercises,
     bodyMeasurements,
     blocks,
     blockExercises,
@@ -6118,6 +6966,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('logged_sets', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'session_logs',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('skipped_exercises', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -8792,6 +9647,26 @@ final class $$SessionLogsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$SkippedExercisesTable, List<SkippedExercise>>
+  _skippedExercisesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.skippedExercises,
+    aliasName: 'session_logs__id__skipped_exercises__session_log_id',
+  );
+
+  $$SkippedExercisesTableProcessedTableManager get skippedExercisesRefs {
+    final manager = $$SkippedExercisesTableTableManager(
+      $_db,
+      $_db.skippedExercises,
+    ).filter((f) => f.sessionLogId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _skippedExercisesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$SessionLogsTableFilterComposer
@@ -8877,6 +9752,31 @@ class $$SessionLogsTableFilterComposer
           }) => $$LoggedSetsTableFilterComposer(
             $db: $db,
             $table: $db.loggedSets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> skippedExercisesRefs(
+    Expression<bool> Function($$SkippedExercisesTableFilterComposer f) f,
+  ) {
+    final $$SkippedExercisesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.skippedExercises,
+      getReferencedColumn: (t) => t.sessionLogId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SkippedExercisesTableFilterComposer(
+            $db: $db,
+            $table: $db.skippedExercises,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9038,6 +9938,31 @@ class $$SessionLogsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> skippedExercisesRefs<T extends Object>(
+    Expression<T> Function($$SkippedExercisesTableAnnotationComposer a) f,
+  ) {
+    final $$SkippedExercisesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.skippedExercises,
+      getReferencedColumn: (t) => t.sessionLogId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SkippedExercisesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.skippedExercises,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SessionLogsTableTableManager
@@ -9053,7 +9978,11 @@ class $$SessionLogsTableTableManager
           $$SessionLogsTableUpdateCompanionBuilder,
           (SessionLog, $$SessionLogsTableReferences),
           SessionLog,
-          PrefetchHooks Function({bool planSessionId, bool loggedSetsRefs})
+          PrefetchHooks Function({
+            bool planSessionId,
+            bool loggedSetsRefs,
+            bool skippedExercisesRefs,
+          })
         > {
   $$SessionLogsTableTableManager(_$AppDatabase db, $SessionLogsTable table)
     : super(
@@ -9119,10 +10048,17 @@ class $$SessionLogsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({planSessionId = false, loggedSetsRefs = false}) {
+              ({
+                planSessionId = false,
+                loggedSetsRefs = false,
+                skippedExercisesRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
-                  explicitlyWatchedTables: [if (loggedSetsRefs) db.loggedSets],
+                  explicitlyWatchedTables: [
+                    if (loggedSetsRefs) db.loggedSets,
+                    if (skippedExercisesRefs) db.skippedExercises,
+                  ],
                   addJoins:
                       <
                         T extends TableManagerState<
@@ -9176,6 +10112,27 @@ class $$SessionLogsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (skippedExercisesRefs)
+                        await $_getPrefetchedData<
+                          SessionLog,
+                          $SessionLogsTable,
+                          SkippedExercise
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SessionLogsTableReferences
+                              ._skippedExercisesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SessionLogsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).skippedExercisesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sessionLogId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -9196,7 +10153,11 @@ typedef $$SessionLogsTableProcessedTableManager =
       $$SessionLogsTableUpdateCompanionBuilder,
       (SessionLog, $$SessionLogsTableReferences),
       SessionLog,
-      PrefetchHooks Function({bool planSessionId, bool loggedSetsRefs})
+      PrefetchHooks Function({
+        bool planSessionId,
+        bool loggedSetsRefs,
+        bool skippedExercisesRefs,
+      })
     >;
 typedef $$LoggedSetsTableCreateCompanionBuilder = LoggedSetsCompanion Function({
   Value<int> id,
@@ -9705,6 +10666,495 @@ typedef $$LoggedSetsTableProcessedTableManager =
       (LoggedSet, $$LoggedSetsTableReferences),
       LoggedSet,
       PrefetchHooks Function({bool sessionLogId, bool exerciseId})
+    >;
+typedef $$SkippedExercisesTableCreateCompanionBuilder =
+    SkippedExercisesCompanion Function({
+      Value<int> id,
+      required String sessionLogId,
+      required String exerciseId,
+      required String exerciseName,
+      required int prescribedSets,
+      required String prescribedReps,
+      Value<String> prescribedWeightIntensity,
+      Value<int?> prescribedRestSec,
+      Value<String?> reason,
+      Value<String?> replacedByExerciseId,
+      Value<String?> replacedByExerciseName,
+      Value<bool> queuedForNextSession,
+      Value<DateTime?> dismissedAt,
+    });
+typedef $$SkippedExercisesTableUpdateCompanionBuilder =
+    SkippedExercisesCompanion Function({
+      Value<int> id,
+      Value<String> sessionLogId,
+      Value<String> exerciseId,
+      Value<String> exerciseName,
+      Value<int> prescribedSets,
+      Value<String> prescribedReps,
+      Value<String> prescribedWeightIntensity,
+      Value<int?> prescribedRestSec,
+      Value<String?> reason,
+      Value<String?> replacedByExerciseId,
+      Value<String?> replacedByExerciseName,
+      Value<bool> queuedForNextSession,
+      Value<DateTime?> dismissedAt,
+    });
+
+final class $$SkippedExercisesTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $SkippedExercisesTable, SkippedExercise> {
+  $$SkippedExercisesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $SessionLogsTable _sessionLogIdTable(_$AppDatabase db) => db
+      .sessionLogs
+      .createAlias('skipped_exercises__session_log_id__session_logs__id');
+
+  $$SessionLogsTableProcessedTableManager get sessionLogId {
+    final $_column = $_itemColumn<String>('session_log_id')!;
+
+    final manager = $$SessionLogsTableTableManager(
+      $_db,
+      $_db.sessionLogs,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sessionLogIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$SkippedExercisesTableFilterComposer
+    extends Composer<_$AppDatabase, $SkippedExercisesTable> {
+  $$SkippedExercisesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get exerciseId => $composableBuilder(
+    column: $table.exerciseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get exerciseName => $composableBuilder(
+    column: $table.exerciseName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get prescribedSets => $composableBuilder(
+    column: $table.prescribedSets,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get prescribedReps => $composableBuilder(
+    column: $table.prescribedReps,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get prescribedWeightIntensity => $composableBuilder(
+    column: $table.prescribedWeightIntensity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get prescribedRestSec => $composableBuilder(
+    column: $table.prescribedRestSec,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get replacedByExerciseId => $composableBuilder(
+    column: $table.replacedByExerciseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get replacedByExerciseName => $composableBuilder(
+    column: $table.replacedByExerciseName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get queuedForNextSession => $composableBuilder(
+    column: $table.queuedForNextSession,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dismissedAt => $composableBuilder(
+    column: $table.dismissedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$SessionLogsTableFilterComposer get sessionLogId {
+    final $$SessionLogsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionLogId,
+      referencedTable: $db.sessionLogs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SessionLogsTableFilterComposer(
+            $db: $db,
+            $table: $db.sessionLogs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SkippedExercisesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SkippedExercisesTable> {
+  $$SkippedExercisesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get exerciseId => $composableBuilder(
+    column: $table.exerciseId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get exerciseName => $composableBuilder(
+    column: $table.exerciseName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get prescribedSets => $composableBuilder(
+    column: $table.prescribedSets,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get prescribedReps => $composableBuilder(
+    column: $table.prescribedReps,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get prescribedWeightIntensity => $composableBuilder(
+    column: $table.prescribedWeightIntensity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get prescribedRestSec => $composableBuilder(
+    column: $table.prescribedRestSec,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get replacedByExerciseId => $composableBuilder(
+    column: $table.replacedByExerciseId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get replacedByExerciseName => $composableBuilder(
+    column: $table.replacedByExerciseName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get queuedForNextSession => $composableBuilder(
+    column: $table.queuedForNextSession,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get dismissedAt => $composableBuilder(
+    column: $table.dismissedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$SessionLogsTableOrderingComposer get sessionLogId {
+    final $$SessionLogsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionLogId,
+      referencedTable: $db.sessionLogs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SessionLogsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sessionLogs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SkippedExercisesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SkippedExercisesTable> {
+  $$SkippedExercisesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get exerciseId => $composableBuilder(
+    column: $table.exerciseId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get exerciseName => $composableBuilder(
+    column: $table.exerciseName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get prescribedSets => $composableBuilder(
+    column: $table.prescribedSets,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get prescribedReps => $composableBuilder(
+    column: $table.prescribedReps,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get prescribedWeightIntensity => $composableBuilder(
+    column: $table.prescribedWeightIntensity,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get prescribedRestSec => $composableBuilder(
+    column: $table.prescribedRestSec,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get replacedByExerciseId => $composableBuilder(
+    column: $table.replacedByExerciseId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get replacedByExerciseName => $composableBuilder(
+    column: $table.replacedByExerciseName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get queuedForNextSession => $composableBuilder(
+    column: $table.queuedForNextSession,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get dismissedAt => $composableBuilder(
+    column: $table.dismissedAt,
+    builder: (column) => column,
+  );
+
+  $$SessionLogsTableAnnotationComposer get sessionLogId {
+    final $$SessionLogsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionLogId,
+      referencedTable: $db.sessionLogs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SessionLogsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sessionLogs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SkippedExercisesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SkippedExercisesTable,
+          SkippedExercise,
+          $$SkippedExercisesTableFilterComposer,
+          $$SkippedExercisesTableOrderingComposer,
+          $$SkippedExercisesTableAnnotationComposer,
+          $$SkippedExercisesTableCreateCompanionBuilder,
+          $$SkippedExercisesTableUpdateCompanionBuilder,
+          (SkippedExercise, $$SkippedExercisesTableReferences),
+          SkippedExercise,
+          PrefetchHooks Function({bool sessionLogId})
+        > {
+  $$SkippedExercisesTableTableManager(
+    _$AppDatabase db,
+    $SkippedExercisesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SkippedExercisesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SkippedExercisesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SkippedExercisesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> sessionLogId = const Value.absent(),
+                Value<String> exerciseId = const Value.absent(),
+                Value<String> exerciseName = const Value.absent(),
+                Value<int> prescribedSets = const Value.absent(),
+                Value<String> prescribedReps = const Value.absent(),
+                Value<String> prescribedWeightIntensity = const Value.absent(),
+                Value<int?> prescribedRestSec = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<String?> replacedByExerciseId = const Value.absent(),
+                Value<String?> replacedByExerciseName = const Value.absent(),
+                Value<bool> queuedForNextSession = const Value.absent(),
+                Value<DateTime?> dismissedAt = const Value.absent(),
+              }) => SkippedExercisesCompanion(
+                id: id,
+                sessionLogId: sessionLogId,
+                exerciseId: exerciseId,
+                exerciseName: exerciseName,
+                prescribedSets: prescribedSets,
+                prescribedReps: prescribedReps,
+                prescribedWeightIntensity: prescribedWeightIntensity,
+                prescribedRestSec: prescribedRestSec,
+                reason: reason,
+                replacedByExerciseId: replacedByExerciseId,
+                replacedByExerciseName: replacedByExerciseName,
+                queuedForNextSession: queuedForNextSession,
+                dismissedAt: dismissedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String sessionLogId,
+                required String exerciseId,
+                required String exerciseName,
+                required int prescribedSets,
+                required String prescribedReps,
+                Value<String> prescribedWeightIntensity = const Value.absent(),
+                Value<int?> prescribedRestSec = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<String?> replacedByExerciseId = const Value.absent(),
+                Value<String?> replacedByExerciseName = const Value.absent(),
+                Value<bool> queuedForNextSession = const Value.absent(),
+                Value<DateTime?> dismissedAt = const Value.absent(),
+              }) => SkippedExercisesCompanion.insert(
+                id: id,
+                sessionLogId: sessionLogId,
+                exerciseId: exerciseId,
+                exerciseName: exerciseName,
+                prescribedSets: prescribedSets,
+                prescribedReps: prescribedReps,
+                prescribedWeightIntensity: prescribedWeightIntensity,
+                prescribedRestSec: prescribedRestSec,
+                reason: reason,
+                replacedByExerciseId: replacedByExerciseId,
+                replacedByExerciseName: replacedByExerciseName,
+                queuedForNextSession: queuedForNextSession,
+                dismissedAt: dismissedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SkippedExercisesTable, SkippedExercise>(table),
+                  $$SkippedExercisesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sessionLogId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sessionLogId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.sessionLogId,
+                        referencedTable: $$SkippedExercisesTableReferences
+                            ._sessionLogIdTable(db),
+                        referencedColumn: $$SkippedExercisesTableReferences
+                            ._sessionLogIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SkippedExercisesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SkippedExercisesTable,
+      SkippedExercise,
+      $$SkippedExercisesTableFilterComposer,
+      $$SkippedExercisesTableOrderingComposer,
+      $$SkippedExercisesTableAnnotationComposer,
+      $$SkippedExercisesTableCreateCompanionBuilder,
+      $$SkippedExercisesTableUpdateCompanionBuilder,
+      (SkippedExercise, $$SkippedExercisesTableReferences),
+      SkippedExercise,
+      PrefetchHooks Function({bool sessionLogId})
     >;
 typedef $$BodyMeasurementsTableCreateCompanionBuilder =
     BodyMeasurementsCompanion Function({
@@ -10876,6 +12326,8 @@ class $AppDatabaseManager {
       $$SessionLogsTableTableManager(_db, _db.sessionLogs);
   $$LoggedSetsTableTableManager get loggedSets =>
       $$LoggedSetsTableTableManager(_db, _db.loggedSets);
+  $$SkippedExercisesTableTableManager get skippedExercises =>
+      $$SkippedExercisesTableTableManager(_db, _db.skippedExercises);
   $$BodyMeasurementsTableTableManager get bodyMeasurements =>
       $$BodyMeasurementsTableTableManager(_db, _db.bodyMeasurements);
   $$BlocksTableTableManager get blocks =>

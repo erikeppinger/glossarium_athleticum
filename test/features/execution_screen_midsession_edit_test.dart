@@ -121,7 +121,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.remove_circle_outline));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    // The reason sheet - every choice in it is optional.
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Skip'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Skipped for this session.'), findsOneWidget);
     expect(
@@ -133,10 +136,12 @@ void main() {
     await tester.tap(find.text('Finish session'));
     await tester.pumpAndSettle();
 
-    // Nothing was logged, so there's no note prompt and no session log at
-    // all - the screen should have popped straight away.
+    // The skipped exercise's prefilled hints must not count as "unlogged
+    // sets" - no prompt, no log, the screen just closes.
+    expect(find.text('Unlogged sets'), findsNothing);
     final logs = await db.sessionLogDao.getLogsForPlanSession(sessionId);
     expect(logs, isEmpty);
+    expect(find.byType(ExecutionScreen), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

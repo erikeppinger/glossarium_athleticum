@@ -19,6 +19,7 @@ part 'maintenance_dao.g.dart';
     PlanExercises,
     SessionLogs,
     LoggedSets,
+    SkippedExercises,
     BodyMeasurements,
   ],
 )
@@ -33,6 +34,7 @@ class MaintenanceDao extends DatabaseAccessor<AppDatabase>
   Future<void> wipeAllData() {
     return transaction(() async {
       await delete(loggedSets).go();
+      await delete(skippedExercises).go();
       await delete(sessionLogs).go();
       await delete(planExercises).go();
       await delete(planSessionDates).go();

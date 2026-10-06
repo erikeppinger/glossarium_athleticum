@@ -103,6 +103,28 @@ Future<void> importBackupJson(
         distance: (entry['distance'] as num?)?.toDouble(),
         rpe: (entry['rpe'] as num?)?.toDouble(),
         isPr: entry['is_pr'] as bool? ?? false,
+        notes: entry['notes'] as String?,
+      );
+    }).toList();
+
+    // Absent in backups taken before skip tracking existed.
+    final skippedJson = map['skipped_exercises'] as List? ?? const [];
+    final skipped = skippedJson.map((skipJson) {
+      final skip = skipJson as Map<String, dynamic>;
+      final dismissedAt = skip['dismissed_at'] as String?;
+      return SkippedExerciseInput(
+        exerciseId: skip['exercise_id'] as String,
+        exerciseName: skip['exercise_name'] as String,
+        prescribedSets: skip['prescribed_sets'] as int,
+        prescribedReps: skip['prescribed_reps'] as String,
+        prescribedWeightIntensity:
+            skip['prescribed_weight_intensity'] as String? ?? '',
+        prescribedRestSec: skip['prescribed_rest_sec'] as int?,
+        reason: skip['reason'] as String?,
+        replacedByExerciseId: skip['replaced_by_exercise_id'] as String?,
+        replacedByExerciseName: skip['replaced_by_exercise_name'] as String?,
+        queuedForNextSession: skip['queued_for_next_session'] as bool? ?? false,
+        dismissedAt: dismissedAt == null ? null : DateTime.parse(dismissedAt),
       );
     }).toList();
 
@@ -112,6 +134,7 @@ Future<void> importBackupJson(
       loggedAt: DateTime.parse(map['logged_at'] as String),
       entries: entries,
       notes: map['notes'] as String?,
+      skipped: skipped,
     );
   }
 

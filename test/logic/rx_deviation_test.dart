@@ -172,4 +172,62 @@ void main() {
       expect(parsePrescribedWeightKg('250m'), isNull);
     });
   });
+
+  group('time and distance prescriptions', () {
+    LoggedSet measured({double? durationSec, double? distance}) => LoggedSet(
+      id: 1,
+      sessionLogId: 'log-1',
+      exerciseId: 'ex-1',
+      setNumber: 1,
+      durationSec: durationSec,
+      distance: distance,
+      isPr: false,
+    );
+
+    test('a hold shorter than prescribed is flagged', () {
+      final flags = computeRxDeviations(
+        prescription: _rx(sets: 2, reps: '1', weightIntensity: '45 sec'),
+        actual: [measured(durationSec: 45), measured(durationSec: 30)],
+      );
+      expect(flags.map((f) => f.label), ['Under time target on 1 set']);
+    });
+
+    test('a carry shorter than prescribed is flagged', () {
+      final flags = computeRxDeviations(
+        prescription: _rx(sets: 1, reps: '50m', weightIntensity: '60kg'),
+        actual: [measured(distance: 40)],
+      );
+      expect(flags.map((f) => f.label), ['Under distance target on 1 set']);
+    });
+
+    test('meeting the time target raises nothing', () {
+      final flags = computeRxDeviations(
+        prescription: _rx(sets: 1, reps: '1', weightIntensity: '45 sec'),
+        actual: [measured(durationSec: 50)],
+      );
+      expect(flags, isEmpty);
+    });
+  });
+
+  group('skippedDeviation', () {
+    test('names the reason and the replacement', () {
+      final flag = skippedDeviation(
+        reasonKey: 'machine_busy',
+        replacedByName: 'Dumbbell Press',
+      );
+      expect(flag.kind, RxDeviationKind.skipped);
+      expect(flag.label, 'Skipped - Machine busy, replaced by Dumbbell Press');
+    });
+
+    test('pain or injury gets its own kind so it stands out', () {
+      final flag = skippedDeviation(reasonKey: 'pain_or_injury');
+      expect(flag.kind, RxDeviationKind.skippedForPain);
+      expect(flag.label, 'Skipped - Pain or injury');
+    });
+
+    test('no reason and an unknown reason key both read as plain "Skipped"', () {
+      expect(skippedDeviation().label, 'Skipped');
+      expect(skippedDeviation(reasonKey: 'from_a_newer_app').label, 'Skipped');
+    });
+  });
 }

@@ -928,6 +928,9 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           await (delete(
             db.loggedSets,
           )..where((s) => s.sessionLogId.isIn(logIds))).go();
+          await (delete(
+            db.skippedExercises,
+          )..where((s) => s.sessionLogId.isIn(logIds))).go();
           await (delete(db.sessionLogs)..where((l) => l.id.isIn(logIds))).go();
         }
         await (delete(

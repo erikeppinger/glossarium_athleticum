@@ -84,3 +84,44 @@ class LoggedSets extends Table {
   /// report renders any non-empty note under the exercise it belongs to.
   TextColumn get notes => text().nullable()();
 }
+
+/// One prescribed exercise skipped during a finished [SessionLogs] entry
+/// (machine busy, pain, no equipment...), optionally with the exercise done
+/// in its place. Feeds the Today tab's make-up list and the trainer PDF.
+///
+/// The prescription and both exercise names are snapshots rather than a
+/// reference to the `PlanExercises` row, since plans get edited, forked and
+/// deleted after the fact while this record has to keep saying what was
+/// actually missed.
+///
+/// A skip counts as made up once any later finished session logs a set of
+/// the same [exerciseId] - derived at read time (see
+/// `SessionLogDao.getPendingMakeUps`), not stored, so it can never drift
+/// from the actual history.
+class SkippedExercises extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get sessionLogId =>
+      text().references(SessionLogs, #id, onDelete: KeyAction.cascade)();
+  TextColumn get exerciseId => text()();
+  TextColumn get exerciseName => text()();
+  IntColumn get prescribedSets => integer()();
+  TextColumn get prescribedReps => text()();
+  TextColumn get prescribedWeightIntensity =>
+      text().withDefault(const Constant(''))();
+  IntColumn get prescribedRestSec => integer().nullable()();
+
+  /// A `SkipReason.key`, or null when no reason was picked.
+  TextColumn get reason => text().nullable()();
+
+  /// Set only when a substitute was actually logged in its place.
+  TextColumn get replacedByExerciseId => text().nullable()();
+  TextColumn get replacedByExerciseName => text().nullable()();
+
+  /// "Add to next session" from the Today tab - the next execution-mode
+  /// session offers it as an optional extra.
+  BoolColumn get queuedForNextSession =>
+      boolean().withDefault(const Constant(false))();
+
+  /// The trainee explicitly dropped it from the make-up list.
+  DateTimeColumn get dismissedAt => dateTime().nullable()();
+}

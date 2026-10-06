@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../data/daos/session_log_dao.dart' show RepsHistoryEntry;
+import '../../data/daos/session_log_dao.dart'
+    show MeasuredHistory, RepsHistoryEntry;
 import '../../logic/chart_axis.dart';
 import '../../logic/one_rep_max.dart';
 import '../../logic/progression.dart';
+import '../../logic/set_measure.dart';
 import '../../logic/units.dart';
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
@@ -31,6 +33,9 @@ class HistoryScreen extends ConsumerWidget {
     // plenty of times, since [exerciseProgressionHistoryProvider] only ever
     // sees weight-bearing sets.
     final repsOnlyAsync = ref.watch(repsOnlyHistoryProvider(exerciseId));
+    // A hold or a carry: its times or distances come before any reps it
+    // may have been logged with before time/distance sets existed.
+    final measuredAsync = ref.watch(measuredHistoryProvider(exerciseId));
     final estimatedOneRepMax = ref
         .watch(estimatedOneRepMaxProvider(exerciseId))
         .valueOrNull;
@@ -41,6 +46,10 @@ class HistoryScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(exerciseName)),
       body: historyAsync.when(
         data: (history) {
+          final measured = measuredAsync.valueOrNull;
+          if (history.isEmpty && measured != null) {
+            return _MeasuredHistoryView(history: measured);
+          }
           if (history.isEmpty) {
             return repsOnlyAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -333,6 +342,99 @@ class _RepsOnlyHistory extends StatelessWidget {
             ),
             subtitle: Text(DateFormat.yMMMd().format(entry.date)),
             trailing: entry.totalReps == maxReps.toInt()
+                ? const Icon(Icons.emoji_events, color: Colors.amber)
+                : null,
+          ),
+      ],
+    );
+  }
+}
+
+/// History for a hold or a carry: each session's longest time (or furthest
+/// distance) over time, and the session list. No 1RM or progression
+/// suggestion, same as the reps-only view - both are weight-based.
+class _MeasuredHistoryView extends StatelessWidget {
+  final MeasuredHistory history;
+
+  const _MeasuredHistoryView({required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    final isTime = history.measure == SetMeasure.time;
+    String format(double value) =>
+        isTime ? formatSetDuration(value) : formatSetDistance(value);
+    final entries = history.entries;
+    final best = entries.map((e) => e.best).reduce((a, b) => a > b ? a : b);
+    final axis = niceAxis(best);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          isTime ? 'Longest set per session' : 'Furthest set per session',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Semantics(
+          label:
+              'Chart of the best set per session. Latest: '
+              '${format(entries.last.best)}. Best: ${format(best)}.',
+          child: ExcludeSemantics(
+            child: SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: axis.max,
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: axis.interval,
+                        reservedSize: 40,
+                      ),
+                    ),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: [
+                        for (var i = 0; i < entries.length; i++)
+                          FlSpot(i.toDouble(), entries[i].best),
+                      ],
+                      isCurved: false,
+                      dotData: const FlDotData(show: true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          isTime ? 'Seconds' : 'Metres',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 20),
+        Text('Sessions', style: Theme.of(context).textTheme.titleMedium),
+        for (final entry in entries.reversed)
+          ListTile(
+            title: Text(
+              'Best ${format(entry.best)}'
+              ' (${entry.setCount} set${entry.setCount == 1 ? '' : 's'}, '
+              '${format(entry.total)} total)',
+            ),
+            subtitle: Text(DateFormat.yMMMd().format(entry.date)),
+            trailing: entry.best == best
                 ? const Icon(Icons.emoji_events, color: Colors.amber)
                 : null,
           ),

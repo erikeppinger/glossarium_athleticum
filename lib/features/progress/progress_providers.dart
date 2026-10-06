@@ -9,6 +9,16 @@ import '../../logic/streaks.dart';
 import '../../logic/summary_period.dart';
 import '../settings/app_preferences.dart';
 
+/// Skipped exercises still waiting to be made up - shown on the Today tab,
+/// and offered in execution mode once queued. Lives here (not in a feature
+/// of its own) because every write that changes logged history already
+/// calls [invalidateProgressProviders], and whether a skip is made up is
+/// derived from that same history.
+final pendingMakeUpsProvider = FutureProvider<List<PendingMakeUp>>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return db.sessionLogDao.getPendingMakeUps();
+});
+
 final periodSummaryProvider = FutureProvider.family<PeriodSummary, PeriodRange>(
   (ref, range) {
     final db = ref.watch(appDatabaseProvider);
@@ -51,6 +61,12 @@ final exerciseProgressionHistoryProvider =
 /// - the no-weight counterpart to [exerciseProgressionHistoryProvider],
 /// backing the History screen's fallback view for a bodyweight/band/
 /// Time-type exercise that has never logged a weight.
+final measuredHistoryProvider =
+    FutureProvider.family<MeasuredHistory?, String>((ref, exerciseId) {
+      final db = ref.watch(appDatabaseProvider);
+      return db.sessionLogDao.getMeasuredHistory(exerciseId);
+    });
+
 final repsOnlyHistoryProvider =
     FutureProvider.family<List<RepsHistoryEntry>, String>((ref, exerciseId) {
       final db = ref.watch(appDatabaseProvider);
@@ -134,5 +150,7 @@ void invalidateProgressProviders(WidgetRef ref) {
   ref.invalidate(longestStreakProvider);
   ref.invalidate(exerciseProgressionHistoryProvider);
   ref.invalidate(repsOnlyHistoryProvider);
+  ref.invalidate(measuredHistoryProvider);
   ref.invalidate(muscleGroupVolumeProvider);
+  ref.invalidate(pendingMakeUpsProvider);
 }

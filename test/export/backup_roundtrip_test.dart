@@ -335,6 +335,61 @@ void main() {
     expect(details!.plan.createdBy, 'Coach Erik');
   });
 
+  test('skipped exercises and per-set trainee notes survive a round-trip', () async {
+    await seedFullState();
+    final details = await db.planDao.getPlanDetails('plan-1');
+    final week1Session = details!.sessions
+        .firstWhere((s) => s.session.weekNumber == 1)
+        .session
+        .id;
+    await db.sessionLogDao.createSessionLog(
+      id: 'log-with-skip',
+      planSessionId: week1Session,
+      loggedAt: DateTime(2026, 9, 1),
+      entries: const [
+        LoggedSetInput(
+          exerciseId: 'CUSTOM1',
+          setNumber: 1,
+          reps: 10,
+          notes: 'Felt fine on the machine instead',
+        ),
+      ],
+      skipped: [
+        SkippedExerciseInput(
+          exerciseId: 'EX_BP',
+          exerciseName: 'Bench Press',
+          prescribedSets: 4,
+          prescribedReps: '8-10',
+          prescribedWeightIntensity: '60kg',
+          prescribedRestSec: 90,
+          reason: 'pain_or_injury',
+          replacedByExerciseId: 'CUSTOM1',
+          replacedByExerciseName: 'My Weird Machine',
+          queuedForNextSession: true,
+          dismissedAt: DateTime(2026, 9, 2),
+        ),
+      ],
+    );
+
+    final backup = await buildBackupJson(db);
+    await importBackupJson(backup, db);
+
+    final workout = await db.sessionLogDao.getCompletedWorkout('log-with-skip');
+    final skip = workout!.skipped.single;
+    expect(skip.exerciseName, 'Bench Press');
+    expect(skip.prescribedReps, '8-10');
+    expect(skip.prescribedWeightIntensity, '60kg');
+    expect(skip.prescribedRestSec, 90);
+    expect(skip.reason, 'pain_or_injury');
+    expect(skip.replacedByExerciseName, 'My Weird Machine');
+    expect(skip.queuedForNextSession, isTrue);
+    expect(skip.dismissedAt, DateTime(2026, 9, 2));
+    expect(
+      workout.exercises.single.sets.single.notes,
+      'Felt fine on the machine instead',
+    );
+  });
+
   test('importBackupJson throws for an unsupported schema version', () async {
     await expectLater(
       importBackupJson({

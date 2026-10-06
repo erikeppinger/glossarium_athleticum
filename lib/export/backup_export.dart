@@ -48,8 +48,30 @@ Map<String, dynamic> sessionLogToJson(
           'distance': set.distance,
           'rpe': set.rpe,
           'is_pr': set.isPr,
+          if (set.notes != null) 'notes': set.notes,
         },
     ],
+    if (logWithSets.skipped.isNotEmpty)
+      'skipped_exercises': [
+        for (final s in logWithSets.skipped)
+          {
+            'exercise_id': s.exerciseId,
+            'exercise_name': s.exerciseName,
+            'prescribed_sets': s.prescribedSets,
+            'prescribed_reps': s.prescribedReps,
+            'prescribed_weight_intensity': s.prescribedWeightIntensity,
+            if (s.prescribedRestSec != null)
+              'prescribed_rest_sec': s.prescribedRestSec,
+            if (s.reason != null) 'reason': s.reason,
+            if (s.replacedByExerciseId != null)
+              'replaced_by_exercise_id': s.replacedByExerciseId,
+            if (s.replacedByExerciseName != null)
+              'replaced_by_exercise_name': s.replacedByExerciseName,
+            'queued_for_next_session': s.queuedForNextSession,
+            if (s.dismissedAt != null)
+              'dismissed_at': s.dismissedAt!.toIso8601String(),
+          },
+      ],
   };
 }
 

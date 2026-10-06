@@ -441,6 +441,7 @@ Future<void> _delete(BuildContext context, WidgetRef ref, Plan plan) async {
   ref.invalidate(scheduledSessionsProvider);
   ref.invalidate(loggedPlanSessionIdsProvider);
   ref.invalidate(exerciseProgressDashboardProvider);
+  ref.invalidate(pendingMakeUpsProvider);
   await resyncReminders(ref);
 
   if (!context.mounted) return;

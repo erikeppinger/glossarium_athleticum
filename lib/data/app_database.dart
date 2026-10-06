@@ -25,6 +25,7 @@ part 'app_database.g.dart';
     PlanExercises,
     SessionLogs,
     LoggedSets,
+    SkippedExercises,
     BodyMeasurements,
     Blocks,
     BlockExercises,
@@ -43,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -170,6 +171,11 @@ class AppDatabase extends _$AppDatabase {
         // Trainee-to-trainer per-set feedback - see LoggedSets.notes' own
         // doc comment.
         await m.addColumn(loggedSets, loggedSets.notes);
+      }
+      if (from < 18) {
+        // Skipped/replaced exercises and the make-up list - one new table,
+        // nothing existing changes shape.
+        await m.createTable(skippedExercises);
       }
     },
   );

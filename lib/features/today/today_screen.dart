@@ -12,6 +12,7 @@ import '../exercise_library/exercise_picker_screen.dart';
 import '../plans/random_workout_screen.dart';
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
+import 'missed_exercises_card.dart';
 import 'today_providers.dart';
 
 /// The app's default landing screen - "what do I do right now" rather than
@@ -108,6 +109,9 @@ class TodayScreen extends ConsumerWidget {
               subtitle: '$error',
             ),
           ),
+          // Not gated on Focus mode: this is unfinished training, not
+          // progress reporting.
+          const MissedExercisesCard(),
           if (!hideStreaks) ...[
             const SizedBox(height: 12),
             streakAsync!.when(

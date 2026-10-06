@@ -28,6 +28,11 @@ final RegExp _parenthetical = RegExp(r'\s*\([^)]*\)');
 bool _needsNothing(String raw) =>
     raw.trim().toLowerCase().startsWith('none');
 
+/// Whether an exercise's equipment text means "just your own body" -
+/// "None (Bodyweight)" in the seed data, or a hand-typed "Bodyweight".
+bool isBodyweightOnly(String raw) =>
+    _needsNothing(raw) || raw.trim().toLowerCase() == 'bodyweight';
+
 /// One raw equipment string split into its AND-groups, each an OR-group of
 /// alternative atomic equipment names - e.g. "Barbell & Kettlebell or
 /// Dumbbell" (hypothetical) would be `[["Barbell"], ["Kettlebell", "Dumbbell"]]`.

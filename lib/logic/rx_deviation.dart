@@ -1,10 +1,21 @@
 import '../data/app_database.dart' show LoggedSet, PlanExercise;
+import 'set_measure.dart';
+import 'skip_reason.dart';
 
 /// What kind of thing the trainer-facing "Full training log" report is
 /// flagging about one exercise's actual sets versus what the plan
 /// prescribed - lets a trainer scan for exceptions instead of reading every
 /// prescribed/actual line pair to spot a difference by eye.
-enum RxDeviationKind { fewerSets, belowTarget, nearFailure, hasNote }
+/// [skippedForPain] is split out from [skipped] so a possible injury stands
+/// out from "the machine was busy".
+enum RxDeviationKind {
+  fewerSets,
+  belowTarget,
+  nearFailure,
+  hasNote,
+  skipped,
+  skippedForPain,
+}
 
 class RxDeviation {
   final RxDeviationKind kind;
@@ -85,6 +96,37 @@ List<RxDeviation> computeRxDeviations({
     }
   }
 
+  // A hold or a carry prescribes seconds or metres rather than reps.
+  final prescribedText = '${prescription.reps} ${prescription.weightIntensity}';
+  final targetSec = parseDurationSec(prescribedText);
+  if (targetSec != null) {
+    final shortSets = actual
+        .where((s) => s.durationSec != null && s.durationSec! < targetSec)
+        .length;
+    if (shortSets > 0) {
+      flags.add(
+        RxDeviation(
+          RxDeviationKind.belowTarget,
+          'Under time target on $shortSets set${shortSets == 1 ? '' : 's'}',
+        ),
+      );
+    }
+  }
+  final targetMeters = parseDistanceMeters(prescribedText);
+  if (targetMeters != null) {
+    final shortSets = actual
+        .where((s) => s.distance != null && s.distance! < targetMeters)
+        .length;
+    if (shortSets > 0) {
+      flags.add(
+        RxDeviation(
+          RxDeviationKind.belowTarget,
+          'Under distance target on $shortSets set${shortSets == 1 ? '' : 's'}',
+        ),
+      );
+    }
+  }
+
   final targetWeight = parsePrescribedWeightKg(prescription.weightIntensity);
   if (targetWeight != null) {
     final lightSets = actual
@@ -107,4 +149,20 @@ List<RxDeviation> computeRxDeviations({
   }
 
   return flags;
+}
+
+/// The flag for a prescribed exercise that was skipped, e.g. "Skipped -
+/// Pain or injury, replaced by Dumbbell Press". [reasonKey] is a
+/// `SkipReason.key` (or null when none was picked).
+RxDeviation skippedDeviation({String? reasonKey, String? replacedByName}) {
+  final reason = SkipReason.fromKey(reasonKey);
+  final label = StringBuffer('Skipped');
+  if (reason != null) label.write(' - ${reason.label}');
+  if (replacedByName != null) label.write(', replaced by $replacedByName');
+  return RxDeviation(
+    reason == SkipReason.painOrInjury
+        ? RxDeviationKind.skippedForPain
+        : RxDeviationKind.skipped,
+    label.toString(),
+  );
 }
