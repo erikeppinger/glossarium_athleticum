@@ -129,7 +129,14 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             details.sessions.map((s) => s.session.weekNumber),
           );
           return ListView(
-            padding: const EdgeInsets.all(16),
+            // Android draws this body behind the navigation bar; without the
+            // inset, the last session card's buttons sit underneath it.
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              16 + MediaQuery.paddingOf(context).bottom,
+            ),
             children: [
               Text(details.plan.name, style: Theme.of(context).textTheme.headlineSmall),
               // Purely free text (see Plans.createdBy's own doc comment) -
