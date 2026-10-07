@@ -13,7 +13,7 @@ import '../../data/local_storage.dart';
 import '../../import/plan_spreadsheet_parser.dart';
 import '../../logic/exercise_images.dart';
 import '../../logic/week_label.dart';
-import '../exercise_library/exercise_library_providers.dart';
+import '../shared/exercise_list_invalidation.dart';
 import 'plan_providers.dart';
 
 /// Preview/resolve screen for a plan spreadsheet import. Never silently
@@ -365,12 +365,9 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
       ),
     );
     await _attachPictureIfAny(id, row.picture);
-    ref.invalidate(allExercisesForMatchingProvider);
-    // Exercise Library's providers are separate one-shot Futures that don't
-    // notice a custom exercise created from this screen on their own.
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
+    // The exercise lists are one-shot Futures that don't notice a custom
+    // exercise created from this screen on their own.
+    invalidateExerciseListProviders(ref);
     _resolveAllWithName(row.exerciseName, id);
   }
 
@@ -456,10 +453,7 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
       idsByName[row.exerciseName.toLowerCase()] = id;
     }
 
-    ref.invalidate(allExercisesForMatchingProvider);
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
+    invalidateExerciseListProviders(ref);
 
     setState(() {
       final result = _result!;

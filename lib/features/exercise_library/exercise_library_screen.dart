@@ -24,10 +24,10 @@ import '../history/history_screen.dart';
 import '../settings/app_preferences.dart';
 import '../settings/backup_dialogs.dart';
 import '../shared/exercise_export_flow.dart';
+import '../shared/exercise_list_invalidation.dart';
 import '../shared/muscle_area_stripe.dart';
 import '../tools/plate_calculator_screen.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
-import '../plans/plan_providers.dart';
 import '../plans/random_workout_screen.dart';
 import 'create_exercise_screen.dart';
 import 'exercise_detail_screen.dart';
@@ -565,10 +565,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
 
   void _invalidateLibraryProviders(WidgetRef ref) {
     // One-shot FutureProviders - won't notice a direct DB write on their own.
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
-    ref.invalidate(allExercisesForMatchingProvider);
+    invalidateExerciseListProviders(ref);
   }
 
   Future<void> _showImportOptions(BuildContext context, WidgetRef ref) async {

@@ -21,6 +21,7 @@ import '../onboarding/onboarding_screen.dart';
 import '../onboarding/whats_new_screen.dart';
 import '../progress/progress_providers.dart';
 import '../../l10n/app_localizations.dart';
+import '../shared/exercise_list_invalidation.dart';
 import 'app_preferences.dart';
 import 'color_palette_screen.dart';
 import 'backup_dialogs.dart';
@@ -863,9 +864,7 @@ class SettingsScreen extends ConsumerWidget {
       // The exercise library screen's providers are one-shot Futures, not
       // reactive DB streams, so they don't notice a restore's direct writes
       // on their own.
-      ref.invalidate(filteredExercisesProvider);
-      ref.invalidate(exerciseCategoriesProvider);
-      ref.invalidate(creatorFilterOptionsProvider);
+      invalidateExerciseListProviders(ref);
       invalidateProgressProviders(ref);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -901,9 +900,7 @@ class SettingsScreen extends ConsumerWidget {
     await seedExerciseLibrary(db);
     // Same reasoning as the restore path above - these providers need an
     // explicit nudge to notice the wipe+reseed.
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
+    invalidateExerciseListProviders(ref);
     invalidateProgressProviders(ref);
 
     if (!context.mounted) return;

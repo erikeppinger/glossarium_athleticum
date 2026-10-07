@@ -7,8 +7,8 @@ import '../../data/daos/plan_dao.dart';
 import '../../import/plan_json_import.dart';
 import '../../import/plan_sync.dart';
 import '../../logic/week_label.dart';
-import '../exercise_library/exercise_library_providers.dart';
 import '../settings/backup_dialogs.dart';
+import '../shared/exercise_list_invalidation.dart';
 import 'plan_providers.dart';
 
 /// Shown when an incoming plan JSON (received via Phase 4's share/receive
@@ -130,9 +130,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     setState(() => _busy = true);
     final db = ref.read(appDatabaseProvider);
     await importPlanJson(widget.incomingJson, db);
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
+    invalidateExerciseListProviders(ref);
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(
@@ -164,9 +162,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     if (!mounted) return;
     setState(() => _busy = true);
     await applyIncomingPlan(widget.incomingJson, db);
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
+    invalidateExerciseListProviders(ref);
     // applyIncomingPlan rewrites the plan's data under its existing id - the
     // detail screen's one-shot FutureProvider for that id won't notice on
     // its own (same gotcha as filteredExercisesProvider, see plan_providers.dart).

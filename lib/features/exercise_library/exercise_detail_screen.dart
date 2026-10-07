@@ -9,14 +9,13 @@ import '../../logic/exercise_images.dart';
 import '../../logic/video_embedding.dart';
 import '../execution/start_session_helper.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
-import '../plans/plan_providers.dart' show allExercisesForMatchingProvider;
 import '../history/history_screen.dart';
 import '../shared/attachment_image.dart';
 import '../shared/exercise_export_flow.dart';
+import '../shared/exercise_list_invalidation.dart';
 import '../shared/photo_viewer_screen.dart';
 import '../shared/youtube_embed.dart';
 import 'create_exercise_screen.dart';
-import 'exercise_library_providers.dart';
 
 /// Shows everything the library has on one exercise - description, safety
 /// notes, muscle groups, and a reference video/link - with a way to jump to
@@ -281,10 +280,7 @@ class ExerciseDetailScreen extends ConsumerWidget {
       await deleteAttachment(path);
     }
     await db.exerciseDao.deleteExerciseKeepingHistory(exercise.id);
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
-    ref.invalidate(allExercisesForMatchingProvider);
+    invalidateExerciseListProviders(ref);
 
     if (context.mounted) Navigator.of(context).pop();
   }

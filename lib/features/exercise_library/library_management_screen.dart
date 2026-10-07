@@ -17,8 +17,8 @@ import '../../export/library_export.dart';
 import '../../logic/exercise_images.dart';
 import '../../logic/random_workout_generator.dart' show matchesSource, seedLibraryFilter;
 import '../plans/block_edit_screen.dart';
-import '../plans/plan_providers.dart' show allExercisesForMatchingProvider;
 import '../settings/app_preferences.dart';
+import '../shared/exercise_list_invalidation.dart';
 import 'exercise_library_providers.dart';
 
 /// Which half of this screen is showing - two otherwise-unrelated kinds of
@@ -120,10 +120,7 @@ class _LibraryManagementScreenState
   }
 
   void _invalidateLibraryProviders() {
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
-    ref.invalidate(allExercisesForMatchingProvider);
+    invalidateExerciseListProviders(ref);
   }
 
   Future<void> _rename(_LibraryGroup group) async {

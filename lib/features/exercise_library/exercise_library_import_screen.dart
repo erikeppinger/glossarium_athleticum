@@ -12,7 +12,7 @@ import '../../data/local_storage.dart';
 import '../../import/exercise_spreadsheet_parser.dart';
 import '../../logic/exercise_images.dart';
 import '../plans/plan_providers.dart';
-import 'exercise_library_providers.dart';
+import '../shared/exercise_list_invalidation.dart';
 
 /// Preview/import screen for an exercise-library spreadsheet - the missing
 /// half of TemplatesScreen's "Exercise library" template (a downloadable
@@ -223,10 +223,7 @@ class _ExerciseLibraryImportScreenState
     // These are one-shot FutureProviders that don't notice a write made
     // from this screen on their own - see CLAUDE.md's note on this gotcha,
     // also worked around the same way in plan_import_screen.dart.
-    ref.invalidate(allExercisesForMatchingProvider);
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
+    invalidateExerciseListProviders(ref);
 
     if (!mounted) return;
     Navigator.of(context).pop();

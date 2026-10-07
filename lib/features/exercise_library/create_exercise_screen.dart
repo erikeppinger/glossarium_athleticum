@@ -10,8 +10,8 @@ import '../../data/local_storage.dart';
 import '../../logic/exercise_images.dart';
 import '../../logic/video_embedding.dart';
 import '../plans/add_exercise_to_plan_screen.dart';
-import '../plans/plan_providers.dart';
 import '../shared/attachment_image.dart';
+import '../shared/exercise_list_invalidation.dart';
 import 'exercise_library_providers.dart';
 
 /// Shared with the spreadsheet importer (exercise_spreadsheet_parser.dart)
@@ -678,10 +678,7 @@ class _CreateExerciseScreenState extends ConsumerState<CreateExerciseScreen> {
       ),
     );
     // One-shot FutureProviders - won't notice this write on their own.
-    ref.invalidate(filteredExercisesProvider);
-    ref.invalidate(exerciseCategoriesProvider);
-    ref.invalidate(creatorFilterOptionsProvider);
-    ref.invalidate(allExercisesForMatchingProvider);
+    invalidateExerciseListProviders(ref);
 
     if (!mounted) return;
 

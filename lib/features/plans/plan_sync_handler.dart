@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database_provider.dart';
 import '../../import/plan_json_import.dart';
 import '../../import/plan_sync.dart';
-import '../exercise_library/exercise_library_providers.dart';
+import '../shared/exercise_list_invalidation.dart';
 import 'plan_conflict_screen.dart';
 
 /// Imports a plan JSON, checking first whether it's actually a sync of a
@@ -24,9 +24,7 @@ Future<void> importOrSyncPlanJson(
     switch (await checkPlanSync(json, db)) {
       case PlanSyncNew():
         await importPlanJson(json, db);
-        ref.invalidate(filteredExercisesProvider);
-        ref.invalidate(exerciseCategoriesProvider);
-        ref.invalidate(creatorFilterOptionsProvider);
+        invalidateExerciseListProviders(ref);
         if (!context.mounted) return;
         ScaffoldMessenger.of(
           context,

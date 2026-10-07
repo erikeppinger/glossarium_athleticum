@@ -9,10 +9,10 @@ import '../../data/app_database_provider.dart';
 import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
 import '../../security/backup_encryption.dart';
-import '../exercise_library/exercise_library_providers.dart';
 import '../plans/plan_import_screen.dart';
 import '../plans/plan_sync_handler.dart';
 import '../settings/backup_dialogs.dart';
+import '../shared/exercise_list_invalidation.dart';
 
 /// Reads a file received from outside the app (Bluetooth, WhatsApp, "Open
 /// with", etc.) and routes it into the same import flows used when the
@@ -95,9 +95,7 @@ Future<void> handleSharedContent(
         final decrypted = await decryptBackup(content, passphrase);
         final backupJson = jsonDecode(decrypted) as Map<String, dynamic>;
         await importBackupJson(backupJson, db);
-        ref.invalidate(filteredExercisesProvider);
-        ref.invalidate(exerciseCategoriesProvider);
-        ref.invalidate(creatorFilterOptionsProvider);
+        invalidateExerciseListProviders(ref);
         if (!context.mounted) return;
         ScaffoldMessenger.of(
           context,
