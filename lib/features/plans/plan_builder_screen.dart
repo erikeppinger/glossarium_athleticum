@@ -9,6 +9,7 @@ import '../../data/daos/plan_dao.dart';
 import '../../logic/block_info.dart';
 import '../../logic/exercise_order_info.dart';
 import '../../logic/superset_info.dart';
+import '../../logic/week_label.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
 import '../shared/numeric_input_formatters.dart';
@@ -160,6 +161,7 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
               ),
             ),
           for (final session in _sessions) _SessionDraftCard(
+            showWeek: showsWeekNumber(_sessions.map((s) => s.weekNumber)),
             session: session,
             onAddExercise: () => _addExerciseTo(session),
             onInsertBlock: () => _insertBlockInto(session),
@@ -343,6 +345,7 @@ class _PlanBuilderScreenState extends ConsumerState<PlanBuilderScreen> {
 
 class _SessionDraftCard extends StatelessWidget {
   final _SessionDraft session;
+  final bool showWeek;
   final VoidCallback onAddExercise;
   final VoidCallback onInsertBlock;
   final ValueChanged<PlanExerciseInput> onRemoveExercise;
@@ -352,6 +355,7 @@ class _SessionDraftCard extends StatelessWidget {
 
   const _SessionDraftCard({
     required this.session,
+    required this.showWeek,
     required this.onAddExercise,
     required this.onInsertBlock,
     required this.onRemoveExercise,
@@ -373,8 +377,11 @@ class _SessionDraftCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Week ${session.weekNumber} • ${session.day} • '
-                    '${session.sessionName}',
+                    joinSessionLabel([
+                      if (showWeek) 'Week ${session.weekNumber}',
+                      session.day,
+                      session.sessionName,
+                    ]),
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),

@@ -21,6 +21,7 @@ import '../notifications/reminder_coordinator.dart';
 import '../settings/app_preferences.dart';
 import '../settings/backup_dialogs.dart';
 import '../shared/app_date_picker.dart';
+import '../../logic/week_label.dart';
 import '../shared/numeric_input_formatters.dart';
 import 'edit_session_screen.dart';
 import 'plan_providers.dart';
@@ -124,6 +125,9 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             return const Center(child: Text('Plan not found.'));
           }
           final visible = details.sessions.where(_matches).toList();
+          final showWeek = showsWeekNumber(
+            details.sessions.map((s) => s.session.weekNumber),
+          );
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -223,12 +227,16 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                     children: [
                       ListTile(
                         title: Text(
-                          'Week ${session.session.weekNumber}'
-                          // "Any" is the internal placeholder for a session
-                          // with no fixed weekday; showing it reads as though
-                          // the user chose it.
-                          '${session.session.day == 'Any' ? '' : ' • ${session.session.day}'}'
-                          ' • ${session.session.sessionName}',
+                          joinSessionLabel([
+                            if (showWeek)
+                              'Week ${session.session.weekNumber}',
+                            // "Any" is the internal placeholder for a session
+                            // with no fixed weekday; showing it reads as
+                            // though the user chose it.
+                            if (session.session.day != 'Any')
+                              session.session.day,
+                            session.session.sessionName,
+                          ]),
                         ),
                         subtitle: Text(
                           _exerciseSummary(session.exercises),
@@ -349,6 +357,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     );
     if (!context.mounted) return;
     ref.invalidate(planDetailsProvider(planId));
+    ref.invalidate(scheduledSessionsProvider);
 
     final message = result.skipped == 0
         ? 'Duplicated to ${result.added} week(s).'

@@ -8,6 +8,7 @@ import '../../data/daos/plan_dao.dart';
 import '../../logic/block_info.dart';
 import '../../logic/exercise_order_info.dart';
 import '../../logic/superset_info.dart';
+import '../../logic/week_label.dart';
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/info_dialog.dart';
 import '../shared/numeric_input_formatters.dart';
@@ -142,11 +143,24 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
           if (details == null) {
             return const Center(child: Text('Session not found.'));
           }
+          final showWeek = showsWeekNumber(
+            ref
+                    .watch(planDetailsProvider(details.session.planId))
+                    .valueOrNull
+                    ?.sessions
+                    .map((s) => s.session.weekNumber) ??
+                const [],
+          );
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                '${details.session.sessionName} • Week ${details.session.weekNumber} • ${details.session.day}',
+                joinSessionLabel([
+                  details.session.sessionName,
+                  if (showWeek)
+                    'Week ${details.session.weekNumber}',
+                  details.session.day,
+                ]),
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 16),

@@ -17,6 +17,7 @@ import '../../logic/set_measure.dart';
 import '../../logic/muscle_group_colors.dart';
 import '../../logic/skip_reason.dart';
 import '../../logic/superset_info.dart';
+import '../../logic/week_label.dart';
 import '../../logic/units.dart';
 import '../calendar/calendar_screen.dart';
 import '../plans/plan_providers.dart';
@@ -1059,6 +1060,14 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
               (_) => _restoreDraftIfAny(details, unit),
             );
           }
+          final showWeek = showsWeekNumber(
+            ref
+                    .watch(planDetailsProvider(details.session.planId))
+                    .valueOrNull
+                    ?.sessions
+                    .map((s) => s.session.weekNumber) ??
+                const [],
+          );
           return Column(
             children: [
               if (restTimer.isVisible) _RestTimerBanner(state: restTimer),
@@ -1067,7 +1076,12 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
                   padding: const EdgeInsets.all(16),
                   children: [
                     Text(
-                      '${details.session.sessionName} • Week ${details.session.weekNumber} • ${details.session.day}',
+                      joinSessionLabel([
+                        details.session.sessionName,
+                        if (showWeek)
+                          'Week ${details.session.weekNumber}',
+                        details.session.day,
+                      ]),
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),

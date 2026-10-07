@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
+import '../../logic/week_label.dart';
+import '../calendar/calendar_screen.dart' show scheduledSessionsProvider;
 import '../shared/numeric_input_formatters.dart';
 import 'exercise_prescription_form.dart';
 import 'plan_providers.dart';
@@ -342,6 +344,8 @@ class _AddExerciseToPlanScreenState
     );
 
     ref.invalidate(planDetailsProvider(planId!));
+    // A session in a new week changes whether scheduled ones show the week.
+    ref.invalidate(scheduledSessionsProvider);
 
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -362,8 +366,15 @@ class _SessionPicker extends ConsumerWidget {
     required this.onChanged,
   });
 
-  static String _sessionLabel(PlanSessionDetails s) =>
-      'Week ${s.session.weekNumber} • ${s.session.day} • ${s.session.sessionName}';
+  static String _sessionLabel(
+    PlanSessionDetails s,
+    List<PlanSessionDetails> sessions,
+  ) => joinSessionLabel([
+    if (showsWeekNumber(sessions.map((other) => other.session.weekNumber)))
+      'Week ${s.session.weekNumber}',
+    s.session.day,
+    s.session.sessionName,
+  ]);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -379,6 +390,7 @@ class _SessionPicker extends ConsumerWidget {
             ? 'Choose a session'
             : _sessionLabel(
                 sessions.firstWhere((s) => s.session.id == selectedSessionId),
+                sessions,
               );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -410,7 +422,7 @@ class _SessionPicker extends ConsumerWidget {
           for (final s in sessions)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop(s.session.id),
-              child: Text(_sessionLabel(s)),
+              child: Text(_sessionLabel(s, sessions)),
             ),
           SimpleDialogOption(
             onPressed: () => Navigator.of(context).pop(_newSessionSentinel),

@@ -5,6 +5,7 @@ import '../../data/app_database.dart' show Exercise;
 import '../../home_screen.dart' show homeTabIndexProvider, settingsAppBarAction;
 import '../../logic/progression.dart' show formatWeight;
 import '../../logic/summary_period.dart';
+import '../../logic/week_label.dart';
 import '../calendar/log_activity_flow.dart';
 import '../execution/rest_timer_controller.dart' show activeInProgressSessionIdProvider;
 import '../execution/start_session_helper.dart';
@@ -70,8 +71,14 @@ class TodayScreen extends ConsumerWidget {
                       // line), a plain space there let the number alone wrap
                       // to its own line, reading like a rendering glitch.
                       subtitle: Text(
-                        '${next.planName} • Week ${next.session.weekNumber} • '
-                        '${MaterialLocalizations.of(context).formatMediumDate(next.date)}',
+                        joinSessionLabel([
+                          next.planName,
+                          if (next.showWeek)
+                            'Week ${next.session.weekNumber}',
+                          MaterialLocalizations.of(
+                            context,
+                          ).formatMediumDate(next.date),
+                        ]),
                       ),
                       trailing: FilledButton(
                         onPressed: () => startSessionWithMoveToTodayPrompt(

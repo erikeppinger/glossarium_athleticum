@@ -7,6 +7,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../home_screen.dart' show homeTabIndexProvider, settingsAppBarAction;
 import '../../logic/units.dart';
+import '../../logic/week_label.dart';
 import '../execution/start_session_helper.dart';
 import '../history/workout_history_screen.dart';
 import '../settings/app_preferences.dart';
@@ -290,16 +291,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final day = _dayKey(s.date);
     final count = loggedCounts[s.session.id]?[day] ?? 0;
     final done = count > 0;
+    final label = joinSessionLabel([
+      s.planName,
+      if (s.showWeek)
+        'Week ${s.session.weekNumber}',
+      // "Any" is an internal placeholder for an unscheduled weekday;
+      // showing it reads as though the user picked it.
+      if (s.session.day != 'Any') s.session.day,
+    ]);
     return ListTile(
       leading: done
           ? Icon(Icons.check_circle, color: Colors.green.shade700)
           : null,
       title: Text(s.session.sessionName),
       subtitle: Text(
-        '${s.planName} • Week ${s.session.weekNumber}'
-        // "Any" is an internal placeholder for an unscheduled weekday;
-        // showing it reads as though the user picked it.
-        '${s.session.day == 'Any' ? '' : ' • ${s.session.day}'}'
+        '$label'
         // The scheduled slot itself never multiplies - it's still one
         // calendar row - but training it more than once in a day is real,
         // tracked data (each logging shows up in Progress independently),

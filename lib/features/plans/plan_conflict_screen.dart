@@ -6,6 +6,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/plan_dao.dart';
 import '../../import/plan_json_import.dart';
 import '../../import/plan_sync.dart';
+import '../../logic/week_label.dart';
 import '../exercise_library/exercise_library_providers.dart';
 import '../settings/backup_dialogs.dart';
 import 'plan_providers.dart';
@@ -43,6 +44,13 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
       incoming['updated_at'] as String? ?? '',
     );
     final incomingWeeks = incoming['weeks'] as List;
+    // Both versions get the same treatment, so a side-by-side comparison
+    // never hides a week on one side that the other side shows.
+    final showWeek = showsWeekNumber([
+      for (final s in local.sessions) s.session.weekNumber,
+      for (final week in incomingWeeks)
+        if ((week['sessions'] as List).isNotEmpty) week['week_number'] as int,
+    ]);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Sync conflict')),
@@ -63,7 +71,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
                   updatedAtLabel: dateFormat.format(local.plan.updatedAt),
                   sessionSummaries: [
                     for (final s in local.sessions)
-                      '${_sessionLabel(s.session.weekNumber, s.session.day, s.session.sessionName)} '
+                      '${_sessionLabel(showWeek, s.session.weekNumber, s.session.day, s.session.sessionName)} '
                           '(${s.exercises.length} exercise(s))',
                   ],
                 ),
@@ -76,7 +84,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
                   sessionSummaries: [
                     for (final week in incomingWeeks)
                       for (final session in week['sessions'] as List)
-                        '${_sessionLabel(week['week_number'] as int, session['day'] as String, session['session_name'] as String)} '
+                        '${_sessionLabel(showWeek, week['week_number'] as int, session['day'] as String, session['session_name'] as String)} '
                             '(${(session['exercises'] as List).length} exercise(s))',
                   ],
                 ),
@@ -104,8 +112,12 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     );
   }
 
-  String _sessionLabel(int weekNumber, String day, String sessionName) =>
-      'Week $weekNumber • $day • $sessionName';
+  String _sessionLabel(
+    bool showWeek,
+    int weekNumber,
+    String day,
+    String sessionName,
+  ) => joinSessionLabel([if (showWeek) 'Week $weekNumber', day, sessionName]);
 
   void _keepLocal() {
     Navigator.of(context).pop();

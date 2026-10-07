@@ -12,6 +12,7 @@ import '../../data/daos/plan_dao.dart';
 import '../../data/local_storage.dart';
 import '../../import/plan_spreadsheet_parser.dart';
 import '../../logic/exercise_images.dart';
+import '../../logic/week_label.dart';
 import '../exercise_library/exercise_library_providers.dart';
 import 'plan_providers.dart';
 
@@ -275,7 +276,12 @@ class _PlanImportScreenState extends ConsumerState<PlanImportScreen> {
                       Card(
                         child: ListTile(
                           title: Text(
-                            'Week ${session.weekNumber} • ${session.day} • ${session.sessionName}',
+                            joinSessionLabel([
+                              if (showsWeekNumber(matched.map((r) => r.week)))
+                                'Week ${session.weekNumber}',
+                              session.day,
+                              session.sessionName,
+                            ]),
                           ),
                           subtitle: Text(
                             session.rows.map((r) => r.exerciseName).join(', '),

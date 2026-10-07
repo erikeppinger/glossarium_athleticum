@@ -155,10 +155,14 @@ class ScheduledSession {
   final String planName;
   final DateTime date;
 
+  /// False when the plan has only one week - see `lib/logic/week_label.dart`.
+  final bool showWeek;
+
   const ScheduledSession({
     required this.session,
     required this.planName,
     required this.date,
+    this.showWeek = true,
   });
 }
 
@@ -204,6 +208,17 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
 
   Stream<List<Plan>> watchArchivedPlans() =>
       (select(plans)..where((p) => p.archivedAt.isNotNull())).watch();
+
+  /// Ids of plans whose sessions all share one week number - see
+  /// `lib/logic/week_label.dart` for why those labels drop "Week N".
+  Future<Set<String>> getSingleWeekPlanIds() async {
+    final weeks = planSessions.weekNumber.count(distinct: true);
+    final query = selectOnly(planSessions)
+      ..addColumns([planSessions.planId, weeks])
+      ..groupBy([planSessions.planId], having: weeks.equals(1));
+    final rows = await query.get();
+    return {for (final row in rows) row.read(planSessions.planId)!};
+  }
 
   /// [createdAt]/[updatedAt] default to now - only JSON plan/backup import
   /// (Phase 3) passes the original values through, to keep an
@@ -499,12 +514,16 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       innerJoin(plans, plans.id.equalsExp(planSessions.planId)),
     ]);
     final rows = await query.get();
+    final singleWeekPlanIds = await getSingleWeekPlanIds();
     return rows
         .map(
           (row) => ScheduledSession(
             session: row.readTable(planSessions),
             planName: row.readTable(plans).name,
             date: row.readTable(planSessionDates).date,
+            showWeek: !singleWeekPlanIds.contains(
+              row.readTable(planSessions).planId,
+            ),
           ),
         )
         .toList();
