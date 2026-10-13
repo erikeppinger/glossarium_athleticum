@@ -1,0 +1,45 @@
+name: iOS test build
+
+# An unsigned iOS build. The .ipa it uploads can't be installed as is - sign
+# and install it with a free Apple ID through a sideloading tool such as
+# Sideloadly (the install then expires after 7 days). Signed TestFlight
+# builds need a paid Apple developer account and come later.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Keep in step with the local toolchain (flutter --version).
+          flutter-version: 3.47.1
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build ios --release --no-codesign
+
+      # An .ipa is the .app inside a Payload folder, zipped.
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr glossarium-athleticum-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glossarium-athleticum-ios-unsigned
+          path: glossarium-athleticum-unsigned.ipa
+          retention-days: 14

@@ -139,6 +139,14 @@ class NotificationService {
         // flutter_local_notifications' own source, ahead of ever running on
         // Linux - see docs/linux-desktop-setup.md).
         linux: LinuxInitializationSettings(defaultActionName: 'Open'),
+        // Required on iOS for the same reason. Permission is asked later by
+        // requestPermissions(), at the same point Android asks, rather than
+        // the moment the app first starts.
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
       ),
       onDidReceiveNotificationResponse: _handleResponse,
       onDidReceiveBackgroundNotificationResponse:
@@ -174,11 +182,24 @@ class NotificationService {
     return details?.notificationResponse?.payload;
   }
 
-  /// Asks for POST_NOTIFICATIONS (Android 13+) and exact-alarm permission.
-  /// Returns whether notifications themselves were granted - exact alarms
-  /// failing only downgrades timing precision, so it isn't treated as fatal.
+  /// Asks for POST_NOTIFICATIONS (Android 13+) and exact-alarm permission,
+  /// or for notification permission on iOS. Returns whether notifications
+  /// themselves were granted - exact alarms failing only downgrades timing
+  /// precision, so it isn't treated as fatal.
   Future<bool> requestPermissions() async {
     await init();
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    if (ios != null) {
+      return await ios.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+    }
     final android = _plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
