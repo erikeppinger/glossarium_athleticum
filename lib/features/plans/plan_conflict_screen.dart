@@ -126,10 +126,25 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     ).showSnackBar(const SnackBar(content: Text("Kept this device's version.")));
   }
 
+  /// Nothing was written (the import rolled back), so the user stays on
+  /// this screen with both choices still available.
+  void _showImportFailure(PlanJsonFormatException e) {
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(e.message)));
+  }
+
   Future<void> _keepBoth() async {
     setState(() => _busy = true);
     final db = ref.read(appDatabaseProvider);
-    await importPlanJson(widget.incomingJson, db);
+    try {
+      await importPlanJson(widget.incomingJson, db);
+    } on PlanJsonFormatException catch (e) {
+      _showImportFailure(e);
+      return;
+    }
     invalidateExerciseListProviders(ref);
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -161,7 +176,12 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
 
     if (!mounted) return;
     setState(() => _busy = true);
-    await applyIncomingPlan(widget.incomingJson, db);
+    try {
+      await applyIncomingPlan(widget.incomingJson, db);
+    } on PlanJsonFormatException catch (e) {
+      _showImportFailure(e);
+      return;
+    }
     invalidateExerciseListProviders(ref);
     // applyIncomingPlan rewrites the plan's data under its existing id - the
     // detail screen's one-shot FutureProvider for that id won't notice on

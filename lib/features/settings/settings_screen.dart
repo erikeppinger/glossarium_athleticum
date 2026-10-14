@@ -12,6 +12,7 @@ import '../../data/local_storage.dart';
 import '../../data/seed/exercise_seed_loader.dart';
 import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
+import '../../import/json_object.dart';
 import '../../logic/units.dart';
 import '../../security/backup_encryption.dart';
 import '../exercise_library/exercise_library_providers.dart';
@@ -855,7 +856,15 @@ class SettingsScreen extends ConsumerWidget {
 
     try {
       final decrypted = await decryptBackup(envelope, passphrase);
-      final backupJson = jsonDecode(decrypted) as Map<String, dynamic>;
+      final Map<String, dynamic> backupJson;
+      try {
+        backupJson = decodeJsonObject(decrypted);
+      } on FormatException {
+        throw const BackupJsonFormatException(
+          'This backup file is damaged and could not be restored. '
+          'Nothing on this device was changed.',
+        );
+      }
       await importBackupJson(
         backupJson,
         db,

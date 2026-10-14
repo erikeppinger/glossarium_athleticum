@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../../data/app_database_provider.dart';
 import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
+import '../../import/json_object.dart';
 import '../../security/backup_encryption.dart';
 import '../plans/plan_import_screen.dart';
 import '../plans/plan_sync_handler.dart';
@@ -62,7 +62,7 @@ Future<void> handleSharedContent(
 
     case '.json':
       try {
-        final json = jsonDecode(content) as Map<String, dynamic>;
+        final json = decodeJsonObject(content);
         if (!context.mounted) return;
         await importOrSyncPlanJson(context, ref, json);
       } on FormatException {
@@ -93,7 +93,15 @@ Future<void> handleSharedContent(
       final db = ref.read(appDatabaseProvider);
       try {
         final decrypted = await decryptBackup(content, passphrase);
-        final backupJson = jsonDecode(decrypted) as Map<String, dynamic>;
+        final Map<String, dynamic> backupJson;
+        try {
+          backupJson = decodeJsonObject(decrypted);
+        } on FormatException {
+          throw const BackupJsonFormatException(
+            'This backup file is damaged and could not be restored. '
+            'Nothing on this device was changed.',
+          );
+        }
         await importBackupJson(backupJson, db);
         invalidateExerciseListProviders(ref);
         if (!context.mounted) return;

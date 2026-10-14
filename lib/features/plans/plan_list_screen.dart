@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../export/plan_export.dart' show encryptedPlanFileExtension;
 import '../../home_screen.dart' show settingsAppBarAction;
+import '../../import/json_object.dart';
 import '../../import/plan_zip_bundle.dart';
 import '../../security/backup_encryption.dart';
 import '../settings/backup_dialogs.dart';
@@ -317,7 +318,16 @@ class PlanListScreen extends ConsumerWidget {
     if (file == null) return;
 
     final bytes = await file.readAsBytes();
-    final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    final Map<String, dynamic> json;
+    try {
+      json = decodeJsonObject(utf8.decode(bytes));
+    } on FormatException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read this plan file.')),
+      );
+      return;
+    }
 
     if (!context.mounted) return;
     await importOrSyncPlanJson(context, ref, json);
@@ -345,7 +355,7 @@ class PlanListScreen extends ConsumerWidget {
 
     try {
       final decrypted = await decryptBackup(envelope, passphrase);
-      final json = jsonDecode(decrypted) as Map<String, dynamic>;
+      final json = decodeJsonObject(decrypted);
       if (!context.mounted) return;
       await importOrSyncPlanJson(context, ref, json);
     } on BackupDecryptionException catch (e) {
@@ -353,6 +363,11 @@ class PlanListScreen extends ConsumerWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on FormatException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read this plan file.')),
+      );
     }
   }
 }

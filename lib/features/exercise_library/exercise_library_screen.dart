@@ -15,6 +15,7 @@ import '../../data/app_database_provider.dart';
 import '../../data/daos/exercise_dao.dart';
 import '../../export/library_export.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
+import '../../import/json_object.dart';
 import '../../import/library_import.dart';
 import '../../import/plan_zip_bundle.dart';
 import '../../logic/equipment_matching.dart' show bodyweightEquipmentTag;
@@ -703,9 +704,9 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
         );
         if (passphrase == null || passphrase.isEmpty) return;
         final decrypted = await decryptBackup(content, passphrase);
-        json = jsonDecode(decrypted) as Map<String, dynamic>;
+        json = decodeJsonObject(decrypted);
       } else {
-        json = jsonDecode(content) as Map<String, dynamic>;
+        json = decodeJsonObject(content);
       }
     } on BackupDecryptionException catch (e) {
       if (!context.mounted) return;

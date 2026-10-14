@@ -39,7 +39,35 @@ const _supportedSchemaVersions = {1, 2};
 /// a JSON plan export is trusted, same-app data (typically moved between a
 /// user's own devices), not an arbitrary external file with free-text
 /// exercise names.
+///
+/// All-or-nothing: if anything in the file fails to import part-way, the
+/// whole import rolls back and a [PlanJsonFormatException] is thrown.
 Future<String> importPlanJson(
+  Map<String, dynamic> json,
+  AppDatabase db, {
+  String? planId,
+  Directory? attachmentsDirectory,
+}) async {
+  try {
+    return await db.transaction(
+      () => _importPlanJson(
+        json,
+        db,
+        planId: planId,
+        attachmentsDirectory: attachmentsDirectory,
+      ),
+    );
+  } on PlanJsonFormatException {
+    rethrow;
+  } catch (_) {
+    throw const PlanJsonFormatException(
+      'This plan file is damaged and could not be imported. '
+      'Nothing was changed.',
+    );
+  }
+}
+
+Future<String> _importPlanJson(
   Map<String, dynamic> json,
   AppDatabase db, {
   String? planId,

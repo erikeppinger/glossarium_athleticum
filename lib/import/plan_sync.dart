@@ -108,7 +108,16 @@ Future<List<SessionLogWithSets>> findLogsThatWouldBeLost(
 /// removed in the incoming version has nowhere to attach and is dropped -
 /// callers must have already warned about this via [findLogsThatWouldBeLost]
 /// before calling this, since there's no undo past this point.
+///
+/// Runs in one transaction: the local plan and its logs are deleted before
+/// the incoming version is imported, so a failure part-way must roll back
+/// rather than leave the plan and its training history gone.
 Future<void> applyIncomingPlan(
+  Map<String, dynamic> incomingJson,
+  AppDatabase db,
+) => db.transaction(() => _applyIncomingPlan(incomingJson, db));
+
+Future<void> _applyIncomingPlan(
   Map<String, dynamic> incomingJson,
   AppDatabase db,
 ) async {

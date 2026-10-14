@@ -33,10 +33,21 @@ Future<int> importLibraryJson(
     throw const LibraryJsonFormatException('Not a valid library file.');
   }
 
-  for (final exerciseJson in exercisesJson) {
-    final map = exerciseJson as Map<String, dynamic>;
-    await db.exerciseDao.upsertExercise(exerciseFromJson(map));
-    await restoreExerciseImage(map, directory: attachmentsDirectory);
+  // All-or-nothing, like the plan and backup importers: one damaged entry
+  // rolls back the exercises already written from this file.
+  try {
+    await db.transaction(() async {
+      for (final exerciseJson in exercisesJson) {
+        final map = exerciseJson as Map<String, dynamic>;
+        await db.exerciseDao.upsertExercise(exerciseFromJson(map));
+        await restoreExerciseImage(map, directory: attachmentsDirectory);
+      }
+    });
+  } catch (_) {
+    throw const LibraryJsonFormatException(
+      'This library file is damaged and could not be imported. '
+      'Nothing was changed.',
+    );
   }
   return exercisesJson.length;
 }
