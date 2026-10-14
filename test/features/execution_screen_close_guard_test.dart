@@ -22,15 +22,11 @@ import 'fake_notification_service.dart';
 // native side actually close the window.
 //
 // Only the registration/short-circuit half is covered here (the guard exists
-// while mounted, and resolves immediately with nothing unsaved) - actually
-// invoking the guard when something *is* unsaved (which shows the dialog and
-// waits on a button tap) hangs indefinitely in `flutter test` on this
-// machine when called directly rather than through a real widget gesture,
-// matching an already-documented category of hang in this project
-// (`add_exercise_to_plan_screen.dart`'s full flow, `plan_list_screen.dart` -
-// see CLAUDE.md's Conventions) rather than anything specific to this
-// feature. That dialog/choice-handling path itself is already covered by
-// `_confirmDiscard`'s own tests via a real back-navigation gesture. The full
+// while mounted, and resolves immediately with nothing unsaved). The dialog
+// path is covered by `_confirmDiscard`'s own tests via a real back gesture.
+// Until 2026-10-14 this test hung, and the hang was blamed on flutter_test:
+// the plan's pre-filled set values counted as "unsaved", so the guard always
+// opened its dialog and waited for a tap that never came. The full
 // end-to-end path - an actual native WM_CLOSE reaching this guard and the
 // dialog correctly appearing and resolving - was verified live on Windows
 // (2026-09-11): typed an unsaved value, clicked the window's own X button,

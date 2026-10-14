@@ -97,6 +97,12 @@ class _LoggedSetForm {
   // couldn't be reproduced on demand; hardening this is cheap regardless.
   bool pending = false;
 
+  /// What the fields held when the row was created - the plan's pre-fill.
+  /// Leaving the screen only needs a warning once something differs.
+  final String _startReps;
+  final String _startWeight;
+  final String _startAmount;
+
   _LoggedSetForm({
     this.measure = SetMeasure.reps,
     this.target,
@@ -107,7 +113,10 @@ class _LoggedSetForm {
        rpe = TextEditingController(),
        amount = TextEditingController(
          text: target == null ? '' : _formatAmount(target),
-       );
+       ),
+       _startReps = repsHint,
+       _startWeight = weightHint,
+       _startAmount = target == null ? '' : _formatAmount(target);
 
   /// Another empty row for the same exercise ("+ Add set").
   _LoggedSetForm sibling() => _LoggedSetForm(measure: measure, target: target);
@@ -117,6 +126,13 @@ class _LoggedSetForm {
   bool get hasCountEntered => measure == SetMeasure.reps
       ? reps.text.trim().isNotEmpty
       : amount.text.trim().isNotEmpty;
+
+  /// Whether anyone changed this row from its pre-fill.
+  bool get isEdited =>
+      reps.text != _startReps ||
+      weight.text != _startWeight ||
+      amount.text != _startAmount ||
+      rpe.text.trim().isNotEmpty;
 
   void dispose() {
     reps.dispose();
@@ -1020,12 +1036,17 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
       // Sets live in memory until "Finish session", so backing out silently
       // discards them. That mattered less before the floating rest timer -
       // which now actively encourages leaving the screen mid-session.
-      canPop: !_hasUnsavedSets,
+      // Decided when back is pressed, not when the screen was last built:
+      // typing into a field doesn't rebuild the screen, so a build-time
+      // canPop could still say "nothing to lose" after a value was changed.
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
+        if (didPop) {
+          _clearExecutionScreenVisible();
+        } else if (_hasUnsavedSets) {
           _confirmDiscard();
         } else {
-          _clearExecutionScreenVisible();
+          Navigator.of(context).pop();
         }
       },
       child: Scaffold(
@@ -1185,16 +1206,16 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
 
   /// Whether anything would be lost by leaving now. False once _finishing
   /// starts, so the screen's own successful pop isn't intercepted. Counts
-  /// both logged sets and sets with typed-but-unconfirmed numbers - the
-  /// latter look just as "entered" to someone glancing at the screen, even
-  /// though "Finish session" would otherwise drop them silently (see
-  /// _unloggedFilledForms).
+  /// logged sets and sets someone changed but didn't confirm. A row still
+  /// holding only the plan's pre-fill doesn't count: opening a workout and
+  /// backing out untouched used to ask "Leave without finishing?" anyway
+  /// (and made the window-close guard's "nothing unsaved" case impossible).
   bool get _hasUnsavedSets =>
       !_session.finishing &&
-      (_session.formsByExerciseRowId.values.any(
-            (forms) => forms.any((f) => f.logged),
-          ) ||
-          _unloggedFilledForms.isNotEmpty);
+      _session.formsByExerciseRowId.entries
+          .where((e) => !_session.skippedExerciseRowIds.contains(e.key))
+          .expand((e) => e.value)
+          .any((f) => f.logged || f.isEdited);
 
   /// Sets where someone typed reps and/or weight but never tapped the
   /// per-set "Log set" check - easy to do, since typing the numbers looks
