@@ -41,6 +41,38 @@ Future<void> importBackupJson(
     throw const BackupJsonFormatException('Not a valid backup file.');
   }
 
+  // Wipe and import as one transaction: if any entry in the backup fails to
+  // import, everything rolls back and the device keeps the data it had,
+  // instead of ending up wiped and half-restored.
+  try {
+    await db.transaction(
+      () => _wipeAndRestore(
+        db,
+        exercisesJson,
+        plansJson,
+        sessionLogsJson,
+        measurementsJson,
+        attachmentsDirectory,
+      ),
+    );
+  } on BackupJsonFormatException {
+    rethrow;
+  } catch (_) {
+    throw const BackupJsonFormatException(
+      'This backup file is damaged and could not be restored. '
+      'Nothing on this device was changed.',
+    );
+  }
+}
+
+Future<void> _wipeAndRestore(
+  AppDatabase db,
+  List exercisesJson,
+  List plansJson,
+  List sessionLogsJson,
+  List measurementsJson,
+  Directory? attachmentsDirectory,
+) async {
   await db.maintenanceDao.wipeAllData();
   await seedExerciseLibrary(db);
 
