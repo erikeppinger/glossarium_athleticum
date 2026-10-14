@@ -49,6 +49,11 @@ class AppDatabase extends _$AppDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
+    // createTable/alterTable below build a table from its *current*
+    // definition, which already has every column later steps add. So a
+    // later addColumn on that table must be skipped when an earlier step of
+    // the same upgrade created or rebuilt it - otherwise "duplicate column".
+    // test/data/migration_test.dart upgrades from every shipped version.
     onUpgrade: (m, from, to) async {
       if (from < 2) {
         await m.createTable(sessionLogs);
@@ -67,10 +72,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 6) {
         await m.addColumn(exercises, exercises.imagePath);
       }
-      if (from < 7) {
+      if (from < 7 && from >= 2) {
         await m.addColumn(sessionLogs, sessionLogs.notes);
       }
-      if (from < 8) {
+      if (from < 8 && from >= 2) {
         // planSessionId's NOT NULL -> nullable change (to allow ad-hoc
         // activities with no scheduled session) isn't an addColumn - SQLite
         // can't ALTER a column's nullability in place, so this recreates
@@ -86,6 +91,8 @@ class AppDatabase extends _$AppDatabase {
               sessionLogs.activityName,
               sessionLogs.durationSec,
               sessionLogs.distance,
+              // Added by step 11, but the rebuilt table already has it.
+              sessionLogs.finishedAt,
             ],
           ),
         );
@@ -118,7 +125,10 @@ class AppDatabase extends _$AppDatabase {
         // instant they were created; backfill finishedAt to loggedAt rather
         // than leaving it null (which would now read as an abandoned draft
         // and vanish from Progress/History/Calendar/backup export).
-        await m.addColumn(sessionLogs, sessionLogs.finishedAt);
+        // Already there when step 2 created or step 8 rebuilt the table.
+        if (from >= 8) {
+          await m.addColumn(sessionLogs, sessionLogs.finishedAt);
+        }
         await customStatement(
           'UPDATE session_logs SET finished_at = logged_at',
         );
@@ -165,12 +175,18 @@ class AppDatabase extends _$AppDatabase {
         // schema 12->13 bump above.
         await m.addColumn(exercises, exercises.embeddingAllowed);
         await m.addColumn(planExercises, planExercises.embeddingAllowed);
-        await m.addColumn(blockExercises, blockExercises.embeddingAllowed);
+        // Created by step 14 in its current form, column included.
+        if (from >= 14) {
+          await m.addColumn(blockExercises, blockExercises.embeddingAllowed);
+        }
       }
       if (from < 17) {
         // Trainee-to-trainer per-set feedback - see LoggedSets.notes' own
         // doc comment.
-        await m.addColumn(loggedSets, loggedSets.notes);
+        // Created by step 2 in its current form, column included.
+        if (from >= 2) {
+          await m.addColumn(loggedSets, loggedSets.notes);
+        }
       }
       if (from < 18) {
         // Skipped/replaced exercises and the make-up list - one new table,
