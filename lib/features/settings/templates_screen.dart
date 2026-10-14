@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../exercise_library/exercise_library_import_screen.dart';
 import '../shared/markdown_doc_screen.dart';
+import '../shared/screen_padding.dart';
 
 class _TemplateFile {
   final String assetPath;
@@ -55,7 +56,7 @@ class TemplatesScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Templates')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: screenListPadding(context),
         children: [
           Text(
             'Fill one of these in on any device - a phone, a laptop, '

@@ -10,6 +10,7 @@ import '../../logic/units.dart';
 import '../settings/app_preferences.dart';
 import '../shared/app_date_picker.dart';
 import '../shared/numeric_input_formatters.dart';
+import '../shared/screen_padding.dart';
 
 final bodyMeasurementsProvider = FutureProvider<List<BodyMeasurement>>((ref) {
   final db = ref.watch(appDatabaseProvider);
@@ -56,7 +57,7 @@ class BodyMeasurementsScreen extends ConsumerWidget {
           ];
 
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: screenListPadding(context),
             children: [
               if (withWeight.length >= 2) ...[
                 Text(

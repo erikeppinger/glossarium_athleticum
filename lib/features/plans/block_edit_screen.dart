@@ -7,6 +7,7 @@ import '../../data/daos/block_dao.dart';
 import '../../data/daos/plan_dao.dart' show PlanExerciseInput;
 import '../exercise_library/exercise_picker_screen.dart';
 import '../shared/numeric_input_formatters.dart';
+import '../shared/screen_padding.dart';
 import 'exercise_prescription_form.dart';
 
 final _blockDetailsProvider = FutureProvider.family<BlockDetails?, String>((
@@ -84,7 +85,7 @@ class BlockEditScreen extends ConsumerWidget {
             return const Center(child: Text('Block not found.'));
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: screenListPadding(context),
             children: [
               if (details.exercises.isEmpty)
                 const Padding(

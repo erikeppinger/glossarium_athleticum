@@ -19,6 +19,7 @@ import '../../logic/random_workout_generator.dart' show matchesSource, seedLibra
 import '../plans/block_edit_screen.dart';
 import '../settings/app_preferences.dart';
 import '../shared/exercise_list_invalidation.dart';
+import '../shared/screen_padding.dart';
 import 'exercise_library_providers.dart';
 
 /// Which half of this screen is showing - two otherwise-unrelated kinds of
@@ -414,7 +415,7 @@ class _LibraryManagementScreenState
           );
         }
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: screenListPadding(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
           children: [
             for (final block in blocks)
               Card(
@@ -466,7 +467,7 @@ class _LibraryManagementScreenState
             return const Center(child: Text('No exercises yet.'));
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: screenListPadding(context),
             children: [
               for (final group in groups)
                 Card(

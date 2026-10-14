@@ -12,6 +12,7 @@ import '../../logic/set_measure.dart';
 import '../../logic/units.dart';
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
+import '../shared/screen_padding.dart';
 
 class HistoryScreen extends ConsumerWidget {
   final String exerciseId;
@@ -83,7 +84,7 @@ class HistoryScreen extends ConsumerWidget {
           final chartInterval = axis.interval;
 
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: screenListPadding(context),
             children: [
               if (estimatedOneRepMax != null) ...[
                 Row(
@@ -281,7 +282,7 @@ class _RepsOnlyHistory extends StatelessWidget {
     final axis = niceAxis(maxReps);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: screenListPadding(context),
       children: [
         Text(
           'Reps over time',
@@ -368,7 +369,7 @@ class _MeasuredHistoryView extends StatelessWidget {
     final axis = niceAxis(best);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: screenListPadding(context),
       children: [
         Text(
           isTime ? 'Longest set per session' : 'Furthest set per session',

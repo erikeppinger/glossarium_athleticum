@@ -15,6 +15,7 @@ import '../execution/execution_screen.dart' show exerciseLookupProvider;
 import '../progress/progress_providers.dart';
 import '../settings/app_preferences.dart';
 import '../shared/numeric_input_formatters.dart';
+import '../shared/screen_padding.dart';
 
 final workoutHistoryProvider = FutureProvider<List<CompletedWorkoutSummary>>((
   ref,
@@ -171,7 +172,7 @@ class CompletedWorkoutScreen extends ConsumerWidget {
             return const Center(child: Text('Workout not found.'));
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: screenListPadding(context),
             children: [
               Text(
                 workout.sessionName,

@@ -9,6 +9,7 @@ import '../../import/plan_sync.dart';
 import '../../logic/week_label.dart';
 import '../settings/backup_dialogs.dart';
 import '../shared/exercise_list_invalidation.dart';
+import '../shared/screen_padding.dart';
 import 'plan_providers.dart';
 
 /// Shown when an incoming plan JSON (received via Phase 4's share/receive
@@ -57,7 +58,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
       body: _busy
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: screenListPadding(context),
               children: [
                 Text(
                   '"${local.plan.name}" was changed on this device and in '

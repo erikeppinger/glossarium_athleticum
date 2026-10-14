@@ -2,8 +2,8 @@
 
 Ideas and requests that don't fit neatly into a `development-plan.md` phase yet, or are worth remembering before they're scheduled into one. Check here alongside the phased plan when starting new work.
 
-- **Guided tour through the app** — an interactive walkthrough (e.g. highlighted tooltips/coach-marks) showing the user the main functions on first launch or on demand. Likely belongs with Phase 6's onboarding work, but could also stand alone as a "Help > Take a tour" entry point.
-- **Exercise images** — the seed data already has real descriptions, safety notes, and video reference links for all 38 exercises (populated since Phase 1, just never surfaced in the UI until `exercise_detail_screen.dart`). A dedicated `imageUrl` column was deliberately *not* added: sourcing ~38 correctly-licensed, exercise-matched images is real research work that shouldn't be done sight-unseen. If wanted, add the column as a Phase-numbered schema migration once real image URLs are chosen and vetted.
+- ~~Guided tour through the app~~ **Done** — Built as the first-launch onboarding tour, re-openable from Settings > "Take the tour".
+- ~~Exercise images~~ **Done** — Exercises carry their own pictures (`Exercises.imagePath`/`imagePaths`), with a photo viewer and zip-bundle import.
 - ~~Add exercises to a plan straight from the Exercise Library~~ **Done** — `exercise_detail_screen.dart`'s "Add to plan" button and the library list's long-press menu both open `add_exercise_to_plan_screen.dart`, which can create a new plan/session inline or add to an existing one (`PlanDao.createEmptyPlan`/`addSession`/`addExerciseToSession`).
 - ~~Bug: newly-scheduled sessions don't show on the calendar~~ **Could not reproduce** — manually tested assigning a date via "Assign date" and confirmed the marker and day-list both updated live, no restart needed, across several attempts. If this recurs, get exact repro steps (real device vs. emulator, exact tap sequence) rather than assuming the earlier report was wrong.
 - ~~Show the selected day's sessions below the calendar~~ **Done** (the day-list already existed since Phase 1) — added tap-to-start: tapping a listed session now calls `startSessionWithMoveToTodayPrompt`, same as the plan detail screen's Start button.
@@ -27,23 +27,23 @@ Ideas and requests that don't fit neatly into a `development-plan.md` phase yet,
 - ~~Un-check a logged set mid-session~~ **Done** — tapping a logged set's icon reverts it to editable before "Finish session", and un-counts an undone PR from in-session PR tracking.
 - ~~Edit an existing plan session (sets/reps/rest, reorder, remove)~~ **Done** — `edit_session_screen.dart` plus `PlanDao.updatePlanExercise`/`deletePlanExercise`/`movePlanExercise`.
 - ~~Settings is a long unsorted list; move it out of the bottom nav~~ **Done** — grouped into Units & display / Calendar & progress / Notifications / Backup & data / About, and moved from a bottom-nav destination to a gear action in each of the four everyday tabs' app bars.
-- **Bodyweight / body-measurements tracking** — flagged during a usability review, not requested yet. Separate from exercise logs (no place to record it at all today); common in training apps. Would need a new table plus a place to chart it - probably alongside the Progress tab.
-- **Guided tour / onboarding** — see the first item in this file; still not built, and now more valuable given the app's grown surface area.
+- ~~Bodyweight / body-measurements tracking~~ **Done** — `BodyMeasurementsScreen`, opt-in via the body-tracking prompt, charted on the Progress tab.
+- ~~Guided tour / onboarding~~ **Done** — See the first entry.
 - **User feedback loop for real-world testing** — advisory question, partially acted on (the in-app "Send feedback" mailto: link above is the lightweight qualitative half). For distribution: Google Play's *Internal testing* track (no review, up to 100 testers via email list, live within minutes) or *Closed testing* track (small review, needed once you want to grow past ~100 or use a public opt-in link) both support in-app review prompts (`in_app_review` package) and give you a Play Console crash/ANR dashboard for free. Pair that with something lightweight for qualitative feedback - a simple in-app "Send feedback" mailto: link, or a shared Google Form - rather than building a custom feedback backend. This avoids any new server infrastructure; the main cost is a one-time $25 Play Console developer registration fee.
 
 ## From the 2026-08-28 user audit
 
-See `docs/audit/Training-App-Audit-Report.pdf` for the full write-up. Open findings, highest impact first:
+See `docs/audit/Training-App-Audit-Report.pdf` for the full write-up. All of these have since been resolved (checked 2026-10-14).
 
-- **Plans can't be deleted or renamed** (High) — `PlanDao.deletePlan()` exists and is tested; this is purely a missing UI entry point. Today the only way to tidy the plan list is "Delete all data", which also destroys logged history.
-- **Completed workouts can't be reviewed** (High) — every set/rep/weight/RPE/PR is written on Finish, but nothing reads it back. Suggested: tapping a green-check day on the calendar opens that session's log (`getLogsForPlanSession` + `getLoggedSetsForSessionLog` already return everything needed).
-- **Calendar's empty state is misleading** (Medium) — `_selectedDay` starts null, so it says "No sessions on this day" before any day is picked, even when today has a session marker. Default the selection to today.
-- **Abandoning a session silently discards it** (Medium) — sets live in memory until Finish. This mattered less before the floating rest timer; now the app actively invites leaving mid-session. At minimum warn on back-navigation.
-- **Library exercises can't be edited or deleted** (Medium) — creation captures the full schema but nothing can be corrected afterwards. `ExerciseDao.deleteExercise()` exists, unused.
-- **Progression advice ignores the lbs setting** (Medium) — `progression.dart`'s `formatWeight()` hard-codes "kg" and does no conversion, so a user training in pounds gets a number in the wrong unit. A correctness bug, not cosmetic.
-- **Body measurements are cm-only** (Low) — no imperial option, though bodyweight itself converts.
-- **"Any" placeholder day surfaces in the UI** (Low) — imported sessions read "Week 1 • Any • ...".
-- **No search inside a large plan** (Low) — the nine-block programme is 30+ sessions in one flat list.
+- ~~Plans can't be deleted or renamed~~ **Done** — Rename/Delete in the plan options sheet, with the keep-history choice.
+- ~~Completed workouts can't be reviewed~~ **Done** — `CompletedWorkoutScreen`, reached from history and the calendar.
+- ~~Calendar's empty state is misleading~~ **Done** — `_selectedDay` starts at today.
+- ~~Abandoning a session silently discards it~~ **Done** — "Leave without finishing?" dialog plus autosaved drafts.
+- ~~Library exercises can't be edited or deleted~~ **Done** — Edit/Delete on the exercise detail screen.
+- ~~Progression advice ignores the lbs setting~~ **Done** — `suggestNextSet`/`formatWeight` take the weight unit.
+- ~~Body measurements are cm-only~~ **Done** — Lengths convert with the unit setting (`cmToDisplay`).
+- ~~"Any" placeholder day surfaces in the UI~~ **Done** — Session labels leave "Any" out.
+- ~~No search inside a large plan~~ **Done** — Search field on the plan detail screen.
 
 ## Audit findings — all resolved (2026-08-29, commit `c042b03`)
 

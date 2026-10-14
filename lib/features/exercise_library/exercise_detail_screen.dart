@@ -14,6 +14,7 @@ import '../shared/attachment_image.dart';
 import '../shared/exercise_export_flow.dart';
 import '../shared/exercise_list_invalidation.dart';
 import '../shared/photo_viewer_screen.dart';
+import '../shared/screen_padding.dart';
 import '../shared/youtube_embed.dart';
 import 'create_exercise_screen.dart';
 
@@ -84,7 +85,7 @@ class ExerciseDetailScreen extends ConsumerWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: screenListPadding(context),
         children: [
           if (parseImagePaths(exercise.imagePaths).isNotEmpty) ...[
             _ImageGallery(
