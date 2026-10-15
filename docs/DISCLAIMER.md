@@ -1,6 +1,6 @@
 # Disclaimer
 
-**Last updated: 2026-09-22**
+**Last updated: 2026-10-15**
 
 ## Not medical or professional advice
 
@@ -30,4 +30,4 @@ Anything you type into a custom exercise, note, or safety warning - or anything 
 
 ## Contact
 
-Questions about this disclaimer can be sent to: **erik.eppinger@gmail.com**
+Questions about this disclaimer can be sent to: **glossariumathleticum@gmail.com**

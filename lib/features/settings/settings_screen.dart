@@ -781,7 +781,7 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _sendFeedback(BuildContext context) async {
     final uri = Uri(
       scheme: 'mailto',
-      path: 'erik.eppinger@gmail.com',
+      path: 'glossariumathleticum@gmail.com',
       query: 'subject=Training App feedback',
     );
     final launched = await launchUrl(uri);

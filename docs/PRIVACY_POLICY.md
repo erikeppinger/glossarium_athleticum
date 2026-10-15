@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: 2026-09-22**
+**Last updated: 2026-10-15**
 
 This app is local-first: it works entirely on your device, does not require an account, and does not send your data anywhere - with one narrow, opt-in exception (embedded video, see below) that doesn't involve the developer either. This policy explains exactly what that means.
 
@@ -39,4 +39,4 @@ If this policy changes, the date at the top will be updated and the new version 
 
 ## Contact
 
-Questions about this policy or the app can be sent to: **[YOUR CONTACT EMAIL HERE]**
+Questions about this policy or the app can be sent to: **glossariumathleticum@gmail.com**
