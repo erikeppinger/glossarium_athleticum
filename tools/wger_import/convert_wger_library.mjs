@@ -118,6 +118,15 @@ async function main() {
 
     const categoryName = exercise.category?.name || '';
     const video = exercise.videos?.find((v) => v.video)?.video || '';
+    // The app bundles no images, but wger's own page for the exercise often
+    // has pictures - the description ends with a link to it (tappable in
+    // the exercise detail screen).
+    const description = [
+      stripHtml(translation.description),
+      `On wger.de: https://wger.de/en/exercise/${exercise.id}/view-base`,
+    ]
+      .filter((part) => part.length > 0)
+      .join('\n');
 
     rows.push([
       name,
@@ -127,7 +136,7 @@ async function main() {
       mapEquipment(exercise.equipment || []),
       'Intermediate', // Difficulty - wger has no signal at all; see docs/THIRD_PARTY_LICENSES.md
       mapMeasurementType(categoryName),
-      stripHtml(translation.description),
+      description,
       '', // Safety Notes - no wger equivalent
       video,
       '', // Embedding - always off; wger videos aren't YouTube anyway

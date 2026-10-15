@@ -144,7 +144,9 @@ class TemplatesScreen extends StatelessWidget {
                   'your existing library. wger doesn\'t track difficulty or '
                   'a weight/time/distance measurement type, so both are '
                   'defaulted here - adjust individual exercises after '
-                  'importing if that matters to you. The import screen '
+                  'importing if that matters to you. Each description links '
+                  'to the exercise\'s page on wger.de, which often has '
+                  'pictures. The import screen '
                   'shows every exercise before anything is saved, same as '
                   'any other import.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(

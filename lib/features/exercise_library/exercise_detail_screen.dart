@@ -13,6 +13,7 @@ import '../history/history_screen.dart';
 import '../shared/attachment_image.dart';
 import '../shared/exercise_export_flow.dart';
 import '../shared/exercise_list_invalidation.dart';
+import '../shared/linked_text.dart';
 import '../shared/photo_viewer_screen.dart';
 import '../shared/screen_padding.dart';
 import '../shared/youtube_embed.dart';
@@ -129,7 +130,7 @@ class ExerciseDetailScreen extends ConsumerWidget {
             const SizedBox(height: 20),
             Text('Description', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text(exercise.description),
+            LinkedText(exercise.description),
           ],
           if (exercise.safetyNotes.isNotEmpty) ...[
             const SizedBox(height: 20),
