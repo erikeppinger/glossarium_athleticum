@@ -84,7 +84,7 @@ void main() {
       // The unlogged-set warning, not a silent no-op pop back to the caller.
       expect(find.text('Unlogged sets'), findsOneWidget);
 
-      await tester.tap(find.text('Log & finish'));
+      await tester.tap(find.text('Log as done'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Confirm & finish'));
       await tester.pumpAndSettle();

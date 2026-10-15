@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 /// not app-store releases with a disciplined version bump per release), so
 /// a separate, hand-maintained counter is the honest thing to gate on
 /// rather than pretending a version number means something it doesn't here.
-const currentWhatsNewRevision = 3;
+const currentWhatsNewRevision = 4;
 
 class WhatsNewItem {
   final IconData icon;
@@ -136,5 +136,14 @@ const whatsNewItems = [
         'Planks, hangs and other holds now log seconds - with a built-in '
         'timer that buzzes at your target - and carries or sprints log '
         'metres. Bodyweight warm-ups no longer ask for a weight at all.',
+  ),
+  WhatsNewItem(
+    icon: Icons.file_download_outlined,
+    title: 'Plan updates from your trainer',
+    body:
+        'When your trainer sends a new version of a plan you already have, '
+        'opening it now updates your copy instead of adding a second one - '
+        'your calendar dates and logged workouts stay. Supersets now come '
+        'along when a plan is shared, too.',
   ),
 ];

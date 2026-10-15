@@ -10,7 +10,7 @@ import '../../logic/week_label.dart';
 import '../settings/backup_dialogs.dart';
 import '../shared/exercise_list_invalidation.dart';
 import '../shared/screen_padding.dart';
-import 'plan_providers.dart';
+import 'plan_sync_handler.dart';
 
 /// Shown when an incoming plan JSON (received via Phase 4's share/receive
 /// pipeline, or manually re-imported) shares an id with a local plan whose
@@ -18,14 +18,21 @@ import 'plan_providers.dart';
 /// last in sync. Per the dev plan's exit criteria, this never resolves
 /// automatically: the user always gets an explicit choice between the two
 /// versions, or can keep both as separate plans.
+///
+/// With [isUpdate], the incoming file is a newer version of a plan that was
+/// imported from someone else (see `PlanSyncUpdate`) and the local copy was
+/// changed here too. The choices then keep the user's calendar dates and
+/// logged workouts either way.
 class PlanConflictScreen extends ConsumerStatefulWidget {
   final PlanDetails local;
   final Map<String, dynamic> incomingJson;
+  final bool isUpdate;
 
   const PlanConflictScreen({
     super.key,
     required this.local,
     required this.incomingJson,
+    this.isUpdate = false,
   });
 
   @override
@@ -54,16 +61,24 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     ]);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sync conflict')),
+      appBar: AppBar(
+        title: Text(widget.isUpdate ? 'Plan update' : 'Sync conflict'),
+      ),
       body: _busy
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: screenListPadding(context),
               children: [
                 Text(
-                  '"${local.plan.name}" was changed on this device and in '
-                  'the version you received since they last matched. '
-                  'Choose which version to keep.',
+                  widget.isUpdate
+                      ? '${updateSenderPhrase(incoming)} sent an updated '
+                            'version of "${local.plan.name}", and it was also '
+                            'changed on this device. Choose which version to '
+                            'keep - your calendar dates and logged workouts '
+                            'stay either way.'
+                      : '"${local.plan.name}" was changed on this device and '
+                            'in the version you received since they last '
+                            'matched. Choose which version to keep.',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 16),
@@ -78,7 +93,7 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
                 ),
                 const SizedBox(height: 12),
                 _VersionCard(
-                  title: 'Incoming',
+                  title: widget.isUpdate ? 'Updated version' : 'Incoming',
                   updatedAtLabel: incomingUpdatedAt == null
                       ? 'Unknown'
                       : dateFormat.format(incomingUpdatedAt),
@@ -101,7 +116,11 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
                     foregroundColor: Theme.of(context).colorScheme.onError,
                   ),
                   onPressed: _useIncoming,
-                  child: const Text('Use incoming version'),
+                  child: Text(
+                    widget.isUpdate
+                        ? 'Use updated version'
+                        : 'Use incoming version',
+                  ),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton(
@@ -120,7 +139,15 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     String sessionName,
   ) => joinSessionLabel([if (showWeek) 'Week $weekNumber', day, sessionName]);
 
-  void _keepLocal() {
+  Future<void> _keepLocal() async {
+    if (widget.isUpdate) {
+      await keepLocalOverUpdate(
+        widget.local,
+        widget.incomingJson,
+        ref.read(appDatabaseProvider),
+      );
+      if (!mounted) return;
+    }
     Navigator.of(context).pop();
     ScaffoldMessenger.of(
       context,
@@ -141,7 +168,11 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     setState(() => _busy = true);
     final db = ref.read(appDatabaseProvider);
     try {
-      await importPlanJson(widget.incomingJson, db);
+      if (widget.isUpdate) {
+        await keepBothAfterUpdate(widget.local, widget.incomingJson, db);
+      } else {
+        await importPlanJson(widget.incomingJson, db);
+      }
     } on PlanJsonFormatException catch (e) {
       _showImportFailure(e);
       return;
@@ -167,7 +198,8 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
         context,
         title: 'Logged sessions will be lost',
         message:
-            'The incoming version removes ${lost.length} session(s) that '
+            'The ${widget.isUpdate ? 'updated' : 'incoming'} version '
+            'removes ${lost.length} session(s) that '
             "have logged workouts on this device. Those logs can't be kept "
             "if you continue. This can't be undone.",
         confirmLabel: 'Continue anyway',
@@ -178,20 +210,28 @@ class _PlanConflictScreenState extends ConsumerState<PlanConflictScreen> {
     if (!mounted) return;
     setState(() => _busy = true);
     try {
-      await applyIncomingPlan(widget.incomingJson, db);
+      if (widget.isUpdate) {
+        await applyPlanUpdate(widget.local, widget.incomingJson, db);
+      } else {
+        await applyIncomingPlan(widget.incomingJson, db);
+      }
     } on PlanJsonFormatException catch (e) {
       _showImportFailure(e);
       return;
     }
-    invalidateExerciseListProviders(ref);
-    // applyIncomingPlan rewrites the plan's data under its existing id - the
-    // detail screen's one-shot FutureProvider for that id won't notice on
-    // its own (same gotcha as filteredExercisesProvider, see plan_providers.dart).
-    ref.invalidate(planDetailsProvider(widget.incomingJson['id'] as String));
+    // The plan's data was rewritten under its existing id - the plan screen,
+    // calendar and reminders all hold the old sessions.
+    await refreshAfterPlanReplaced(ref, widget.local.plan.id);
     if (!mounted) return;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Updated to the incoming version.')),
+      SnackBar(
+        content: Text(
+          widget.isUpdate
+              ? 'Updated to the new version.'
+              : 'Updated to the incoming version.',
+        ),
+      ),
     );
   }
 }

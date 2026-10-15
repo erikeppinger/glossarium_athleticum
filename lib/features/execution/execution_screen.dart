@@ -69,6 +69,9 @@ class ExecutionScreen extends ConsumerStatefulWidget {
   ConsumerState<ExecutionScreen> createState() => _ExecutionScreenState();
 }
 
+/// The answers to "Unlogged sets" when finishing a workout.
+enum _UnloggedChoice { review, finishWithout, log }
+
 class _LoggedSetForm {
   final TextEditingController reps;
   final TextEditingController weight;
@@ -1442,33 +1445,62 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     ];
 
     if (unloggedPairs.isNotEmpty) {
-      final logThem = await showDialog<bool>(
+      // Rows still holding the plan's pre-fill weren't typed in - the
+      // message says which is which. Logging them as done is offered, never
+      // assumed: a partial workout must be able to finish without them.
+      final edited = unloggedPairs.where((pair) => pair.$2.isEdited).length;
+      final untouched = unloggedPairs.length - edited;
+      String enteredPart(int n) =>
+          n == 1 ? '1 set has numbers you entered' : '$n sets have numbers you entered';
+      String prefilledPart(int n) => n == 1
+          ? "1 set still shows the plan's numbers"
+          : "$n sets still show the plan's numbers";
+      final what = edited == 0
+          ? prefilledPart(untouched)
+          : untouched == 0
+          ? enteredPart(edited)
+          : '${enteredPart(edited)} and ${prefilledPart(untouched)}';
+      final choice = await showDialog<_UnloggedChoice>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Unlogged sets'),
           content: Text(
-            '${unloggedPairs.length} set${unloggedPairs.length == 1 ? '' : 's'} '
-            "have numbers typed in but weren't logged with the check button. "
-            'Log them now and finish, or go back and review them?',
+            unloggedPairs.length == 1
+                ? "$what, but wasn't ticked off. Log it as done, or finish "
+                      'without it?'
+                : "$what, but weren't ticked off. Log them as done, or "
+                      'finish without them?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
+              onPressed: () =>
+                  Navigator.of(context).pop(_UnloggedChoice.review),
               child: const Text('Review'),
             ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_UnloggedChoice.finishWithout),
+              child: Text(
+                unloggedPairs.length == 1
+                    ? 'Finish without it'
+                    : 'Finish without them',
+              ),
+            ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Log & finish'),
+              onPressed: () => Navigator.of(context).pop(_UnloggedChoice.log),
+              child: const Text('Log as done'),
             ),
           ],
         ),
       );
-      if (logThem != true) return;
+      if (choice == null || choice == _UnloggedChoice.review) return;
       if (!mounted) return;
-      for (final (exercise, form) in unloggedPairs) {
-        await _logSet(exercise, form, unit, startTimer: false);
+      if (choice == _UnloggedChoice.log) {
+        for (final (exercise, form) in unloggedPairs) {
+          await _logSet(exercise, form, unit, startTimer: false);
+        }
+        if (!mounted) return;
       }
-      if (!mounted) return;
     }
 
     // Requested directly (2026-09-16): there was previously no way to look

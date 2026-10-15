@@ -7,6 +7,7 @@ import '../data/app_database.dart';
 import '../data/daos/plan_dao.dart';
 import '../export/exercise_json.dart' show exerciseFromJson, restoreExerciseImage;
 import '../logic/exercise_name_matching.dart';
+import '../logic/plan_fingerprint.dart';
 
 /// Thrown for a plan JSON file that isn't usable at all - wrong/missing
 /// schema_version, or missing structure. Unlike the spreadsheet importer,
@@ -152,6 +153,8 @@ Future<String> _importPlanJson(
             notes: exerciseJson['notes'] as String? ?? '',
             videoUrl: exerciseJson['video_url'] as String? ?? '',
             embeddingAllowed: exerciseJson['embedding_allowed'] as bool? ?? false,
+            // Absent in files exported before supersets were carried.
+            supersetGroupId: exerciseJson['superset_group_id'] as int?,
           ),
         );
       }
@@ -180,6 +183,26 @@ Future<String> _importPlanJson(
 
   final createdAtStr = json['created_at'] as String?;
   final updatedAtStr = json['updated_at'] as String?;
+
+  // Where this plan came from (see Plans.sourcePlanId). A fresh import
+  // remembers the file's own id, version and contents; a backup restore or
+  // own-device sync (planId given) keeps whatever the file itself recorded.
+  String? sourcePlanId;
+  DateTime? sourceUpdatedAt;
+  String? sourceContentHash;
+  if (planId == null) {
+    sourcePlanId = json['id'] as String?;
+    sourceUpdatedAt = updatedAtStr == null ? null : DateTime.parse(updatedAtStr);
+    sourceContentHash = planContentFingerprint(json);
+  } else if (json['source'] case final Map<String, dynamic> source) {
+    sourcePlanId = source['plan_id'] as String?;
+    final sourceUpdatedAtStr = source['updated_at'] as String?;
+    sourceUpdatedAt = sourceUpdatedAtStr == null
+        ? null
+        : DateTime.parse(sourceUpdatedAtStr);
+    sourceContentHash = source['content_hash'] as String?;
+  }
+
   return db.planDao.createPlan(
     id: planId ?? const Uuid().v4(),
     name: name,
@@ -191,5 +214,8 @@ Future<String> _importPlanJson(
     // exported before this field existed - both correctly read as "no
     // author", not an empty string (see Plans.createdBy's own doc comment).
     createdBy: json['created_by'] as String?,
+    sourcePlanId: sourcePlanId,
+    sourceUpdatedAt: sourceUpdatedAt,
+    sourceContentHash: sourceContentHash,
   );
 }

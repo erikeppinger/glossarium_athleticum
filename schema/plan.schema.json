@@ -16,6 +16,19 @@
     "created_at": { "type": "string", "format": "date-time" },
     "updated_at": { "type": "string", "format": "date-time" },
     "notes": { "type": "string" },
+    "created_by": {
+      "type": "string",
+      "description": "Free-text author, e.g. a trainer's name. Absent when not stated."
+    },
+    "source": {
+      "type": "object",
+      "description": "For a plan imported from someone else's file: that plan's id, the version (updated_at) last imported or updated from, and a fingerprint of its contents then (lib/logic/plan_fingerprint.dart). Lets a later version of the same plan be recognised as an update. Absent for a plan built on the exporting device.",
+      "properties": {
+        "plan_id": { "type": "string" },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" },
+        "content_hash": { "type": ["string", "null"] }
+      }
+    },
     "weeks": {
       "type": "array",
       "items": { "$ref": "#/definitions/week" }
@@ -78,7 +91,12 @@
         },
         "rest_sec": { "type": ["integer", "null"], "minimum": 0 },
         "notes": { "type": "string" },
-        "video_url": { "type": "string", "format": "uri" }
+        "video_url": { "type": "string", "format": "uri" },
+        "embedding_allowed": { "type": "boolean" },
+        "superset_group_id": {
+          "type": ["integer", "null"],
+          "description": "Exercises in the same session sharing this number form one superset/circuit; scoped to the session. Absent in files exported before supersets were carried."
+        }
       }
     }
   }

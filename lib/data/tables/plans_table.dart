@@ -26,6 +26,21 @@ class Plans extends Table {
   /// out of the way; deleting is the irreversible one. Null = active.
   DateTimeColumn get archivedAt => dateTime().nullable()();
 
+  /// For a plan imported from someone else's file (typically a trainer's):
+  /// the `id` that plan has in the file. Imports always get a fresh local
+  /// id, so this is how a later, updated version of the same plan is
+  /// recognised (see `checkPlanSync`). Null for a plan built here.
+  TextColumn get sourcePlanId => text().nullable()();
+
+  /// The `updated_at` of the version this plan was last imported or
+  /// updated from - the same version arriving again is "already up to date".
+  DateTimeColumn get sourceUpdatedAt => dateTime().nullable()();
+
+  /// `planContentFingerprint` of that version's contents. When the current
+  /// contents still match, the user hasn't edited the plan, so an update
+  /// can replace them with a single confirmation.
+  TextColumn get sourceContentHash => text().nullable()();
+
   /// Tri-state opt-in for a periodic "check your progress on this plan"
   /// reminder - 'notAsked'/'enabled'/'declined', same reasoning as
   /// `BodyTracking`: a "no" is remembered rather than asked again. Per-plan

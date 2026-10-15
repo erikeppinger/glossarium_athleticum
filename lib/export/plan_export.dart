@@ -36,6 +36,14 @@ Map<String, dynamic> planToJson(PlanDetails details) {
     'updated_at': details.plan.updatedAt.toIso8601String(),
     'notes': details.plan.notes,
     if (details.plan.createdBy != null) 'created_by': details.plan.createdBy,
+    // Where an imported plan came from - see Plans.sourcePlanId. Carried in
+    // backups and own-device syncs so updates keep being recognised.
+    if (details.plan.sourcePlanId != null)
+      'source': {
+        'plan_id': details.plan.sourcePlanId,
+        'updated_at': details.plan.sourceUpdatedAt?.toIso8601String(),
+        'content_hash': details.plan.sourceContentHash,
+      },
     'weeks': [
       for (final weekNumber in sortedWeekNumbers)
         {
@@ -62,6 +70,8 @@ Map<String, dynamic> planToJson(PlanDetails details) {
                       'notes': exercise.notes,
                       'video_url': exercise.videoUrl,
                       'embedding_allowed': exercise.embeddingAllowed,
+                      if (exercise.supersetGroupId != null)
+                        'superset_group_id': exercise.supersetGroupId,
                     },
                 ],
               },

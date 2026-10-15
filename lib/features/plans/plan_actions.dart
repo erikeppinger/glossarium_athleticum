@@ -525,9 +525,10 @@ class _DeleteDialog extends StatelessWidget {
               icon: Icons.delete_forever,
               title: 'Delete everything',
               body:
-                  'Also permanently erases all '
-                  '${impact.loggedWorkouts} logged workouts. This cannot be '
-                  'undone.',
+                  'Also permanently erases '
+                  '${impact.loggedWorkouts == 1 ? 'its' : 'all'} '
+                  '${_count(impact.loggedWorkouts, 'logged workout')}. '
+                  'This cannot be undone.',
               destructive: true,
               onTap: () =>
                   Navigator.of(context).pop(_DeleteChoice.deleteEverything),

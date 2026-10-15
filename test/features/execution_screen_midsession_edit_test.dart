@@ -244,10 +244,10 @@ void main() {
       // Bench Press's own 2 sets were never explicitly logged (only Cable
       // Row's were, above) but still have their plan-prefilled reps/weight
       // sitting in the fields - that's exactly what the "Unlogged sets"
-      // dialog exists for. Log & finish auto-logs them too, which is fine:
+      // dialog exists for. Log as done auto-logs them too, which is fine:
       // this test only cares that Cable Row survives as a log without
       // becoming part of the plan, not that Bench Press stays unlogged.
-      await tester.tap(find.text('Log & finish'));
+      await tester.tap(find.text('Log as done'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Confirm & finish'));
       await tester.pumpAndSettle();

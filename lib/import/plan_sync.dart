@@ -1,6 +1,12 @@
 import '../data/app_database.dart';
 import '../data/daos/plan_dao.dart';
+import 'dart:convert';
+
+import 'package:drift/drift.dart' show Value;
+
 import '../data/daos/session_log_dao.dart';
+import '../export/plan_export.dart';
+import '../logic/plan_fingerprint.dart';
 import 'plan_json_import.dart';
 
 /// What should happen with an incoming plan JSON file (Phase 5's sync,
@@ -34,6 +40,24 @@ class PlanSyncConflict extends PlanSyncOutcome {
   const PlanSyncConflict({required this.local, required this.incomingJson});
 }
 
+/// A newer version of a plan that was imported from someone else's file
+/// (typically a trainer's) - matched through `Plans.sourcePlanId`, since an
+/// import gets a fresh local id. The sender owns the plan's contents; the
+/// person on this device owns its calendar dates and logged workouts.
+/// [editedHere] is whether the contents on this device were changed since
+/// the last import or update: if not, a single confirmation can replace
+/// them (see [applyPlanUpdate]); if so, the user must choose.
+class PlanSyncUpdate extends PlanSyncOutcome {
+  final PlanDetails local;
+  final Map<String, dynamic> incomingJson;
+  final bool editedHere;
+  const PlanSyncUpdate({
+    required this.local,
+    required this.incomingJson,
+    required this.editedHere,
+  });
+}
+
 Future<PlanSyncOutcome> checkPlanSync(
   Map<String, dynamic> incomingJson,
   AppDatabase db,
@@ -41,17 +65,37 @@ Future<PlanSyncOutcome> checkPlanSync(
   final id = incomingJson['id'] as String?;
   if (id == null) return const PlanSyncNew();
 
-  final local = await db.planDao.getPlanDetails(id);
-  if (local == null) return const PlanSyncNew();
-
   final incomingUpdatedAt = DateTime.tryParse(
     incomingJson['updated_at'] as String? ?? '',
   );
-  if (incomingUpdatedAt != null &&
-      incomingUpdatedAt.isAtSameMomentAs(local.plan.updatedAt)) {
+
+  // Same id: this plan itself, exported from another of the user's devices.
+  final local = await db.planDao.getPlanDetails(id);
+  if (local != null) {
+    if (incomingUpdatedAt != null &&
+        incomingUpdatedAt.isAtSameMomentAs(local.plan.updatedAt)) {
+      return const PlanSyncUpToDate();
+    }
+    return PlanSyncConflict(local: local, incomingJson: incomingJson);
+  }
+
+  // A plan imported from this file's plan before: a new version of it.
+  final copy = await db.planDao.findPlanBySourceId(id);
+  if (copy == null) return const PlanSyncNew();
+  final copyDetails = (await db.planDao.getPlanDetails(copy.id))!;
+  final hereNow = planContentFingerprint(planToJson(copyDetails));
+  final seenBefore =
+      incomingUpdatedAt != null &&
+      copy.sourceUpdatedAt != null &&
+      incomingUpdatedAt.isAtSameMomentAs(copy.sourceUpdatedAt!);
+  if (seenBefore || planContentFingerprint(incomingJson) == hereNow) {
     return const PlanSyncUpToDate();
   }
-  return PlanSyncConflict(local: local, incomingJson: incomingJson);
+  return PlanSyncUpdate(
+    local: copyDetails,
+    incomingJson: incomingJson,
+    editedHere: hereNow != copy.sourceContentHash,
+  );
 }
 
 /// Every local session log that would be deleted if [incomingJson] replaced
@@ -115,14 +159,94 @@ Future<List<SessionLogWithSets>> findLogsThatWouldBeLost(
 Future<void> applyIncomingPlan(
   Map<String, dynamic> incomingJson,
   AppDatabase db,
-) => db.transaction(() => _applyIncomingPlan(incomingJson, db));
+) => db.transaction(() => _replacePlan(incomingJson, db));
 
-Future<void> _applyIncomingPlan(
+/// Replaces [local]'s contents with [incomingJson], a newer version from
+/// the plan's sender (see [PlanSyncUpdate]). Keeps what belongs to the
+/// person on this device: the local plan id, its calendar dates and logged
+/// workouts (by session, like [applyIncomingPlan]), and whether it's
+/// archived and its progress-reminder choice. Logs of a session the new
+/// version removed are lost - warn first via [findLogsThatWouldBeLost].
+Future<void> applyPlanUpdate(
+  PlanDetails local,
   Map<String, dynamic> incomingJson,
   AppDatabase db,
-) async {
-  final id = incomingJson['id'] as String;
+) => db.transaction(() async {
+  final plan = local.plan;
+  await _replacePlan(
+    incomingJson,
+    db,
+    localId: plan.id,
+    keepLocalDates: true,
+  );
+  await (db.update(db.plans)..where((p) => p.id.equals(plan.id))).write(
+    PlansCompanion(
+      archivedAt: Value(plan.archivedAt),
+      reportPreference: Value(plan.reportPreference),
+      reportFrequencyDays: Value(plan.reportFrequencyDays),
+      reportOptInAt: Value(plan.reportOptInAt),
+    ),
+  );
+  await db.planDao.setPlanSource(
+    plan.id,
+    sourcePlanId: incomingJson['id'] as String,
+    sourceUpdatedAt: DateTime.tryParse(
+      incomingJson['updated_at'] as String? ?? '',
+    ),
+    sourceContentHash: planContentFingerprint(incomingJson),
+  );
+});
+
+/// The user kept their own version of [local] over an update: remember the
+/// update as seen, so the same file doesn't ask again. The stored content
+/// fingerprint stays, so their edits still count as edits next time.
+Future<void> keepLocalOverUpdate(
+  PlanDetails local,
+  Map<String, dynamic> incomingJson,
+  AppDatabase db,
+) => db.planDao.setPlanSource(
+  local.plan.id,
+  sourcePlanId: local.plan.sourcePlanId,
+  sourceUpdatedAt: DateTime.tryParse(
+    incomingJson['updated_at'] as String? ?? '',
+  ),
+  sourceContentHash: local.plan.sourceContentHash,
+);
+
+/// The user kept both: the update is imported as its own plan and becomes
+/// the one that follows the sender's updates; [local] becomes their own.
+Future<void> keepBothAfterUpdate(
+  PlanDetails local,
+  Map<String, dynamic> incomingJson,
+  AppDatabase db,
+) => db.transaction(() async {
+  await importPlanJson(incomingJson, db);
+  await db.planDao.setPlanSource(
+    local.plan.id,
+    sourcePlanId: null,
+    sourceUpdatedAt: null,
+    sourceContentHash: null,
+  );
+});
+
+Future<void> _replacePlan(
+  Map<String, dynamic> incomingJson,
+  AppDatabase db, {
+  String? localId,
+  bool keepLocalDates = false,
+}) async {
+  final id = localId ?? incomingJson['id'] as String;
   final local = await db.planDao.getPlanDetails(id);
+
+  final datesByKey = <(int, String, String), List<DateTime>>{
+    if (keepLocalDates && local != null)
+      for (final session in local.sessions)
+        (
+          session.session.weekNumber,
+          session.session.day,
+          session.session.sessionName,
+        ): session.dates,
+  };
 
   final logsByKey = <(int, String, String), List<SessionLogWithSets>>{};
   if (local != null) {
@@ -154,7 +278,26 @@ Future<void> _applyIncomingPlan(
     await db.planDao.deletePlan(id);
   }
 
-  await importPlanJson(incomingJson, db, planId: id);
+  await importPlanJson(
+    keepLocalDates ? _withoutDates(incomingJson) : incomingJson,
+    db,
+    planId: id,
+  );
+
+  for (final entry in datesByKey.entries) {
+    if (entry.value.isEmpty) continue;
+    final (weekNumber, day, sessionName) = entry.key;
+    final session = await db.planDao.findSessionByNaturalKey(
+      planId: id,
+      weekNumber: weekNumber,
+      day: day,
+      sessionName: sessionName,
+    );
+    if (session == null) continue; // the new version removed this session
+    for (final date in entry.value) {
+      await db.planDao.addSessionDate(session.id, date);
+    }
+  }
 
   for (final entry in logsByKey.entries) {
     final (weekNumber, day, sessionName) = entry.key;
@@ -189,4 +332,18 @@ Future<void> _applyIncomingPlan(
       );
     }
   }
+}
+
+/// A deep copy of a plan file with every session's dates removed - the
+/// sender's calendar isn't the recipient's.
+Map<String, dynamic> _withoutDates(Map<String, dynamic> planJson) {
+  final copy = jsonDecode(jsonEncode(planJson)) as Map<String, dynamic>;
+  for (final week in copy['weeks'] as List) {
+    for (final session in (week as Map)['sessions'] as List) {
+      (session as Map)
+        ..remove('assigned_date')
+        ..['assigned_dates'] = <String>[];
+    }
+  }
+  return copy;
 }

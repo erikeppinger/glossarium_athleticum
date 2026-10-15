@@ -1160,6 +1160,41 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sourcePlanIdMeta = const VerificationMeta(
+    'sourcePlanId',
+  );
+  @override
+  late final GeneratedColumn<String> sourcePlanId = GeneratedColumn<String>(
+    'source_plan_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceUpdatedAtMeta = const VerificationMeta(
+    'sourceUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> sourceUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'source_updated_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _sourceContentHashMeta = const VerificationMeta(
+    'sourceContentHash',
+  );
+  @override
+  late final GeneratedColumn<String> sourceContentHash =
+      GeneratedColumn<String>(
+        'source_content_hash',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _reportPreferenceMeta = const VerificationMeta(
     'reportPreference',
   );
@@ -1203,6 +1238,9 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
     createdAt,
     updatedAt,
     archivedAt,
+    sourcePlanId,
+    sourceUpdatedAt,
+    sourceContentHash,
     reportPreference,
     reportFrequencyDays,
     reportOptInAt,
@@ -1264,6 +1302,33 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
       context.handle(
         _archivedAtMeta,
         archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
+    if (data.containsKey('source_plan_id')) {
+      context.handle(
+        _sourcePlanIdMeta,
+        sourcePlanId.isAcceptableOrUnknown(
+          data['source_plan_id']!,
+          _sourcePlanIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_updated_at')) {
+      context.handle(
+        _sourceUpdatedAtMeta,
+        sourceUpdatedAt.isAcceptableOrUnknown(
+          data['source_updated_at']!,
+          _sourceUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_content_hash')) {
+      context.handle(
+        _sourceContentHashMeta,
+        sourceContentHash.isAcceptableOrUnknown(
+          data['source_content_hash']!,
+          _sourceContentHashMeta,
+        ),
       );
     }
     if (data.containsKey('report_preference')) {
@@ -1330,6 +1395,18 @@ class $PlansTable extends Plans with TableInfo<$PlansTable, Plan> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}archived_at'],
       ),
+      sourcePlanId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_plan_id'],
+      ),
+      sourceUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}source_updated_at'],
+      ),
+      sourceContentHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_content_hash'],
+      ),
       reportPreference: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}report_preference'],
@@ -1374,6 +1451,21 @@ class Plan extends DataClass implements Insertable<Plan> {
   /// out of the way; deleting is the irreversible one. Null = active.
   final DateTime? archivedAt;
 
+  /// For a plan imported from someone else's file (typically a trainer's):
+  /// the `id` that plan has in the file. Imports always get a fresh local
+  /// id, so this is how a later, updated version of the same plan is
+  /// recognised (see `checkPlanSync`). Null for a plan built here.
+  final String? sourcePlanId;
+
+  /// The `updated_at` of the version this plan was last imported or
+  /// updated from - the same version arriving again is "already up to date".
+  final DateTime? sourceUpdatedAt;
+
+  /// `planContentFingerprint` of that version's contents. When the current
+  /// contents still match, the user hasn't edited the plan, so an update
+  /// can replace them with a single confirmation.
+  final String? sourceContentHash;
+
   /// Tri-state opt-in for a periodic "check your progress on this plan"
   /// reminder - 'notAsked'/'enabled'/'declined', same reasoning as
   /// `BodyTracking`: a "no" is remembered rather than asked again. Per-plan
@@ -1398,6 +1490,9 @@ class Plan extends DataClass implements Insertable<Plan> {
     required this.createdAt,
     required this.updatedAt,
     this.archivedAt,
+    this.sourcePlanId,
+    this.sourceUpdatedAt,
+    this.sourceContentHash,
     required this.reportPreference,
     this.reportFrequencyDays,
     this.reportOptInAt,
@@ -1415,6 +1510,15 @@ class Plan extends DataClass implements Insertable<Plan> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || archivedAt != null) {
       map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
+    if (!nullToAbsent || sourcePlanId != null) {
+      map['source_plan_id'] = Variable<String>(sourcePlanId);
+    }
+    if (!nullToAbsent || sourceUpdatedAt != null) {
+      map['source_updated_at'] = Variable<DateTime>(sourceUpdatedAt);
+    }
+    if (!nullToAbsent || sourceContentHash != null) {
+      map['source_content_hash'] = Variable<String>(sourceContentHash);
     }
     map['report_preference'] = Variable<String>(reportPreference);
     if (!nullToAbsent || reportFrequencyDays != null) {
@@ -1439,6 +1543,15 @@ class Plan extends DataClass implements Insertable<Plan> {
       archivedAt: archivedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(archivedAt),
+      sourcePlanId: sourcePlanId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourcePlanId),
+      sourceUpdatedAt: sourceUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceUpdatedAt),
+      sourceContentHash: sourceContentHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceContentHash),
       reportPreference: Value(reportPreference),
       reportFrequencyDays: reportFrequencyDays == null && nullToAbsent
           ? const Value.absent()
@@ -1462,6 +1575,11 @@ class Plan extends DataClass implements Insertable<Plan> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
+      sourcePlanId: serializer.fromJson<String?>(json['sourcePlanId']),
+      sourceUpdatedAt: serializer.fromJson<DateTime?>(json['sourceUpdatedAt']),
+      sourceContentHash: serializer.fromJson<String?>(
+        json['sourceContentHash'],
+      ),
       reportPreference: serializer.fromJson<String>(json['reportPreference']),
       reportFrequencyDays: serializer.fromJson<int?>(
         json['reportFrequencyDays'],
@@ -1480,6 +1598,9 @@ class Plan extends DataClass implements Insertable<Plan> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'archivedAt': serializer.toJson<DateTime?>(archivedAt),
+      'sourcePlanId': serializer.toJson<String?>(sourcePlanId),
+      'sourceUpdatedAt': serializer.toJson<DateTime?>(sourceUpdatedAt),
+      'sourceContentHash': serializer.toJson<String?>(sourceContentHash),
       'reportPreference': serializer.toJson<String>(reportPreference),
       'reportFrequencyDays': serializer.toJson<int?>(reportFrequencyDays),
       'reportOptInAt': serializer.toJson<DateTime?>(reportOptInAt),
@@ -1494,6 +1615,9 @@ class Plan extends DataClass implements Insertable<Plan> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> archivedAt = const Value.absent(),
+    Value<String?> sourcePlanId = const Value.absent(),
+    Value<DateTime?> sourceUpdatedAt = const Value.absent(),
+    Value<String?> sourceContentHash = const Value.absent(),
     String? reportPreference,
     Value<int?> reportFrequencyDays = const Value.absent(),
     Value<DateTime?> reportOptInAt = const Value.absent(),
@@ -1505,6 +1629,13 @@ class Plan extends DataClass implements Insertable<Plan> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    sourcePlanId: sourcePlanId.present ? sourcePlanId.value : this.sourcePlanId,
+    sourceUpdatedAt: sourceUpdatedAt.present
+        ? sourceUpdatedAt.value
+        : this.sourceUpdatedAt,
+    sourceContentHash: sourceContentHash.present
+        ? sourceContentHash.value
+        : this.sourceContentHash,
     reportPreference: reportPreference ?? this.reportPreference,
     reportFrequencyDays: reportFrequencyDays.present
         ? reportFrequencyDays.value
@@ -1524,6 +1655,15 @@ class Plan extends DataClass implements Insertable<Plan> {
       archivedAt: data.archivedAt.present
           ? data.archivedAt.value
           : this.archivedAt,
+      sourcePlanId: data.sourcePlanId.present
+          ? data.sourcePlanId.value
+          : this.sourcePlanId,
+      sourceUpdatedAt: data.sourceUpdatedAt.present
+          ? data.sourceUpdatedAt.value
+          : this.sourceUpdatedAt,
+      sourceContentHash: data.sourceContentHash.present
+          ? data.sourceContentHash.value
+          : this.sourceContentHash,
       reportPreference: data.reportPreference.present
           ? data.reportPreference.value
           : this.reportPreference,
@@ -1546,6 +1686,9 @@ class Plan extends DataClass implements Insertable<Plan> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('archivedAt: $archivedAt, ')
+          ..write('sourcePlanId: $sourcePlanId, ')
+          ..write('sourceUpdatedAt: $sourceUpdatedAt, ')
+          ..write('sourceContentHash: $sourceContentHash, ')
           ..write('reportPreference: $reportPreference, ')
           ..write('reportFrequencyDays: $reportFrequencyDays, ')
           ..write('reportOptInAt: $reportOptInAt')
@@ -1562,6 +1705,9 @@ class Plan extends DataClass implements Insertable<Plan> {
     createdAt,
     updatedAt,
     archivedAt,
+    sourcePlanId,
+    sourceUpdatedAt,
+    sourceContentHash,
     reportPreference,
     reportFrequencyDays,
     reportOptInAt,
@@ -1577,6 +1723,9 @@ class Plan extends DataClass implements Insertable<Plan> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.archivedAt == this.archivedAt &&
+          other.sourcePlanId == this.sourcePlanId &&
+          other.sourceUpdatedAt == this.sourceUpdatedAt &&
+          other.sourceContentHash == this.sourceContentHash &&
           other.reportPreference == this.reportPreference &&
           other.reportFrequencyDays == this.reportFrequencyDays &&
           other.reportOptInAt == this.reportOptInAt);
@@ -1590,6 +1739,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> archivedAt;
+  final Value<String?> sourcePlanId;
+  final Value<DateTime?> sourceUpdatedAt;
+  final Value<String?> sourceContentHash;
   final Value<String> reportPreference;
   final Value<int?> reportFrequencyDays;
   final Value<DateTime?> reportOptInAt;
@@ -1602,6 +1754,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.archivedAt = const Value.absent(),
+    this.sourcePlanId = const Value.absent(),
+    this.sourceUpdatedAt = const Value.absent(),
+    this.sourceContentHash = const Value.absent(),
     this.reportPreference = const Value.absent(),
     this.reportFrequencyDays = const Value.absent(),
     this.reportOptInAt = const Value.absent(),
@@ -1615,6 +1770,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.archivedAt = const Value.absent(),
+    this.sourcePlanId = const Value.absent(),
+    this.sourceUpdatedAt = const Value.absent(),
+    this.sourceContentHash = const Value.absent(),
     this.reportPreference = const Value.absent(),
     this.reportFrequencyDays = const Value.absent(),
     this.reportOptInAt = const Value.absent(),
@@ -1631,6 +1789,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? archivedAt,
+    Expression<String>? sourcePlanId,
+    Expression<DateTime>? sourceUpdatedAt,
+    Expression<String>? sourceContentHash,
     Expression<String>? reportPreference,
     Expression<int>? reportFrequencyDays,
     Expression<DateTime>? reportOptInAt,
@@ -1644,6 +1805,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (archivedAt != null) 'archived_at': archivedAt,
+      if (sourcePlanId != null) 'source_plan_id': sourcePlanId,
+      if (sourceUpdatedAt != null) 'source_updated_at': sourceUpdatedAt,
+      if (sourceContentHash != null) 'source_content_hash': sourceContentHash,
       if (reportPreference != null) 'report_preference': reportPreference,
       if (reportFrequencyDays != null)
         'report_frequency_days': reportFrequencyDays,
@@ -1660,6 +1824,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? archivedAt,
+    Value<String?>? sourcePlanId,
+    Value<DateTime?>? sourceUpdatedAt,
+    Value<String?>? sourceContentHash,
     Value<String>? reportPreference,
     Value<int?>? reportFrequencyDays,
     Value<DateTime?>? reportOptInAt,
@@ -1673,6 +1840,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       archivedAt: archivedAt ?? this.archivedAt,
+      sourcePlanId: sourcePlanId ?? this.sourcePlanId,
+      sourceUpdatedAt: sourceUpdatedAt ?? this.sourceUpdatedAt,
+      sourceContentHash: sourceContentHash ?? this.sourceContentHash,
       reportPreference: reportPreference ?? this.reportPreference,
       reportFrequencyDays: reportFrequencyDays ?? this.reportFrequencyDays,
       reportOptInAt: reportOptInAt ?? this.reportOptInAt,
@@ -1704,6 +1874,15 @@ class PlansCompanion extends UpdateCompanion<Plan> {
     if (archivedAt.present) {
       map['archived_at'] = Variable<DateTime>(archivedAt.value);
     }
+    if (sourcePlanId.present) {
+      map['source_plan_id'] = Variable<String>(sourcePlanId.value);
+    }
+    if (sourceUpdatedAt.present) {
+      map['source_updated_at'] = Variable<DateTime>(sourceUpdatedAt.value);
+    }
+    if (sourceContentHash.present) {
+      map['source_content_hash'] = Variable<String>(sourceContentHash.value);
+    }
     if (reportPreference.present) {
       map['report_preference'] = Variable<String>(reportPreference.value);
     }
@@ -1729,6 +1908,9 @@ class PlansCompanion extends UpdateCompanion<Plan> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('archivedAt: $archivedAt, ')
+          ..write('sourcePlanId: $sourcePlanId, ')
+          ..write('sourceUpdatedAt: $sourceUpdatedAt, ')
+          ..write('sourceContentHash: $sourceContentHash, ')
           ..write('reportPreference: $reportPreference, ')
           ..write('reportFrequencyDays: $reportFrequencyDays, ')
           ..write('reportOptInAt: $reportOptInAt, ')
@@ -7757,6 +7939,9 @@ typedef $$PlansTableCreateCompanionBuilder = PlansCompanion Function({
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> archivedAt,
+  Value<String?> sourcePlanId,
+  Value<DateTime?> sourceUpdatedAt,
+  Value<String?> sourceContentHash,
   Value<String> reportPreference,
   Value<int?> reportFrequencyDays,
   Value<DateTime?> reportOptInAt,
@@ -7770,6 +7955,9 @@ typedef $$PlansTableUpdateCompanionBuilder = PlansCompanion Function({
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> archivedAt,
+  Value<String?> sourcePlanId,
+  Value<DateTime?> sourceUpdatedAt,
+  Value<String?> sourceContentHash,
   Value<String> reportPreference,
   Value<int?> reportFrequencyDays,
   Value<DateTime?> reportOptInAt,
@@ -7839,6 +8027,21 @@ class $$PlansTableFilterComposer extends Composer<_$AppDatabase, $PlansTable> {
 
   ColumnFilters<DateTime> get archivedAt => $composableBuilder(
     column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourcePlanId => $composableBuilder(
+    column: $table.sourcePlanId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get sourceUpdatedAt => $composableBuilder(
+    column: $table.sourceUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceContentHash => $composableBuilder(
+    column: $table.sourceContentHash,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7927,6 +8130,21 @@ class $$PlansTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sourcePlanId => $composableBuilder(
+    column: $table.sourcePlanId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get sourceUpdatedAt => $composableBuilder(
+    column: $table.sourceUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceContentHash => $composableBuilder(
+    column: $table.sourceContentHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get reportPreference => $composableBuilder(
     column: $table.reportPreference,
     builder: (column) => ColumnOrderings(column),
@@ -7972,6 +8190,21 @@ class $$PlansTableAnnotationComposer
 
   GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
     column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourcePlanId => $composableBuilder(
+    column: $table.sourcePlanId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get sourceUpdatedAt => $composableBuilder(
+    column: $table.sourceUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceContentHash => $composableBuilder(
+    column: $table.sourceContentHash,
     builder: (column) => column,
   );
 
@@ -8051,6 +8284,9 @@ class $$PlansTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
+                Value<String?> sourcePlanId = const Value.absent(),
+                Value<DateTime?> sourceUpdatedAt = const Value.absent(),
+                Value<String?> sourceContentHash = const Value.absent(),
                 Value<String> reportPreference = const Value.absent(),
                 Value<int?> reportFrequencyDays = const Value.absent(),
                 Value<DateTime?> reportOptInAt = const Value.absent(),
@@ -8063,6 +8299,9 @@ class $$PlansTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 archivedAt: archivedAt,
+                sourcePlanId: sourcePlanId,
+                sourceUpdatedAt: sourceUpdatedAt,
+                sourceContentHash: sourceContentHash,
                 reportPreference: reportPreference,
                 reportFrequencyDays: reportFrequencyDays,
                 reportOptInAt: reportOptInAt,
@@ -8077,6 +8316,9 @@ class $$PlansTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> archivedAt = const Value.absent(),
+                Value<String?> sourcePlanId = const Value.absent(),
+                Value<DateTime?> sourceUpdatedAt = const Value.absent(),
+                Value<String?> sourceContentHash = const Value.absent(),
                 Value<String> reportPreference = const Value.absent(),
                 Value<int?> reportFrequencyDays = const Value.absent(),
                 Value<DateTime?> reportOptInAt = const Value.absent(),
@@ -8089,6 +8331,9 @@ class $$PlansTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 archivedAt: archivedAt,
+                sourcePlanId: sourcePlanId,
+                sourceUpdatedAt: sourceUpdatedAt,
+                sourceContentHash: sourceContentHash,
                 reportPreference: reportPreference,
                 reportFrequencyDays: reportFrequencyDays,
                 reportOptInAt: reportOptInAt,

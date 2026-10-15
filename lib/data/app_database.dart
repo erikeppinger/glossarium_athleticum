@@ -44,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -192,6 +192,13 @@ class AppDatabase extends _$AppDatabase {
         // Skipped/replaced exercises and the make-up list - one new table,
         // nothing existing changes shape.
         await m.createTable(skippedExercises);
+      }
+      if (from < 19) {
+        // Where an imported plan came from, so a trainer's updated version
+        // is recognised - see Plans.sourcePlanId.
+        await m.addColumn(plans, plans.sourcePlanId);
+        await m.addColumn(plans, plans.sourceUpdatedAt);
+        await m.addColumn(plans, plans.sourceContentHash);
       }
     },
   );

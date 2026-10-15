@@ -16,7 +16,7 @@ import '../generated_migrations/schema.dart';
 //   dart run drift_dev schema dump lib/data/app_database.dart drift_schemas/app_database/drift_schema_v<N>.json
 //   dart run drift_dev schema generate drift_schemas/app_database/ test/generated_migrations/
 // and add <N> to the list below.
-const shippedVersions = [2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17];
+const shippedVersions = [2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17, 18];
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;

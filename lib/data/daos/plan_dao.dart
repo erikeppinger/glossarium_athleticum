@@ -202,6 +202,41 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
 
   Stream<List<Plan>> watchAllPlans() => select(plans).watch();
 
+  /// The plan imported from the file plan with [sourcePlanId] - see
+  /// `Plans.sourcePlanId`. An active plan wins over an archived one, then
+  /// the most recently changed.
+  Future<Plan?> findPlanBySourceId(String sourcePlanId) async {
+    final matches =
+        await (select(plans)
+              ..where((p) => p.sourcePlanId.equals(sourcePlanId))
+              ..orderBy([
+                (p) => OrderingTerm(
+                  expression: p.archivedAt.isNull(),
+                  mode: OrderingMode.desc,
+                ),
+                (p) => OrderingTerm.desc(p.updatedAt),
+              ]))
+            .get();
+    return matches.firstOrNull;
+  }
+
+  /// Records (or, with all nulls, forgets) where [planId] came from - see
+  /// `Plans.sourcePlanId`. Doesn't touch `updatedAt`: this is bookkeeping,
+  /// not a change to the plan.
+  Future<void> setPlanSource(
+    String planId, {
+    required String? sourcePlanId,
+    required DateTime? sourceUpdatedAt,
+    required String? sourceContentHash,
+  }) =>
+      (update(plans)..where((p) => p.id.equals(planId))).write(
+        PlansCompanion(
+          sourcePlanId: Value(sourcePlanId),
+          sourceUpdatedAt: Value(sourceUpdatedAt),
+          sourceContentHash: Value(sourceContentHash),
+        ),
+      );
+
   /// Active (non-archived) plans only - what the plan list shows.
   Stream<List<Plan>> watchActivePlans() =>
       (select(plans)..where((p) => p.archivedAt.isNull())).watch();
@@ -231,6 +266,9 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? createdBy,
+    String? sourcePlanId,
+    DateTime? sourceUpdatedAt,
+    String? sourceContentHash,
   }) {
     final now = DateTime.now();
     return transaction(() async {
@@ -242,6 +280,9 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
           createdAt: createdAt ?? now,
           updatedAt: updatedAt ?? now,
           createdBy: Value(createdBy),
+          sourcePlanId: Value(sourcePlanId),
+          sourceUpdatedAt: Value(sourceUpdatedAt),
+          sourceContentHash: Value(sourceContentHash),
         ),
       );
       for (final s in sessions) {
