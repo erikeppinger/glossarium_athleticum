@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Claude Code per-user settings (approved commands can contain secrets)
+.claude/settings.local.json
