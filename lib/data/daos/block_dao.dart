@@ -101,23 +101,27 @@ class BlockDao extends DatabaseAccessor<AppDatabase> with _$BlockDaoMixin {
     required String name,
     String notes = '',
     required List<BlockExerciseInput> exercises,
+    // Only a backup restore passes these, to bring a block back as it was.
+    String? id,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
-    final id = const Uuid().v4();
+    final blockId = id ?? const Uuid().v4();
     final now = DateTime.now();
     return transaction(() async {
       await into(blocks).insert(
         BlocksCompanion.insert(
-          id: id,
+          id: blockId,
           name: name,
           notes: Value(notes),
-          createdAt: now,
-          updatedAt: now,
+          createdAt: createdAt ?? now,
+          updatedAt: updatedAt ?? now,
         ),
       );
       for (final e in exercises) {
         await into(blockExercises).insert(
           BlockExercisesCompanion.insert(
-            blockId: id,
+            blockId: blockId,
             order: e.order,
             exerciseId: Value(e.exerciseId),
             exerciseName: e.exerciseName,
@@ -131,7 +135,7 @@ class BlockDao extends DatabaseAccessor<AppDatabase> with _$BlockDaoMixin {
           ),
         );
       }
-      return id;
+      return blockId;
     });
   }
 

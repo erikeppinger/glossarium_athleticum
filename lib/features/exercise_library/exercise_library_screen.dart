@@ -16,6 +16,7 @@ import '../../data/daos/exercise_dao.dart';
 import '../../export/library_export.dart';
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../import/json_object.dart';
+import '../../import/text_decoding.dart';
 import '../../import/library_import.dart';
 import '../../import/plan_zip_bundle.dart';
 import '../../logic/equipment_matching.dart' show bodyweightEquipmentTag;
@@ -635,13 +636,14 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
 
     final bytes = await file.readAsBytes();
     final isXlsx = file.name.toLowerCase().endsWith('.xlsx');
+    final csvContent = isXlsx ? null : decodeTextFile(bytes);
 
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => isXlsx
             ? ExerciseLibraryImportScreen(xlsxBytes: bytes)
-            : ExerciseLibraryImportScreen(csvContent: utf8.decode(bytes)),
+            : ExerciseLibraryImportScreen(csvContent: csvContent),
       ),
     );
   }

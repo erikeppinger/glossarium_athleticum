@@ -7,12 +7,14 @@ import 'package:path/path.dart' as p;
 import '../../data/app_database_provider.dart';
 import '../../export/backup_export.dart';
 import '../../import/backup_import.dart';
+import '../../export/plan_export.dart' show encryptedPlanFileExtension;
 import '../../import/json_object.dart';
+import '../../import/text_decoding.dart';
 import '../../security/backup_encryption.dart';
 import '../plans/plan_import_screen.dart';
 import '../plans/plan_sync_handler.dart';
 import '../settings/backup_dialogs.dart';
-import '../shared/exercise_list_invalidation.dart';
+import '../shared/data_refresh.dart';
 
 /// Reads a file received from outside the app (Bluetooth, WhatsApp, "Open
 /// with", etc.) and routes it into the same import flows used when the
@@ -24,12 +26,26 @@ Future<void> handleSharedFile(
   WidgetRef ref,
   String path,
 ) async {
-  final content = await File(path).readAsString();
+  final extension = p.extension(path).toLowerCase();
+  final bytes = await File(path).readAsBytes();
   if (!context.mounted) return;
+  // A workbook is binary - reading it as text threw, and nothing happened.
+  if (extension == '.xlsx') {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PlanImportScreen(
+          xlsxBytes: bytes,
+          suggestedPlanName: p.basenameWithoutExtension(path),
+        ),
+      ),
+    );
+    return;
+  }
+  final content = decodeTextFile(bytes);
   await handleSharedContent(
     context,
     ref,
-    extension: p.extension(path).toLowerCase(),
+    extension: extension,
     suggestedPlanName: p.basenameWithoutExtension(path),
     displayName: p.basename(path),
     content: content,
@@ -72,6 +88,30 @@ Future<void> handleSharedContent(
         );
       }
 
+    // An encrypted plan, e.g. sent by a trainer - same steps as picking it
+    // under Plans > New plan.
+    case _ when extension == '.$encryptedPlanFileExtension':
+      final passphrase = await promptPassphrase(
+        context,
+        title: "Enter the plan file's passphrase",
+      );
+      if (passphrase == null || passphrase.isEmpty) return;
+      try {
+        final json = decodeJsonObject(await decryptBackup(content, passphrase));
+        if (!context.mounted) return;
+        await importOrSyncPlanJson(context, ref, json);
+      } on BackupDecryptionException catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      } on FormatException {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not read this plan file.')),
+        );
+      }
+
     case _ when extension == '.$backupFileExtension':
       final confirmed = await confirmDestructiveAction(
         context,
@@ -103,7 +143,7 @@ Future<void> handleSharedContent(
           );
         }
         await importBackupJson(backupJson, db);
-        invalidateExerciseListProviders(ref);
+        await refreshAfterAllDataReplaced(ref);
         if (!context.mounted) return;
         ScaffoldMessenger.of(
           context,

@@ -44,6 +44,10 @@ class MaintenanceDao extends DatabaseAccessor<AppDatabase>
       // No FK dependencies of its own, but it's still user data - a "delete
       // all data" that silently kept bodyweight history would be a lie.
       await delete(bodyMeasurements).go();
+      // Reusable blocks are user data too, and point at exercises deleted
+      // above.
+      await delete(db.blockExercises).go();
+      await delete(db.blocks).go();
     });
   }
 }

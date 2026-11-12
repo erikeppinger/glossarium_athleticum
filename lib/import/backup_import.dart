@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../data/app_database.dart';
+import '../data/daos/block_dao.dart';
 import '../data/daos/session_log_dao.dart';
 import '../data/seed/exercise_seed_loader.dart';
 import '../export/exercise_json.dart' show exerciseFromJson, restoreExerciseImage;
@@ -37,6 +38,9 @@ Future<void> importBackupJson(
   // Absent in backups taken before body measurements existed - treated as
   // "none recorded" rather than a malformed file.
   final measurementsJson = json['body_measurements'] as List? ?? const [];
+  // Both absent in backups taken before they were included.
+  final blocksJson = json['blocks'] as List? ?? const [];
+  final favoriteIds = json['favorite_exercise_ids'] as List? ?? const [];
   if (exercisesJson is! List || plansJson is! List) {
     throw const BackupJsonFormatException('Not a valid backup file.');
   }
@@ -52,6 +56,8 @@ Future<void> importBackupJson(
         plansJson,
         sessionLogsJson,
         measurementsJson,
+        blocksJson,
+        favoriteIds,
         attachmentsDirectory,
       ),
     );
@@ -71,6 +77,8 @@ Future<void> _wipeAndRestore(
   List plansJson,
   List sessionLogsJson,
   List measurementsJson,
+  List blocksJson,
+  List favoriteIds,
   Directory? attachmentsDirectory,
 ) async {
   await db.maintenanceDao.wipeAllData();
@@ -91,6 +99,49 @@ Future<void> _wipeAndRestore(
       db,
       planId: map['id'] as String,
       attachmentsDirectory: attachmentsDirectory,
+    );
+    if (map['local_state'] case final Map<String, dynamic> local) {
+      final archivedAt = local['archived_at'] as String?;
+      final reportOptInAt = local['report_opt_in_at'] as String?;
+      await db.planDao.restoreLocalPlanState(
+        map['id'] as String,
+        archivedAt: archivedAt == null ? null : DateTime.parse(archivedAt),
+        reportPreference: local['report_preference'] as String?,
+        reportFrequencyDays: local['report_frequency_days'] as int?,
+        reportOptInAt: reportOptInAt == null
+            ? null
+            : DateTime.parse(reportOptInAt),
+      );
+    }
+  }
+
+  for (final id in favoriteIds) {
+    await db.exerciseDao.setFavorite(id as String, true);
+  }
+
+  for (final blockJson in blocksJson) {
+    final map = blockJson as Map<String, dynamic>;
+    await db.blockDao.createBlock(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      notes: map['notes'] as String? ?? '',
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
+      exercises: [
+        for (final e in map['exercises'] as List)
+          BlockExerciseInput(
+            order: e['order'] as int,
+            exerciseId: e['exercise_id'] as String?,
+            exerciseName: e['exercise_name'] as String,
+            sets: e['sets'] as int,
+            reps: e['reps'] as String,
+            weightIntensity: e['weight_intensity'] as String? ?? '',
+            restSec: e['rest_sec'] as int?,
+            notes: e['notes'] as String? ?? '',
+            videoUrl: e['video_url'] as String? ?? '',
+            embeddingAllowed: e['embedding_allowed'] as bool? ?? false,
+          ),
+      ],
     );
   }
 
@@ -113,16 +164,28 @@ Future<void> _wipeAndRestore(
       continue;
     }
 
-    final session = await db.planDao.findSessionByNaturalKey(
-      planId: map['plan_id'] as String,
-      weekNumber: map['week_number'] as int,
-      day: map['day'] as String,
-      sessionName: map['session_name'] as String,
-    );
-    // The session this log belonged to no longer exists (e.g. the backup
-    // was hand-edited, or a plan failed to import) - skip this one log
-    // rather than aborting the entire restore over it.
-    if (session == null) continue;
+    final planId = map['plan_id'] as String;
+    final weekNumber = map['week_number'] as int;
+    final day = map['day'] as String;
+    final sessionName = map['session_name'] as String;
+    // No such session in the restored plans: the plan was deleted with
+    // "keep history" before the backup was taken. The workout itself is the
+    // part that can't be recreated, so it comes back attached to a plan-less
+    // session, exactly as it was on the device - it used to be dropped
+    // without a word.
+    final session =
+        await db.planDao.findSessionByNaturalKey(
+          planId: planId,
+          weekNumber: weekNumber,
+          day: day,
+          sessionName: sessionName,
+        ) ??
+        await db.planDao.createDetachedSession(
+          planId: planId,
+          weekNumber: weekNumber,
+          day: day,
+          sessionName: sessionName,
+        );
 
     final entries = (map['entries'] as List).map((entryJson) {
       final entry = entryJson as Map<String, dynamic>;

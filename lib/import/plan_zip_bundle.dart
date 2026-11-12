@@ -1,7 +1,8 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+
+import 'text_decoding.dart';
 
 /// Thrown when a zip doesn't contain anything usable as a plan import - no
 /// .csv or .xlsx found inside it at all. Per-row problems in whichever
@@ -64,7 +65,7 @@ PlanZipBundle readPlanZipBundle(Uint8List zipBytes) {
     final bytes = file.content;
 
     if (ext == '.csv' && csvContent == null && xlsxBytes == null) {
-      csvContent = utf8.decode(bytes, allowMalformed: true);
+      csvContent = decodeTextFile(bytes);
     } else if (ext == '.xlsx' && csvContent == null && xlsxBytes == null) {
       xlsxBytes = bytes;
     } else if (_imageExtensions.contains(ext)) {

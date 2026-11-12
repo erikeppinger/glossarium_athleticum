@@ -8,6 +8,7 @@ import '../../export/plan_export.dart' show encryptedPlanFileExtension;
 import '../../home_screen.dart' show settingsAppBarAction;
 import '../../import/json_object.dart';
 import '../../import/plan_zip_bundle.dart';
+import '../../import/text_decoding.dart';
 import '../../security/backup_encryption.dart';
 import '../settings/backup_dialogs.dart';
 import '../settings/templates_screen.dart';
@@ -256,6 +257,9 @@ class PlanListScreen extends ConsumerWidget {
     final bytes = await file.readAsBytes();
     final isXlsx = file.name.toLowerCase().endsWith('.xlsx');
     final suggestedName = file.name.replaceAll(RegExp(r'\.(csv|xlsx)$'), '');
+    // Decoded here, not in the route builder below, where a throw would
+    // replace the import screen with an error page.
+    final csvContent = isXlsx ? null : decodeTextFile(bytes);
 
     if (!context.mounted) return;
     Navigator.of(context).push(
@@ -266,7 +270,7 @@ class PlanListScreen extends ConsumerWidget {
                 suggestedPlanName: suggestedName,
               )
             : PlanImportScreen(
-                csvContent: utf8.decode(bytes),
+                csvContent: csvContent,
                 suggestedPlanName: suggestedName,
               ),
       ),

@@ -224,12 +224,24 @@ class NotificationService {
     // countdown) can work there. Worth revisiting if this plugin adds Linux
     // scheduling support in a future version.
     if (Platform.isLinux) return;
+    // Same fallback as scheduleRestCompleteAlert below: without the exact-
+    // alarm permission an exact request throws, and a reminder a few
+    // minutes late beats one that never arrives - or an exception that
+    // stops whatever asked for the reminders to be rebuilt.
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final canScheduleExact =
+        await android?.canScheduleExactNotifications() ?? true;
     await _plugin.zonedSchedule(
       id: reminder.id,
       title: reminder.title,
       body: reminder.body,
       scheduledDate: tz.TZDateTime.from(reminder.when, tz.local),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: canScheduleExact
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle,
       payload: reminder.payload,
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(

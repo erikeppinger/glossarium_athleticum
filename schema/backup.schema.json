@@ -20,12 +20,26 @@
     },
     "plans": {
       "type": "array",
-      "items": { "$ref": "plan.schema.json" }
+      "items": { "$ref": "plan.schema.json" },
+      "description": "In a backup each plan may also carry 'local_state' (archived_at, report_preference, report_frequency_days, report_opt_in_at) - what belongs to the device rather than to the plan as shared. Never written to a plan file."
     },
     "session_logs": {
       "type": "array",
       "items": { "$ref": "#/definitions/sessionLog" },
-      "description": "Phase 2 execution history, needed for full-backup restore (history/PR/progress views) but not part of a single-plan export."
+      "description": "Phase 2 execution history, needed for full-backup restore (history/PR/progress views) but not part of a single-plan export. A log whose plan_id matches no plan in 'plans' belongs to a plan deleted with its history kept; restore re-attaches it to a plan-less session."
+    },
+    "blocks": {
+      "type": "array",
+      "description": "Reusable exercise blocks. Optional - absent in backups taken before 2026-11.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "created_at", "updated_at", "exercises"]
+      }
+    },
+    "favorite_exercise_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ids of favourite exercises, built-in ones included. Optional."
     }
   },
   "definitions": {

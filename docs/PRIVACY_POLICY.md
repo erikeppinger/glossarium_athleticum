@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: 2026-10-15**
+**Last updated: 2026-11-12**
 
 This app is local-first: it works entirely on your device, does not require an account, and does not send your data anywhere - with one narrow, opt-in exception (embedded video, see below) that doesn't involve the developer either. This policy explains exactly what that means.
 
@@ -14,7 +14,11 @@ If you turn on embedded playback for a specific exercise's video (see the Discla
 
 ## What's stored, and where
 
-Everything you enter - training plans, the exercise library (including any exercise photos you attach), logged workouts, body measurements, and settings - is stored only in this app's private storage area on your device. None of it leaves your device unless you deliberately export or share it yourself.
+Everything you enter - training plans, the exercise library (including any exercise photos you attach), logged workouts, body measurements, and settings - is stored only in this app's private storage area on your device. The app itself never sends it anywhere; it only leaves your device if you export or share it yourself, or through Android's own device backup (next section).
+
+## Android's own device backup
+
+If device backup is switched on in your Android settings, Android includes this app's data in the backup it keeps in your own Google account, like it does for most apps. That is what brings your plans and training history back after you reinstall the app or set up a new phone. This is done by Android, not by the app, and the developer has no access to it. It is covered by Google's privacy policy. To stop it, turn off backup in your phone's settings (Settings > Google > Backup, or similar on your device).
 
 ## Backups and exports
 

@@ -492,21 +492,69 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
   /// right session during backup restore, since a fresh import's
   /// auto-incremented session ids won't match the ids from before the
   /// restore wiped the database.
+  ///
+  /// Nothing stops a plan from having two sessions with the same week, day
+  /// and name, so this takes the oldest match rather than requiring exactly
+  /// one - a duplicate used to throw here and fail a whole backup restore.
   Future<PlanSession?> findSessionByNaturalKey({
     required String planId,
     required int weekNumber,
     required String day,
     required String sessionName,
   }) {
-    return (select(planSessions)..where(
-          (s) =>
-              s.planId.equals(planId) &
-              s.weekNumber.equals(weekNumber) &
-              s.day.equals(day) &
-              s.sessionName.equals(sessionName),
-        ))
+    return (select(planSessions)
+          ..where(
+            (s) =>
+                s.planId.equals(planId) &
+                s.weekNumber.equals(weekNumber) &
+                s.day.equals(day) &
+                s.sessionName.equals(sessionName),
+          )
+          ..orderBy([(s) => OrderingTerm.asc(s.id)])
+          ..limit(1))
         .getSingleOrNull();
   }
+
+  /// A session row whose plan no longer exists - what
+  /// [deletePlanKeepingHistory] leaves behind so logged workouts stay
+  /// readable. Backup restore recreates these for workouts whose plan was
+  /// deleted before the backup was taken.
+  Future<PlanSession> createDetachedSession({
+    required String planId,
+    required int weekNumber,
+    required String day,
+    required String sessionName,
+  }) async {
+    final id = await into(planSessions).insert(
+      PlanSessionsCompanion.insert(
+        planId: planId,
+        weekNumber: weekNumber,
+        day: day,
+        sessionName: sessionName,
+      ),
+    );
+    return (select(planSessions)..where((s) => s.id.equals(id))).getSingle();
+  }
+
+  /// What a full backup carries for a plan beyond its shared file contents:
+  /// whether it is archived and its progress-reminder choice.
+  Future<void> restoreLocalPlanState(
+    String planId, {
+    required DateTime? archivedAt,
+    required String? reportPreference,
+    required int? reportFrequencyDays,
+    required DateTime? reportOptInAt,
+  }) =>
+      (update(plans)..where((p) => p.id.equals(planId))).write(
+        PlansCompanion(
+          archivedAt: Value(archivedAt),
+          reportPreference: reportPreference == null
+              ? const Value.absent()
+              : Value(reportPreference),
+          reportFrequencyDays: Value(reportFrequencyDays),
+          reportOptInAt: Value(reportOptInAt),
+        ),
+      );
 
   /// A single scheduled session with its exercises, for execution mode -
   /// doesn't need the whole plan loaded around it.

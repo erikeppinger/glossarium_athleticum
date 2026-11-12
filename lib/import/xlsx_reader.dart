@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -51,7 +52,9 @@ List<List<List<String>>> readXlsxSheets(Uint8List bytes) {
   String? readPart(String name) {
     final file = archive.findFile(name);
     if (file == null) return null;
-    return String.fromCharCodes(file.content as List<int>);
+    // The XML parts are UTF-8; reading the bytes as characters garbled
+    // every umlaut and dash.
+    return utf8.decode(file.content as List<int>, allowMalformed: true);
   }
 
   final workbookXml = readPart('xl/workbook.xml');

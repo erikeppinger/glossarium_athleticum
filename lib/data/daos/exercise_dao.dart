@@ -28,6 +28,13 @@ class ExerciseDao extends DatabaseAccessor<AppDatabase>
   Future<int> deleteExercise(String id) =>
       (delete(exercises)..where((e) => e.id.equals(id))).go();
 
+  /// Ids of every favourite exercise - what a full backup carries, since
+  /// built-in exercises are reseeded rather than exported.
+  Future<List<String>> getFavoriteIds() =>
+      (select(exercises)..where((e) => e.isFavorite.equals(true)))
+          .map((e) => e.id)
+          .get();
+
   Future<void> setFavorite(String exerciseId, bool isFavorite) =>
       (update(exercises)..where((e) => e.id.equals(exerciseId))).write(
         ExercisesCompanion(isFavorite: Value(isFavorite)),

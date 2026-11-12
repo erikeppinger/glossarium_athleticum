@@ -103,7 +103,7 @@ class _LoggedSetForm {
   /// What the fields held when the row was created - the plan's pre-fill.
   /// Leaving the screen only needs a warning once something differs.
   final String _startReps;
-  final String _startWeight;
+  String _startWeight;
   final String _startAmount;
 
   _LoggedSetForm({
@@ -129,6 +129,18 @@ class _LoggedSetForm {
   bool get hasCountEntered => measure == SetMeasure.reps
       ? reps.text.trim().isNotEmpty
       : amount.text.trim().isNotEmpty;
+
+  /// Whether the weight is still waiting for a pre-fill that wasn't known
+  /// when the row was created - see [applyWeightHint].
+  bool get awaitsWeightHint =>
+      !logged && weight.text.isEmpty && _startWeight.isEmpty;
+
+  /// Pre-fills the weight after the fact. Counts as the plan's own number,
+  /// not as something typed.
+  void applyWeightHint(String hint) {
+    weight.text = hint;
+    _startWeight = hint;
+  }
 
   /// Whether anyone changed this row from its pre-fill.
   bool get isEdited =>
@@ -684,7 +696,7 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
     WeightUnit unit, {
     double? percentageResolvedWeightKg,
   }) {
-    return _session.formsByExerciseRowId.putIfAbsent(exercise.id, () {
+    final forms = _session.formsByExerciseRowId.putIfAbsent(exercise.id, () {
       // A percentage prescription (e.g. "70%") would otherwise be
       // misparsed by the regex below as a flat "70kg" hint - resolve it
       // against the exercise's estimated 1RM instead when available.
@@ -721,6 +733,32 @@ class _ExecutionScreenState extends ConsumerState<ExecutionScreen> {
           weightHint: weightHint,
         ),
       );
+    });
+    _fillLateWeightHint(forms, percentageResolvedWeightKg, unit);
+    return forms;
+  }
+
+  /// A "70%" prescription resolves against the estimated 1RM, which loads
+  /// after the rows already exist on a first visit - they were created with
+  /// an empty weight and stayed that way, although the header showed the
+  /// resolved load. Fills rows nobody has touched once it is known; after
+  /// the frame, since this runs during build.
+  void _fillLateWeightHint(
+    List<_LoggedSetForm> forms,
+    double? resolvedWeightKg,
+    WeightUnit unit,
+  ) {
+    if (resolvedWeightKg == null || !forms.any((f) => f.awaitsWeightHint)) {
+      return;
+    }
+    final hint = formatWeightNumber(kgToDisplay(resolvedWeightKg, unit));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        for (final form in forms) {
+          if (form.awaitsWeightHint) form.applyWeightHint(hint);
+        }
+      });
     });
   }
 

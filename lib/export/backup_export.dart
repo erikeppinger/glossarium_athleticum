@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../data/app_database.dart';
+import '../data/daos/block_dao.dart';
 import '../data/daos/session_log_dao.dart';
 import 'exercise_json.dart';
 import 'plan_export.dart';
@@ -107,7 +108,21 @@ Future<Map<String, dynamic>> buildBackupJson(
   final planJsonList = <Map<String, dynamic>>[];
   for (final plan in plans) {
     final details = await db.planDao.getPlanDetails(plan.id);
-    if (details != null) planJsonList.add(planToJson(details));
+    if (details == null) continue;
+    planJsonList.add({
+      ...planToJson(details),
+      // Belongs to this device, not to the plan as shared with others - so
+      // it travels in a backup only, never in a plan file.
+      'local_state': {
+        if (plan.archivedAt != null)
+          'archived_at': plan.archivedAt!.toIso8601String(),
+        'report_preference': plan.reportPreference,
+        if (plan.reportFrequencyDays != null)
+          'report_frequency_days': plan.reportFrequencyDays,
+        if (plan.reportOptInAt != null)
+          'report_opt_in_at': plan.reportOptInAt!.toIso8601String(),
+      },
+    });
   }
 
   final logs = await db.sessionLogDao.getAllSessionLogsWithSets();
@@ -135,6 +150,12 @@ Future<Map<String, dynamic>> buildBackupJson(
 
   final measurements = await db.bodyMeasurementDao.getAll();
 
+  final blockJsonList = <Map<String, dynamic>>[];
+  for (final block in await db.blockDao.getAllBlocks()) {
+    final details = await db.blockDao.getBlockDetails(block.id);
+    if (details != null) blockJsonList.add(blockToJson(details));
+  }
+
   final exerciseJsonList = <Map<String, dynamic>>[];
   for (final e in customExercises) {
     exerciseJsonList.add(
@@ -151,6 +172,34 @@ Future<Map<String, dynamic>> buildBackupJson(
     'session_logs': logJsonList,
     'body_measurements': [
       for (final m in measurements) bodyMeasurementToJson(m),
+    ],
+    'blocks': blockJsonList,
+    'favorite_exercise_ids': await db.exerciseDao.getFavoriteIds(),
+  };
+}
+
+/// A reusable block with its exercises - see `BlockDao`.
+Map<String, dynamic> blockToJson(BlockDetails details) {
+  return {
+    'id': details.block.id,
+    'name': details.block.name,
+    'notes': details.block.notes,
+    'created_at': details.block.createdAt.toIso8601String(),
+    'updated_at': details.block.updatedAt.toIso8601String(),
+    'exercises': [
+      for (final e in details.exercises)
+        {
+          'order': e.order,
+          'exercise_id': e.exerciseId,
+          'exercise_name': e.exerciseName,
+          'sets': e.sets,
+          'reps': e.reps,
+          'weight_intensity': e.weightIntensity,
+          'rest_sec': e.restSec,
+          'notes': e.notes,
+          'video_url': e.videoUrl,
+          'embedding_allowed': e.embeddingAllowed,
+        },
     ],
   };
 }
